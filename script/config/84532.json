@@ -1,0 +1,11 @@
+{
+  "name": "Base Sepolia",
+  "poolManager": "0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408",
+  "positionManager": "0x4B2C77d209D3405F41a037Ec6c77F7F5b8e2ca80",
+  "lbpStrategy": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+  "ccaFactory": "0x000000001F26a0044BaA66024e7b6599c61963F8",
+  "liquidityLauncher": "0x0000FffFBE8efE702c8703aE3477FF5dE3d319C0",
+  "swapRouter": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+  "liquidityRouter": "0x37429cD17Cb1454C34E7F50b09725202Fd533039",
+  "maxTickRate": 10
+}

@@ -1,0 +1,51 @@
+[profile.default]
+src = "src"
+test = "test"
+script = "script"
+out = "out"
+cache_path = "cache"
+libs = ["lib"]
+solc = "0.8.26"
+evm_version = "cancun"
+optimizer = true
+optimizer_runs = 800
+bytecode_hash = "none"
+ffi = false
+# Remappings are explicit (remappings.txt) so a dependency bump can never silently re-route an import.
+auto_detect_remappings = false
+fs_permissions = [
+  { access = "read", path = "./script/config" },
+  { access = "read", path = "./out" },
+  { access = "read-write", path = "./deployments" },
+]
+# This limit applies to the test EVM only. Test contracts embed the creation code of several large Uniswap
+# contracts (PoolManager, PositionManager, LBPStrategy, the CCA factory) and run to ~100KB themselves.
+# Covenant's own contracts are held to the real 24,576-byte EIP-170 limit by `make sizes`.
+code_size_limit = 262144
+
+[profile.default.fuzz]
+runs = 256
+
+[profile.default.invariant]
+runs = 32
+depth = 128
+fail_on_revert = false
+
+[profile.ci.fuzz]
+runs = 2000
+
+[profile.ci.invariant]
+runs = 128
+depth = 128
+fail_on_revert = false
+
+[fmt]
+line_length = 120
+tab_width = 4
+bracket_spacing = false
+quote_style = "double"
+number_underscore = "thousands"
+sort_imports = false
+
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"

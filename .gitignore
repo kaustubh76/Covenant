@@ -1,0 +1,23 @@
+# Foundry
+out/
+cache/
+broadcast/
+coverage/
+lcov.info
+.gas-snapshot.tmp
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# local chain deployments (recreated by `make chain`)
+deployments/31337*.json
+# the Base Sepolia rehearsal on a local fork (`make fork`), and a public launch's resumable progress
+deployments/84532-fork*.json
+deployments/*.launch.json

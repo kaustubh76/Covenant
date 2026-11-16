@@ -1,0 +1,1080 @@
+{
+  "recordedAt": "2026-11-16T11:28:20.910Z",
+  "hero": {
+    "migrated": {
+      "spot": 2599.7052209655612,
+      "twap": 2600,
+      "band": [
+        1100,
+        2600
+      ],
+      "anchor": 2600,
+      "ceiling": 2900,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": -887220,
+          "priceUpper": 887220,
+          "L": 113.64500866352282
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 722,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 129.41941287878788,
+        "token": 99.79328221978824
+      }
+    },
+    "shaped": {
+      "spot": 2599.7052209655612,
+      "twap": 2600,
+      "band": [
+        1100,
+        2600
+      ],
+      "anchor": 2600,
+      "ceiling": 2900,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": 2700,
+          "priceUpper": 5700,
+          "L": 795.4149387814981
+        },
+        {
+          "priceLower": 2520,
+          "priceUpper": 2700,
+          "L": 681.606042236404
+        },
+        {
+          "priceLower": 1200,
+          "priceUpper": 2520,
+          "L": 1071.9197498278218
+        },
+        {
+          "priceLower": -4800,
+          "priceUpper": 1200,
+          "L": 176.89443725618978
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 6311,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 129.41941287878788,
+        "token": 99.79328221978824
+      }
+    },
+    "tries": [
+      {
+        "key": "pull",
+        "label": "Pull the liquidity",
+        "error": {
+          "name": "IdleTooLarge",
+          "signature": "IdleTooLarge(129419412878787878782, 99793282219788243879)",
+          "rule": "Conservation",
+          "reason": "129.42 ETH and 99.79 TOKEN would be left out of the pool. A reshape must put back everything it lifts."
+        }
+      },
+      {
+        "key": "skim",
+        "label": "Keep 10% of it",
+        "error": {
+          "name": "IdleTooLarge",
+          "signature": "IdleTooLarge(7765164772727272728, 1)",
+          "rule": "Conservation",
+          "reason": "7.77 ETH and 1.00e-18 TOKEN would be left out of the pool. A reshape must put back everything it lifts."
+        }
+      },
+      {
+        "key": "soft",
+        "label": "Hide the support",
+        "error": {
+          "name": "SupportBroken",
+          "signature": "SupportBroken(311, 4000)",
+          "rule": "Support",
+          "reason": "Only 3.1% of the vault's quote would bid inside the support band. The covenant requires 40%."
+        }
+      }
+    ]
+  },
+  "story": {
+    "raw": {
+      "spot": 2599.7052209655612,
+      "twap": 2600,
+      "band": [
+        1100,
+        2600
+      ],
+      "anchor": 2600,
+      "ceiling": 2900,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": -887220,
+          "priceUpper": 887220,
+          "L": 113.64500866352282
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 722,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 129.41941287878788,
+        "token": 99.79328221978824
+      }
+    },
+    "shaped": {
+      "spot": 2599.7052209655612,
+      "twap": 2600,
+      "band": [
+        1100,
+        2600
+      ],
+      "anchor": 2600,
+      "ceiling": 2900,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": 2700,
+          "priceUpper": 5700,
+          "L": 795.4149387814981
+        },
+        {
+          "priceLower": 2520,
+          "priceUpper": 2700,
+          "L": 681.606042236404
+        },
+        {
+          "priceLower": 1200,
+          "priceUpper": 2520,
+          "L": 1071.9197498278218
+        },
+        {
+          "priceLower": -4800,
+          "priceUpper": 1200,
+          "L": 176.89443725618978
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 6311,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 129.41941287878788,
+        "token": 99.79328221978824
+      }
+    },
+    "dumped": {
+      "spot": 2151.9685804253754,
+      "twap": 2600,
+      "band": [
+        1100,
+        2600
+      ],
+      "anchor": 2600,
+      "ceiling": 2900,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": 2700,
+          "priceUpper": 5700,
+          "L": 795.4149387814981
+        },
+        {
+          "priceLower": 2520,
+          "priceUpper": 2700,
+          "L": 681.606042236404
+        },
+        {
+          "priceLower": 1200,
+          "priceUpper": 2520,
+          "L": 1071.9197498278218
+        },
+        {
+          "priceLower": -4800,
+          "priceUpper": 1200,
+          "L": 176.89443725618978
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 6311,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 104.16441279353072,
+        "token": 119.73328221978825
+      }
+    },
+    "crashed": {
+      "spot": 1100.0000000000002,
+      "twap": 1100,
+      "band": [
+        -400,
+        1100
+      ],
+      "anchor": 1400,
+      "ceiling": 1700,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": 2700,
+          "priceUpper": 5700,
+          "L": 795.4149387814981
+        },
+        {
+          "priceLower": 2520,
+          "priceUpper": 2700,
+          "L": 681.606042236404
+        },
+        {
+          "priceLower": 1200,
+          "priceUpper": 2520,
+          "L": 1071.9197498278218
+        },
+        {
+          "priceLower": -4800,
+          "priceUpper": 1200,
+          "L": 176.89443725618978
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 2828,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 47.743881028636814,
+        "token": 167.49093492712015
+      }
+    },
+    "restored": {
+      "spot": 1100.0000000000002,
+      "twap": 1100,
+      "band": [
+        -400,
+        1100
+      ],
+      "anchor": 1400,
+      "ceiling": 1700,
+      "quoteIs0": true,
+      "tickSpacing": 60,
+      "tokenSymbol": "TOKEN",
+      "quoteSymbol": "ETH",
+      "ranges": [
+        {
+          "priceLower": 2700,
+          "priceUpper": 5700,
+          "L": 795.4149387814981
+        },
+        {
+          "priceLower": 2520,
+          "priceUpper": 2700,
+          "L": 681.606042236404
+        },
+        {
+          "priceLower": 1200,
+          "priceUpper": 2520,
+          "L": 1071.9197498278218
+        },
+        {
+          "priceLower": -360,
+          "priceUpper": 1080,
+          "L": 651.1727717999587
+        },
+        {
+          "priceLower": 1140,
+          "priceUpper": 1200,
+          "L": 295.11921558866334
+        }
+      ],
+      "terms": {
+        "guardTicks": 300,
+        "supportBps": 4000,
+        "supportBandTicks": 1500
+      },
+      "support": {
+        "have": 9999,
+        "need": 4000
+      },
+      "principal": {
+        "quote": 47.743881028636814,
+        "token": 167.49093492712015
+      }
+    },
+    "dumpTokens": 20,
+    "dumpDropTicks": 447.7366405401858,
+    "fullDumpDropTicks": 3643.4972075190094,
+    "softRug": {
+      "name": "SupportBroken",
+      "signature": "SupportBroken(311, 4000)",
+      "rule": "Support",
+      "reason": "Only 3.1% of the vault's quote would bid inside the support band. The covenant requires 40%."
+    },
+    "crashTicks": 1500,
+    "bounty": 0.01
+  },
+  "proof": {
+    "supportFrom": 722,
+    "supportTo": 5238,
+    "ratio": 6.700543273487679,
+    "blocked": 20,
+    "total": 20
+  },
+  "impact": [
+    {
+      "size": 1,
+      "full": 198.8314572156537,
+      "managed": 33.289021702809805
+    },
+    {
+      "size": 2,
+      "full": 395.7057561403367,
+      "managed": 66.52273027618367
+    },
+    {
+      "size": 3,
+      "full": 590.661051316767,
+      "managed": 94.96502226637585
+    },
+    {
+      "size": 4,
+      "full": 783.7343923228975,
+      "managed": 120.25091613895302
+    },
+    {
+      "size": 5,
+      "full": 974.961766031033,
+      "managed": 145.5048831471181
+    },
+    {
+      "size": 6,
+      "full": 1164.3781368658151,
+      "managed": 170.72700381318919
+    },
+    {
+      "size": 7,
+      "full": 1352.017485173749,
+      "managed": 195.91735835524423
+    },
+    {
+      "size": 8,
+      "full": 1537.91284380955,
+      "managed": 221.07602668864092
+    },
+    {
+      "size": 9,
+      "full": 1722.0963330378831,
+      "managed": 246.20308842755458
+    },
+    {
+      "size": 10,
+      "full": 1904.5991938427128,
+      "managed": 271.29862288647837
+    },
+    {
+      "size": 11,
+      "full": 2085.4518197306274,
+      "managed": 296.36270908172855
+    },
+    {
+      "size": 12,
+      "full": 2264.683787109168,
+      "managed": 321.3954257329374
+    },
+    {
+      "size": 13,
+      "full": 2442.3238843160752,
+      "managed": 346.39685126453605
+    },
+    {
+      "size": 14,
+      "full": 2618.4001393706953,
+      "managed": 371.367063807229
+    },
+    {
+      "size": 15,
+      "full": 2792.9398465145086,
+      "managed": 396.30614119945903
+    },
+    {
+      "size": 16,
+      "full": 2965.969591603572,
+      "managed": 421.21416098886357
+    },
+    {
+      "size": 17,
+      "full": 3137.5152764120153,
+      "managed": 446.09120043372104
+    },
+    {
+      "size": 18,
+      "full": 3307.6021419021163,
+      "managed": 470.93733650438753
+    },
+    {
+      "size": 19,
+      "full": 3476.254790513263,
+      "managed": 495.75264588472874
+    },
+    {
+      "size": 20,
+      "full": 3643.4972075190094,
+      "managed": 520.5372049735365
+    },
+    {
+      "size": 21,
+      "full": 3809.3527814986287,
+      "managed": 545.2910898859432
+    },
+    {
+      "size": 22,
+      "full": 3973.8443239667904,
+      "managed": 570.0143764548209
+    },
+    {
+      "size": 23,
+      "full": 4136.994088202652,
+      "managed": 594.707140232179
+    },
+    {
+      "size": 24,
+      "full": 4298.823787317173,
+      "managed": 619.3694564905461
+    },
+    {
+      "size": 25,
+      "full": 4459.354611595354,
+      "managed": 644.0014002243495
+    },
+    {
+      "size": 26,
+      "full": 4618.607245148046,
+      "managed": 668.6030461512817
+    },
+    {
+      "size": 27,
+      "full": 4776.601881906059,
+      "managed": 693.1744687136609
+    },
+    {
+      "size": 28,
+      "full": 4933.358240987467,
+      "managed": 717.7157420797821
+    },
+    {
+      "size": 29,
+      "full": 5088.895581467404,
+      "managed": 742.2269401452622
+    },
+    {
+      "size": 30,
+      "full": 5243.232716577984,
+      "managed": 766.708136534374
+    },
+    {
+      "size": 31,
+      "full": 5396.388027364534,
+      "managed": 791.1594046013672
+    },
+    {
+      "size": 32,
+      "full": 5548.379475822932,
+      "managed": 815.5808174317986
+    },
+    {
+      "size": 33,
+      "full": 5699.224617541534,
+      "managed": 839.9724478438357
+    },
+    {
+      "size": 34,
+      "full": 5848.940613869952,
+      "managed": 864.3343683895594
+    },
+    {
+      "size": 35,
+      "full": 5997.544243635724,
+      "managed": 888.6666513562607
+    },
+    {
+      "size": 36,
+      "full": 6145.051914428969,
+      "managed": 912.9693687677275
+    },
+    {
+      "size": 37,
+      "full": 6291.479673473921,
+      "managed": 937.2425923855219
+    },
+    {
+      "size": 38,
+      "full": 6436.843218105411,
+      "managed": 961.486393710255
+    },
+    {
+      "size": 39,
+      "full": 6581.157905867372,
+      "managed": 985.7008439828469
+    },
+    {
+      "size": 40,
+      "full": 6724.438764249645,
+      "managed": 1009.8860141857847
+    }
+  ],
+  "revertTape": [
+    "InsufficientShares(0, 1)",
+    "NotIssuer()",
+    "IdleTooLarge(7765164772727272728, 1)",
+    "SupportBroken(311, 4000)",
+    "PriceGuard(-600, -2600)",
+    "PaceExceeded(1000000000, 500000000)",
+    "TimelockActive(1800189471)",
+    "TooManyRanges(15, 14)",
+    "NothingToRestore(6311, 4000)",
+    "Locked(0, 1000000000000000000)",
+    "SafeCastOverflow()",
+    "NothingToRestore(8288, 4000)",
+    "RestoreBandEmpty(7080, 5700)",
+    "BidAboveCeiling(17520, 2931)",
+    "InsufficientPayment(12941941287878787882, 1000000000000000000)"
+  ],
+  "attacks": {
+    "curator-withdraw": {
+      "blocked": true,
+      "summary": "No code path: the curator holds no shares and is not the issuer",
+      "beats": [
+        {
+          "actor": "curator",
+          "title": "Withdraw shares",
+          "ok": false,
+          "error": {
+            "name": "InsufficientShares",
+            "signature": "InsufficientShares(0, 1)",
+            "rule": "Access",
+            "reason": "This address holds no vault shares. The curator has no withdrawal path at all."
+          }
+        },
+        {
+          "actor": "curator",
+          "title": "Withdraw principal",
+          "ok": false,
+          "error": {
+            "name": "NotIssuer",
+            "signature": "NotIssuer()",
+            "rule": "Access",
+            "reason": "Only the issuer can do this."
+          }
+        }
+      ]
+    },
+    "skim": {
+      "blocked": true,
+      "summary": "What is not put back may not even sit idle",
+      "beats": [
+        {
+          "actor": "curator",
+          "title": "Reshape, re-adding 90% of the support",
+          "ok": false,
+          "error": {
+            "name": "IdleTooLarge",
+            "signature": "IdleTooLarge(7765164772727272728, 1)",
+            "rule": "Conservation",
+            "reason": "7.77 ETH and 1.00e-18 tokens would be left out of the pool. A reshape must put back everything it lifts."
+          }
+        }
+      ]
+    },
+    "softrug": {
+      "blocked": true,
+      "summary": "Support is checked on the layout the reshape leaves",
+      "beats": [
+        {
+          "actor": "curator",
+          "title": "Move the support 9,000 ticks down",
+          "ok": false,
+          "error": {
+            "name": "SupportBroken",
+            "signature": "SupportBroken(311, 4000)",
+            "rule": "Support",
+            "reason": "Only 3.1% of the vault's quote would bid inside the support band. The covenant requires 40%."
+          }
+        }
+      ]
+    },
+    "manipulate": {
+      "blocked": true,
+      "summary": "The guard blocks all three until the price has held",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Dump the token",
+          "detail": "Spot falls 2,000 ticks (18.1%)",
+          "ok": true
+        },
+        {
+          "actor": "curator",
+          "title": "Reshape at the new spot",
+          "ok": false,
+          "error": {
+            "name": "PriceGuard",
+            "signature": "PriceGuard(-600, -2600)",
+            "rule": "Guard",
+            "reason": "Spot is 2000 ticks from the time-weighted price. Nothing can change until the price has held."
+          }
+        },
+        {
+          "actor": "lp",
+          "title": "Deposit at the manipulated price",
+          "ok": false,
+          "error": {
+            "name": "PriceGuard",
+            "signature": "PriceGuard(-600, -2600)",
+            "rule": "Guard",
+            "reason": "Spot is 2000 ticks from the time-weighted price. Nothing can change until the price has held."
+          }
+        },
+        {
+          "actor": "keeper",
+          "title": "Call restore",
+          "ok": false,
+          "error": {
+            "name": "PriceGuard",
+            "signature": "PriceGuard(-600, -2600)",
+            "rule": "Guard",
+            "reason": "Spot is 2000 ticks from the time-weighted price. Nothing can change until the price has held."
+          }
+        }
+      ]
+    },
+    "flash": {
+      "blocked": true,
+      "summary": "Same-block writes add no weight to the average",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Dump 5,000 ticks and buy back, in one block",
+          "detail": "TWAP before 2600, after 2600",
+          "ok": true
+        },
+        {
+          "actor": "curator",
+          "title": "Reshape: is the guard fooled?",
+          "detail": "The guard passes: nothing happened, as far as the average is concerned",
+          "ok": true
+        }
+      ]
+    },
+    "pace": {
+      "blocked": true,
+      "summary": "At most half the vault moves per epoch under Standard terms",
+      "beats": [
+        {
+          "actor": "curator",
+          "title": "Move 100% of the vault",
+          "ok": false,
+          "error": {
+            "name": "PaceExceeded",
+            "signature": "PaceExceeded(1000000000, 500000000)",
+            "rule": "Pace",
+            "reason": "This moves 100.0% of the vault's value, but only 50.0% of the pace allowance is left. It refills every epoch."
+          }
+        }
+      ]
+    },
+    "instant-curator": {
+      "blocked": true,
+      "summary": "Timelocked, then bound by exactly the same rules",
+      "beats": [
+        {
+          "actor": "issuer",
+          "title": "Propose a new curator",
+          "detail": "Timelock starts",
+          "ok": true
+        },
+        {
+          "actor": "keeper",
+          "title": "Accept immediately",
+          "ok": false,
+          "error": {
+            "name": "TimelockActive",
+            "signature": "TimelockActive(1800189471)",
+            "rule": "Pace",
+            "reason": "The curator change is still inside its timelock. Holders have this window to react."
+          }
+        },
+        {
+          "actor": "keeper",
+          "title": "Accept after two days",
+          "detail": "New curator in place",
+          "ok": true
+        },
+        {
+          "actor": "newCurator",
+          "title": "New curator moves the support away",
+          "ok": false,
+          "error": {
+            "name": "SupportBroken",
+            "signature": "SupportBroken(311, 4000)",
+            "rule": "Support",
+            "reason": "Only 3.1% of the vault's quote would bid inside the support band. The covenant requires 40%."
+          }
+        }
+      ]
+    },
+    "fragment": {
+      "blocked": true,
+      "summary": "A reshape may leave 14 ranges at most, so restore always has room",
+      "beats": [
+        {
+          "actor": "curator",
+          "title": "Fragment the reserve into 12 ranges",
+          "ok": false,
+          "error": {
+            "name": "TooManyRanges",
+            "signature": "TooManyRanges(15, 14)",
+            "rule": "Shape",
+            "reason": "15 ranges. A reshape may leave at most 14, so restore always has room."
+          }
+        }
+      ]
+    },
+    "farm": {
+      "blocked": true,
+      "summary": "Healthy support pays nothing",
+      "beats": [
+        {
+          "actor": "keeper",
+          "title": "Call restore on a healthy vault",
+          "ok": false,
+          "error": {
+            "name": "NothingToRestore",
+            "signature": "NothingToRestore(6311, 4000)",
+            "rule": "Restore",
+            "reason": "Support is 63.1% against a 40% minimum, so there is nothing to restore and no bounty to claim."
+          }
+        }
+      ]
+    },
+    "cheap-shares": {
+      "blocked": true,
+      "summary": "A tenth of the shares costs exactly a tenth of every range",
+      "beats": [
+        {
+          "actor": "lp",
+          "title": "Deposit for a tenth of the shares",
+          "ok": true
+        },
+        {
+          "actor": "lp",
+          "title": "What a tenth of the shares cost",
+          "detail": "10.000% of the quote and 10.000% of the tokens",
+          "ok": true
+        }
+      ]
+    },
+    "lp-exit": {
+      "blocked": true,
+      "summary": "A proportional exit leaves the shape and the issuer untouched",
+      "beats": [
+        {
+          "actor": "lp",
+          "title": "Deposit",
+          "ok": true
+        },
+        {
+          "actor": "lp",
+          "title": "Withdraw everything",
+          "ok": true
+        },
+        {
+          "actor": "anyone",
+          "title": "After the exit",
+          "detail": "Support 6311 → 6311 bps. Issuer principal still 100%",
+          "ok": true
+        }
+      ]
+    },
+    "big-dump": {
+      "blocked": true,
+      "summary": "Absorbed inside the pool: nothing left the vault",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Dump 20 tokens",
+          "ok": true
+        },
+        {
+          "actor": "anyone",
+          "title": "The vault's bids bought the dump",
+          "detail": "Quote in the pool 129.42 → 104.16, tokens 99.79 → 119.73",
+          "ok": true
+        }
+      ]
+    },
+    "issuer-exit": {
+      "blocked": true,
+      "summary": "Nothing vests before the lock ends",
+      "beats": [
+        {
+          "actor": "issuer",
+          "title": "Withdraw all principal on day 0",
+          "ok": false,
+          "error": {
+            "name": "Locked",
+            "signature": "Locked(0, 1000000000000000000)",
+            "rule": "Lock",
+            "reason": "Only 0.00% of the issuer's principal is withdrawable now. This asks for 100.00%."
+          }
+        }
+      ]
+    },
+    "outsider": {
+      "blocked": true,
+      "summary": "Positions are keyed to their owner: the vault's are out of reach",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "modifyLiquidity on the vault's range, through a router",
+          "ok": false,
+          "error": {
+            "name": "SafeCastOverflow",
+            "signature": "SafeCastOverflow()",
+            "rule": "Other",
+            "reason": "The call reverted."
+          }
+        },
+        {
+          "actor": "anyone",
+          "title": "The vault's position in the PoolManager",
+          "detail": "795.4149387814981 → 795.4149387814981 liquidity (×1e18): untouched",
+          "ok": true
+        }
+      ]
+    },
+    "pump-quick": {
+      "blocked": true,
+      "summary": "Nothing to restore. The attacker ends −0.843 ETH",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Buy every ask and push 30,000 ticks through empty ticks",
+          "detail": "Bought 99.79 tokens. Spot now sits wherever the attacker put it",
+          "ok": true
+        },
+        {
+          "actor": "anyone",
+          "title": "Two hours later the TWAP has followed the pump",
+          "detail": "Support is still 82.9%: the filled asks are quote just under the old price, and count",
+          "ok": true
+        },
+        {
+          "actor": "attacker",
+          "title": "Call restore to drag the bids up",
+          "ok": false,
+          "error": {
+            "name": "NothingToRestore",
+            "signature": "NothingToRestore(8288, 4000)",
+            "rule": "Restore",
+            "reason": "Support is 82.9% against a 40% minimum, so there is nothing to restore and no bounty to claim."
+          }
+        },
+        {
+          "actor": "attacker",
+          "title": "Sell the tokens back",
+          "detail": "The attacker is flat in tokens again",
+          "ok": true
+        },
+        {
+          "actor": "attacker",
+          "title": "Attacker P&L: −0.843 ETH",
+          "detail": "The swap fees stay with the vault",
+          "ok": true
+        }
+      ]
+    },
+    "pump-patient": {
+      "blocked": true,
+      "summary": "Restore refuses to chase the pump. The attacker ends −0.843 ETH",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Buy every ask and push 30,000 ticks through empty ticks",
+          "detail": "Bought 99.79 tokens. Spot now sits wherever the attacker put it",
+          "ok": true
+        },
+        {
+          "actor": "anyone",
+          "title": "Four days, synced every 30 minutes",
+          "detail": "The Anchor climbed 5952 ticks. Support now reads 0.0%",
+          "ok": true
+        },
+        {
+          "actor": "attacker",
+          "title": "Call restore to drag the bids up",
+          "ok": false,
+          "error": {
+            "name": "RestoreBandEmpty",
+            "signature": "RestoreBandEmpty(7080, 5700)",
+            "rule": "Anchor",
+            "reason": "Restore would have to bid between ticks 7080 and 5700, above every price the vault has sold at. It refuses rather than chase a pumped price."
+          }
+        },
+        {
+          "actor": "attacker",
+          "title": "Sell the tokens back",
+          "detail": "The attacker is flat in tokens again",
+          "ok": true
+        },
+        {
+          "actor": "attacker",
+          "title": "Attacker P&L: −0.843 ETH",
+          "detail": "Restore never bids above where the vault has sold",
+          "ok": true
+        }
+      ]
+    },
+    "colluding-curator": {
+      "blocked": true,
+      "summary": "No bid above the Anchor plus the guard, and the Anchor climbs a band a day at most",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Buy every ask and push 15,000 ticks through empty ticks",
+          "detail": "Bought 99.79 tokens. Spot now sits wherever the attacker put it",
+          "ok": true
+        },
+        {
+          "actor": "curator",
+          "title": "Bid just under the pumped price",
+          "ok": false,
+          "error": {
+            "name": "BidAboveCeiling",
+            "signature": "BidAboveCeiling(17520, 2931)",
+            "rule": "Anchor",
+            "reason": "A bid would reach 14589 ticks above the Anchor ceiling. The vault never bids above a price it has not held for days."
+          }
+        }
+      ]
+    },
+    "freeze-exits": {
+      "blocked": true,
+      "summary": "The LP leaves while the guard is tripped",
+      "beats": [
+        {
+          "actor": "lp",
+          "title": "Deposit",
+          "ok": true
+        },
+        {
+          "actor": "attacker",
+          "title": "Hold spot 2,500 ticks below the average",
+          "ok": true
+        },
+        {
+          "actor": "anyone",
+          "title": "The guard is tripped",
+          "detail": "Spot is 2500 ticks from the TWAP",
+          "ok": true
+        },
+        {
+          "actor": "lp",
+          "title": "Withdraw anyway",
+          "detail": "Exits are never guarded: a proportional burn cannot be priced wrong",
+          "ok": true
+        }
+      ]
+    },
+    "dust-restore": {
+      "blocked": true,
+      "summary": "The bounty is capped, so dust earns dust",
+      "beats": [
+        {
+          "actor": "attacker",
+          "title": "Dump 3,000 ticks and hold",
+          "ok": true
+        },
+        {
+          "actor": "keeper",
+          "title": "Restore with support at 36.6%",
+          "ok": true
+        },
+        {
+          "actor": "keeper",
+          "title": "Bounty paid: 0.0100 ETH",
+          "detail": "Never more than 0.01 ETH, and never more than 1% of the quote moved",
+          "ok": true
+        }
+      ]
+    },
+    "vault-pays": {
+      "blocked": true,
+      "summary": "The vault never pays for a depositor",
+      "beats": [
+        {
+          "actor": "lp",
+          "title": "Deposit for 10% with 1 ETH attached",
+          "ok": false,
+          "error": {
+            "name": "InsufficientPayment",
+            "signature": "InsufficientPayment(12941941287878787882, 1000000000000000000)",
+            "rule": "Other",
+            "reason": "The deposit costs 12.94 ETH but 1.00 ETH was sent. The vault never pays for a depositor."
+          }
+        }
+      ]
+    }
+  }
+}
