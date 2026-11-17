@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ChainCtx } from "./client";
-import { forgetScans, mergeSpans, scanOnce, scanRange } from "./logs";
+import { forgetScans, mergeSpans, scanLogs, scanOnce, scanRange } from "./logs";
 
 const ctxWith = (logRange?: number) => ({ net: { key: "base-sepolia", caps: { devChain: false, logRange, pollMs: 2000, blockTimeMs: 2000 } } }) as unknown as ChainCtx;
 
@@ -103,5 +103,46 @@ describe("mergeSpans", () => {
       [1000, 1100],
     ]);
     expect(mergeSpans([[1000, 1100]], [])).toEqual([[1000, 1100]]);
+  });
+});
+
+describe("scanLogs on a public chain", () => {
+  const ctxFrom = (latest: { at: bigint }) =>
+    ({
+      net: { key: "base-sepolia", caps: { devChain: false, logRange: 200, pollMs: 2000, blockTimeMs: 200 } },
+      pub: { getBlockNumber: async () => latest.at },
+    }) as unknown as ChainCtx;
+
+  it("reads exactly the window on first load, the latest block included, then only new blocks", async () => {
+    forgetScans();
+    const latest = { at: 10_000n };
+    const spans: [bigint, bigint][] = [];
+    const read = async (a: bigint, b: bigint) => {
+      spans.push([a, b]);
+      return [];
+    };
+    await scanLogs(ctxFrom(latest), "w", 0n, read, 1800n);
+    expect(spans[0][0]).toBe(10_000n - 1800n + 1n);
+    expect(spans.at(-1)![1]).toBe(10_000n);
+    expect(spans).toHaveLength(9);
+    spans.length = 0;
+    latest.at = 10_050n;
+    await scanLogs(ctxFrom(latest), "w", 0n, read, 1800n);
+    expect(spans).toEqual([[10_001n, 10_050n]]);
+  });
+
+  it("starts over from the window after a gap longer than it, instead of catching up block by block", async () => {
+    forgetScans();
+    const latest = { at: 10_000n };
+    let calls = 0;
+    const read = async () => {
+      calls++;
+      return [];
+    };
+    await scanLogs(ctxFrom(latest), "gap", 0n, read, 1800n);
+    calls = 0;
+    latest.at = 30_000n; // an hour and more of 200 ms blocks
+    await scanLogs(ctxFrom(latest), "gap", 0n, read, 1800n);
+    expect(calls).toBe(9);
   });
 });

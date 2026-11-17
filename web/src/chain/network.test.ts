@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { NETWORKS, explorerTx, isNetworkKey, networkOf, parseManifest } from "./network";
+import { NETWORKS, explorerTx, firstChoice, isNetworkKey, networkOf, parseManifest } from "./network";
 
 const manifest = (chainId: number) =>
   parseManifest({
@@ -38,5 +38,18 @@ describe("networks", () => {
     expect(explorerTx(NETWORKS["base-sepolia-fork"], hash)).toBeUndefined();
     expect(isNetworkKey("base-sepolia")).toBe(true);
     expect(isNetworkKey("mainnet")).toBe(false);
+  });
+});
+
+describe("firstChoice", () => {
+  it("opens the live Base Sepolia deployment when it answers, even with the local chain up", () => {
+    expect(firstChoice([{ key: "local", state: "ready" }, { key: "base-sepolia", state: "ready" }, { key: "base-sepolia-fork", state: "offline" }])).toBe("base-sepolia");
+  });
+
+  it("falls back to the first network that is up, then to the local chain", () => {
+    expect(firstChoice([{ key: "local", state: "ready" }, { key: "base-sepolia", state: "offline" }])).toBe("local");
+    expect(firstChoice([{ key: "local", state: "offline" }, { key: "base-sepolia-fork", state: "ready" }])).toBe("base-sepolia-fork");
+    expect(firstChoice([{ key: "local", state: "offline" }, { key: "base-sepolia", state: "offline" }])).toBe("local");
+    expect(firstChoice([])).toBe("local");
   });
 });

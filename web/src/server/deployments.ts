@@ -1,6 +1,6 @@
 // Server-side access to the deployment records under deployments/ at the repository root: `<records>.json` (addresses,
 // written by the deploy scripts) and `<records>.runtime.json` (launches, written by the bring-up and launch scripts).
-// Used only by API routes.
+// Used by the API routes, and at build time by the landing page (server/live.ts).
 
 import { readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -11,8 +11,10 @@ const DEFAULT_LOCAL_RPC = process.env.COVENANT_LOCAL_RPC ?? NETWORKS.local.defau
 
 export const runtimeFile = (records: string) => join(DIR, `${records}.runtime.json`);
 const manifestFile = (records: string) => join(DIR, `${records}.json`);
+/** Any file under deployments/, such as a live proof's `<records>.proof.json`. */
+export const recordFile = (name: string) => join(DIR, name);
 
-async function readJson<T>(path: string): Promise<T | null> {
+export async function readJson<T>(path: string): Promise<T | null> {
   try {
     return JSON.parse(await readFile(path, "utf8")) as T;
   } catch {
@@ -40,12 +42,19 @@ export type ChainStatus = { state: "ready"; network: Network } | { state: "offli
  * A hosted copy lists base-sepolia alone, since nothing it runs on can reach a local chain or fork.
  */
 export function servedNetworks(): NetworkKey[] {
-  const listed = (process.env.COVENANT_NETWORKS ?? "")
+  const raw = (process.env.COVENANT_NETWORKS ?? "").trim();
+  const listed = raw
     .split(",")
     .map((s) => s.trim())
     .filter(isNetworkKey);
+  if (raw && !listed.length && !warnedNetworks) {
+    // A typo should not quietly change what a hosted copy offers without anyone noticing.
+    warnedNetworks = true;
+    console.warn(`COVENANT_NETWORKS="${raw}" names no network the app knows (${NETWORK_KEYS.join(", ")}); offering all of them.`);
+  }
   return listed.length ? NETWORK_KEYS.filter((k) => listed.includes(k)) : [...NETWORK_KEYS];
 }
+let warnedNetworks = false;
 
 /** How each network is brought up, for the offline message. */
 const HOW: Record<NetworkKey, string> = {

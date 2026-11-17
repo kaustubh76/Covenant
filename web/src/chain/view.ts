@@ -132,12 +132,14 @@ export async function positionLiquidity(ctx: ChainCtx, poolId: Hex, owner: Addre
   return BigInt(word) & ((1n << 128n) - 1n);
 }
 
-const symbols = new Map<Address, string>();
+/** Token symbols, by network and address. Not kept for the dev chain, where a reset hands the same address to a new token. */
+const symbols = new Map<string, string>();
 async function symbolOf(ctx: ChainCtx, token: Address): Promise<string> {
-  let s = symbols.get(token);
+  const id = `${ctx.net.key}:${token.toLowerCase()}`;
+  let s = ctx.net.caps.devChain ? undefined : symbols.get(id);
   if (!s) {
     s = await ctx.pub.readContract({ address: token, abi: testTokenAbi, functionName: "symbol" }).catch(() => "TOKEN");
-    symbols.set(token, s);
+    if (!ctx.net.caps.devChain) symbols.set(id, s);
   }
   return s;
 }

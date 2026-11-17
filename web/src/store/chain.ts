@@ -1,13 +1,15 @@
 "use client";
 
-import { type Address, custom } from "viem";
+import { type Address, BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, custom } from "viem";
 import { create } from "zustand";
 import { type Actor, actorOf } from "@/chain/accounts";
 import type { Beat, BeatInput } from "@/chain/beat";
 import { type ChainCtx, createChainCtx } from "@/chain/client";
 import { discoverLaunches } from "@/chain/discover";
 import { readHistory } from "@/chain/history";
-import { type LaunchRecord, type Network, type NetworkKey, isNetworkKey } from "@/chain/network";
+import { forgetScans } from "@/chain/logs";
+import { type LaunchRecord, type Network, type NetworkKey, firstChoice, isNetworkKey } from "@/chain/network";
+import { sanitizeLaunches } from "@/chain/remembered";
 import { type Party, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
 import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
@@ -125,6 +127,8 @@ const LOG_LIMIT = 200;
 
 let seq = 0;
 let refreshSeq = 0;
+/** Bumped by every connect: one that finds itself superseded after an await stops, so it never commits another network. */
+let connectSeq = 0;
 let quiet = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let unwatch: (() => void) | null = null;
@@ -145,12 +149,16 @@ function load(key: string): string | null {
 function rememberedLaunches(net: Network): LaunchRecord[] {
   if (net.caps.devChain) return [];
   try {
-    const all = JSON.parse(load(launchesKey(net.key)) ?? "[]") as unknown;
-    const addr = (x: unknown) => typeof x === "string" && /^0x[0-9a-fA-F]{40}$/.test(x);
-    return Array.isArray(all) ? all.filter((l) => l && addr(l.vault) && addr(l.token) && addr(l.auction) && Number.isFinite(l.createdAtBlock)) : [];
+    return sanitizeLaunches(JSON.parse(load(launchesKey(net.key)) ?? "[]"));
   } catch {
     return [];
   }
+}
+
+/** When discovery fails: the launches the records and this browser already know, so a hiccup forgets nothing. */
+function knownLaunches(net: Network): LaunchRecord[] {
+  const seen = new Set<string>();
+  return [...(net.runtime?.launches ?? []), ...rememberedLaunches(net)].filter((l) => !seen.has(l.vault.toLowerCase()) && !!seen.add(l.vault.toLowerCase()));
 }
 
 /** Remember the adopted launches not in the runtime records, the latest 20, writing only when that set changes. */
@@ -208,6 +216,7 @@ export const useChain = create<ChainState>((set, get) => ({
 
   async connect() {
     if (retry) clearTimeout(retry);
+    const mine = ++connectSeq;
     if (!unwallets) {
       unwallets = discoverWallets((wallets) => {
         set({ wallets });
@@ -218,15 +227,18 @@ export const useChain = create<ChainState>((set, get) => ({
     // A network opened from a ?net= link is the one this browser is now on, after a reload or on another page too.
     if (key && !get().netKey) save(NET_KEY, key);
     if (!key) {
-      // Nothing chosen yet: the first network that is up, the local chain first.
+      // Nothing chosen yet: the live deployment on Base Sepolia if it answers, else the first network that is up.
       await get().loadNetworks();
-      key = get().networks.find((n) => n.state === "ready")?.key ?? "local";
+      key = firstChoice(get().networks);
     }
+    if (mine !== connectSeq) return;
     set({ netKey: key });
+    // Superseded: a later connect (another network chosen, a retry) owns the store now.
+    const stale = () => mine !== connectSeq || get().netKey !== key;
     const res = await fetch(`/api/chain?net=${key}`, { cache: "no-store" })
       .then((r) => r.json() as Promise<{ state: "ready"; network: Network } | { state: "offline"; reason: string; unavailable?: boolean }>)
       .catch(() => ({ state: "offline" as const, reason: "The app server did not answer." }));
-    if (get().netKey !== key) return; // switched networks while this was in flight
+    if (stale()) return;
     if (res.state !== "ready" && "unavailable" in res && res.unavailable) {
       // This server does not offer that network (a hosted copy offers only Base Sepolia, say), so a stale link or saved
       // choice opens the first network it does offer instead of waiting for one that can never come up.
@@ -240,21 +252,27 @@ export const useChain = create<ChainState>((set, get) => ({
       return;
     }
     const net = res.network;
-    const ctx = ctxFor(net, get().wallet, get().wallets);
-    const launches = await discoverLaunches(ctx, rememberedLaunches(net)).catch(() => [] as LaunchRecord[]);
-    rememberLaunches(net, launches);
+    // Discovery only reads, so it gets a context of its own; the one the app keeps is built last, from the wallet as it
+    // is then (one connected while this was loading included).
+    const found = await discoverLaunches(ctxFor(net, null, get().wallets), rememberedLaunches(net)).catch(() => null);
+    if (stale()) return;
+    if (found) rememberLaunches(net, found);
+    const launches = found ?? knownLaunches(net);
     const saved = load(vaultKey(key));
     const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? (saved as Address) : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
+    const ctx = ctxFor(net, get().wallet, get().wallets);
     set({ net, ctx, launches, vault, status: "ready", reason: null });
     await get().refresh();
+    if (stale()) return;
     unwatch?.();
     unwatch = ctx.pub.watchBlockNumber({
       poll: true,
       pollingInterval: net.caps.pollMs,
       onBlockNumber: () => {
-        if (!quiet) void get().refresh();
+        if (!quiet && !stale()) void get().refresh();
       },
       onError: () => {
+        if (stale()) return;
         set({ status: "offline", reason: `Lost ${net.name}.` });
         unwatch?.();
         unwatch = null;
@@ -265,10 +283,15 @@ export const useChain = create<ChainState>((set, get) => ({
 
   async setNetwork(key) {
     if (key === get().netKey && get().status === "ready") return;
+    const left = get().netKey;
     save(NET_KEY, key);
     if (retry) clearTimeout(retry);
     unwatch?.();
     unwatch = null;
+    // A refresh still in flight for the network being left drops its result, and that network's cached scans go: coming
+    // back reads its recent window afresh (a restarted fork shares nothing with the one before).
+    refreshSeq++;
+    if (left && left !== key) forgetScans(left);
     set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], log: [], toast: null });
     // Keep ?net= in step, so a copied link opens the same network.
     try {
@@ -333,25 +356,33 @@ export const useChain = create<ChainState>((set, get) => ({
     const { ctx, vault } = get();
     if (!ctx || !vault) return;
     const mine = ++refreshSeq;
+    let view: VaultView;
     try {
-      const view = await readVaultView(ctx, vault);
+      view = await readVaultView(ctx, vault);
+    } catch (e) {
       if (mine !== refreshSeq) return;
-      set({ view, reason: null });
+      // A vault that is not there to read (no code after a reset, or reverting) is not worth staying on. A transient RPC
+      // error is: it is shown, and the next block tries again.
+      const gone = e instanceof BaseError && !!e.walk((x) => x instanceof ContractFunctionRevertedError || x instanceof ContractFunctionZeroDataError);
+      const fallback = get().net?.runtime?.defaultVault;
+      if (gone && fallback && vault.toLowerCase() !== fallback.toLowerCase()) {
+        set({ vault: fallback, view: null, history: [] });
+        void get().refresh();
+        return;
+      }
+      set({ reason: message(e) });
+      return;
+    }
+    if (mine !== refreshSeq) return;
+    set({ view, reason: null });
+    try {
       const [history, launches] = await Promise.all([readHistory(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
       if (mine === refreshSeq) {
         set({ history, launches });
         rememberLaunches(ctx.net, launches);
       }
     } catch (e) {
-      if (mine !== refreshSeq) return;
-      // A vault that cannot be read (not adopted yet, or gone after a reset) is not worth staying on.
-      const fallback = get().net?.runtime?.defaultVault;
-      if (fallback && vault.toLowerCase() !== fallback.toLowerCase()) {
-        set({ vault: fallback, view: null, history: [] });
-        void get().refresh();
-        return;
-      }
-      set({ reason: message(e) });
+      if (mine === refreshSeq) set({ reason: message(e) });
     }
   },
 

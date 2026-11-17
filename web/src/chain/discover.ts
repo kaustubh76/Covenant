@@ -4,7 +4,13 @@ import type { ChainCtx } from "./client";
 import { scanLogs } from "./logs";
 import type { LaunchRecord } from "./network";
 
-const symbols = new Map<Address, string>();
+/** Token symbols, by network and address (public chains only: a dev chain's reset reuses addresses). */
+const symbols = new Map<string, string>();
+/**
+ * Public chains only: launches whose LP recipient the factory says is no vault. Uniswap's LBPStrategy is shared, so
+ * others' launches show up in every scan; each is checked once, not on every refresh.
+ */
+const notVaults = new Set<string>();
 /** Public chains only: a launch, once adopted, stays adopted, so it is not read again on every block. */
 const adopted = new Map<string, LaunchRecord>();
 /** Every launch last listed, by network and vault. */
@@ -55,12 +61,17 @@ export async function discoverLaunches(ctx: ChainCtx, known: readonly LaunchReco
       listed.set(id, cached);
       continue;
     }
+    if (!ctx.net.caps.devChain && notVaults.has(id)) continue;
     const isVault = await ctx.pub.readContract({ address: m.factory, abi: covenantFactoryAbi, functionName: "isVault", args: [f.vault] });
-    if (!isVault) continue;
-    let symbol = symbols.get(f.token);
+    if (!isVault) {
+      if (!ctx.net.caps.devChain) notVaults.add(id);
+      continue;
+    }
+    const tokenId = `${ctx.net.key}:${f.token.toLowerCase()}`;
+    let symbol = ctx.net.caps.devChain ? undefined : symbols.get(tokenId);
     if (!symbol) {
       symbol = await ctx.pub.readContract({ address: f.token, abi: testTokenAbi, functionName: "symbol" }).catch(() => "TOKEN");
-      symbols.set(f.token, symbol);
+      if (!ctx.net.caps.devChain) symbols.set(tokenId, symbol);
     }
     const adoptedAt = await ctx.pub.readContract({ address: f.vault, abi: covenantVaultAbi, functionName: "adoptedAt" });
     const record: LaunchRecord = { ...f, symbol, adopted: adoptedAt > 0n };

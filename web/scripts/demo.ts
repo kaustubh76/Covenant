@@ -13,7 +13,9 @@ async function main() {
   const port = process.env.PORT ?? "3000";
   // Turbopack keeps its build cache in memory, so the dev build stays small on disk.
   const app = spawn("npx", ["next", "dev", "--turbopack", "--port", port], { stdio: "inherit", env: process.env });
-  console.log(`app: http://localhost:${port}`);
+  // The app opens Base Sepolia's live deployment by default; ?net=local puts this browser on the local chain, whose
+  // clock the guided demo and the attack lab move.
+  console.log(`app: http://localhost:${port}/?net=local`);
 
   let stopping = false;
   const stop = async (why: string, code = 0) => {

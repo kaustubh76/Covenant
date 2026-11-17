@@ -19,12 +19,20 @@ function keptSpans(ctx: ChainCtx, vault: Address): [bigint, bigint][] {
   const launch = launchRecord(ctx, vault);
   if (!launch) return [];
   const born = BigInt(launch.createdAtBlock);
-  return [[born, born + LAUNCH_SPAN], ...(launch.spans ?? []).map(([a, b]) => [BigInt(a), BigInt(b)] as [bigint, bigint])];
+  return [[born, born + LAUNCH_SPAN - 1n], ...(launch.spans ?? []).map(([a, b]) => [BigInt(a), BigInt(b)] as [bigint, bigint])];
 }
 const blockTimes = new Map<Hex, number>();
 const senders = new Map<Hex, Address>();
 const n = (x: bigint) => Number(formatEther(x));
-const amt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3));
+/** An amount as the feed shows it: three significant figures, a fee of millionths written out (never 2.45e-7), zero as 0. */
+export function feedAmount(v: number): string {
+  if (v === 0) return "0";
+  const a = Math.abs(v);
+  if (a >= 100) return v.toFixed(0);
+  if (a >= 1) return v.toFixed(2);
+  return v.toFixed(Math.min(20, 2 - Math.floor(Math.log10(a))));
+}
+const amt = feedAmount;
 const pct = (bps: bigint | number) => `${(Number(bps) / 100).toFixed(1)}%`;
 
 function describe(name: string, args: Record<string, unknown>, v: VaultView): { title: string; detail?: string; actor?: Who } | null {

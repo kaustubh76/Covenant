@@ -88,12 +88,13 @@ export function patient(inner: Transport, tries = 6, baseMs = 200, perSecond = 1
 /** A token bucket: `burst` turns at once, then `perSecond` a second; the rest wait their turn, in order. */
 export function pacer(perSecond: number, burst = perSecond): () => Promise<void> {
   let tokens = burst;
-  let last = Date.now();
+  // A monotonic clock: a wall clock stepped backwards would stall every call until it caught up.
+  let last = performance.now();
   const queue: (() => void)[] = [];
   let timer: ReturnType<typeof setTimeout> | null = null;
   const pump = () => {
     timer = null;
-    const now = Date.now();
+    const now = performance.now();
     tokens = Math.min(burst, tokens + ((now - last) / 1000) * perSecond);
     last = now;
     while (queue.length && tokens >= 1) {

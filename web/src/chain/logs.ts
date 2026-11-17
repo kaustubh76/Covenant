@@ -8,7 +8,7 @@ import type { ChainCtx } from "./client";
 
 /**
  * How far back a public chain's activity is read on first load: six minutes of Base Sepolia's 200 ms blocks, in nine
- * calls. Older activity worth keeping (a launch, the live proof) is read from the runtime record's kept spans instead.
+ * calls of 200. Older activity worth keeping (a launch, the live proof) is read from the runtime record's kept spans.
  */
 export const PUBLIC_WINDOW = 1800n;
 const PARALLEL = 4;
@@ -50,8 +50,13 @@ export async function scanLogs<T>(
   const latest = await ctx.pub.getBlockNumber({ cacheTime: 0 });
   if (ctx.net.caps.devChain) return scanRange(ctx, floor, latest, read);
   const id = `${ctx.net.key}:${key}`;
-  const cursor = cursors.get(id) as Cursor<T> | undefined;
-  const from = cursor ? cursor.to + 1n : latest - window > floor ? latest - window : floor;
+  let cursor = cursors.get(id) as Cursor<T> | undefined;
+  // Back after a long gap (a laptop asleep, an hour on another network): catching up would cost a call per 200 blocks
+  // of it, so start over from the recent window, as a fresh page would. Kept spans still hold what matters from before.
+  if (cursor && latest - cursor.to > window) cursor = undefined;
+  // The last `window` blocks, the latest included: exactly window / logRange calls.
+  const start = latest - window + 1n;
+  const from = cursor ? cursor.to + 1n : start > floor ? start : floor;
   const fresh = await scanRange(ctx, from, latest, read);
   const items = cursor ? [...cursor.items, ...fresh] : fresh;
   cursors.set(id, { to: latest, items });
@@ -78,7 +83,7 @@ export async function scanOnce<T>(
   const kept = spans.get(id) as T[] | undefined;
   if (kept) return kept;
   const latest = await ctx.pub.getBlockNumber({ cacheTime: 0 });
-  if (from >= latest - window) return [];
+  if (from > latest - window) return [];
   const end = to < latest ? to : latest;
   const items = await scanRange(ctx, from, end, read);
   if (end === to) spans.set(id, items);

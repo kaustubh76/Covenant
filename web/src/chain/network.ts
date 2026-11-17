@@ -114,6 +114,16 @@ export function isNetworkKey(v: unknown): v is NetworkKey {
   return typeof v === "string" && (NETWORK_KEYS as string[]).includes(v);
 }
 
+/**
+ * The network to open when the browser has not chosen one: the live Base Sepolia deployment if it answers, else the
+ * first network that is up, else the local chain (whose offline message says how to start it). `make demo` opens
+ * ?net=local, so the guided demo still lands on the chain whose clock can move.
+ */
+export function firstChoice(statuses: { key: NetworkKey; state: string }[]): NetworkKey {
+  const up = statuses.filter((s) => s.state === "ready");
+  return (up.find((s) => s.key === "base-sepolia") ?? up[0])?.key ?? "local";
+}
+
 export interface Network {
   key: NetworkKey;
   chainId: number;
