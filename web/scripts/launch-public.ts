@@ -1,4 +1,5 @@
-// npm run launch -- --net base-sepolia [--shift 13] [--symbol CVNT] [--blocks 128] [--fresh]
+// npm run launch -- --net base-sepolia [--shift 13] [--symbol CVNT] [--blocks 128] [--epoch 86400] [--progress name]
+//                   [--no-default] [--fresh]
 // npm run launch -- --net base-sepolia-fork [--rpc http://127.0.0.1:8548]
 //
 // A real-time testnet launch through Uniswap's deployed LBPStrategy and CCA (see scripts/lib/publiclaunch.ts).
@@ -54,6 +55,9 @@ async function main() {
     shift: num(arg("shift")),
     symbol: arg("symbol"),
     durationBlocks: num(arg("blocks")),
+    epochLength: num(arg("epoch")),
+    progress: arg("progress"),
+    makeDefault: !argv.includes("--no-default"),
     fresh: argv.includes("--fresh"),
     log: (s) => console.log(`launch: ${s}`),
   });

@@ -69,9 +69,25 @@ export interface SendOptions {
   force?: boolean;
   gas?: bigint;
   describe?: DescribeContext;
+  /**
+   * Called the moment the transaction is broadcast, before its receipt is waited for: a runner that records its steps
+   * saves the hash here, so a rerun after a crash finds the transaction instead of sending it twice.
+   */
+  onHash?: (hash: Hex) => void;
 }
 
 const FORCED_GAS = 10_000_000n;
+
+/**
+ * The gas a pre-flighted call is sent with: the node's estimate, plus headroom. An estimate is the least that ran in the
+ * block it was made against, but some of Covenant's costs move with the clock. The first swap of each oracle minute
+ * stores a new slot (TwapOracle.write), about 22k gas more than a write inside the minute, so a swap estimated in one
+ * minute and mined in the next would run out of gas, reverting with no reason given. Unused gas is not charged.
+ */
+async function gasFor(ctx: ChainCtx, party: Party, call: Call<Abi, string>): Promise<bigint> {
+  const estimate = await ctx.pub.estimateContractGas({ ...(call as object), account: partyAddress(ctx, party) } as never);
+  return estimate + estimate / 4n + 50_000n;
+}
 
 /** Pre-flight only: what the contract would return or why it would revert, from `party`, in the next block. */
 export async function simulate<const abi extends Abi, fn extends ContractFunctionName<abi, Mutability>>(
@@ -112,8 +128,9 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
     ...(call as object),
     account: wallet.account,
     chain: ctx.chain,
-    ...(pre.ok ? (opts.gas ? { gas: opts.gas } : {}) : { gas: opts.gas ?? FORCED_GAS }),
+    gas: opts.gas ?? (pre.ok ? await gasFor(ctx, party, call as never) : FORCED_GAS),
   } as never);
+  opts.onHash?.(hash);
   // Anvil mines at once; a public chain is polled at its own pace, which its RPC's rate limits also prefer.
   const receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
   if (receipt.status === "success") return { ok: true, value: pre.value, hash, receipt };

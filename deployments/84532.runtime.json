@@ -19,7 +19,29 @@
           59877916
         ]
       ]
+    },
+    {
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "token": "0x5e67ded47fcaf33c819f85043b7f7dd636e22bf9",
+      "symbol": "CVLP",
+      "auction": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "createdAtBlock": 59937829,
+      "adopted": true,
+      "spans": [
+        [
+          59956154,
+          59956266
+        ],
+        [
+          59956473,
+          59956473
+        ],
+        [
+          59964364,
+          59964364
+        ]
+      ]
     }
   ],
-  "seededAt": 1794891882760
+  "seededAt": 1794909521595
 }

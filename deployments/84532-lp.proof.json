@@ -1,0 +1,71 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+  "token": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+  "issuer": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+  "lp": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+  "startedAtBlock": 59940225,
+  "steps": {
+    "gas": {
+      "title": "The issuer sends the LP gas money",
+      "status": "success",
+      "hash": "0x504b000a1df44ace002fec3773d460ab94edc57f19d29cd892d1bc9e84cffa6f",
+      "block": 59940236,
+      "detail": "0.004 ETH to 0xf76b92051035021d8EF9562058f3e8085006D8f0"
+    },
+    "tokens": {
+      "title": "The issuer sends the LP CVLP",
+      "status": "success",
+      "hash": "0x3a4823b8ca0991d4765a6f3860a9532201b8d4fe382d82182590fb33a6423b0a",
+      "block": 59940250,
+      "detail": "15.51 CVLP to 0xf76b92051035021d8EF9562058f3e8085006D8f0"
+    },
+    "join": {
+      "title": "An outside LP joins in kind",
+      "status": "success",
+      "hash": "0xd88268b608f252dbe000545a36077a6c863786bcfd210aa7ed6aae74d5a9d599",
+      "block": 59956154,
+      "value": "100000000000000000",
+      "detail": "0.00153 ETH and 9.67 CVLP for 9.1% of the vault's shares"
+    },
+    "buy": {
+      "title": "The market buys",
+      "status": "success",
+      "hash": "0x20659845ed521a1a406ee0673a3f0258fa88c34592ce75dd33834a653d68ae0f",
+      "block": 59956177,
+      "detail": "0.001 ETH of CVLP, through PoolSwapTest"
+    },
+    "sell": {
+      "title": "The market sells",
+      "status": "success",
+      "hash": "0x4bb83c949f39365e70867eb22cc6579ae502c84b350b8d653bf60d88fe0e144f",
+      "block": 59956210,
+      "detail": "6.08 CVLP back, about what the buy took"
+    },
+    "collect": {
+      "title": "Anyone collects the fees",
+      "status": "success",
+      "hash": "0x522ffe59247a21d687c14399aef30662a9b7a6f489713b074ab55eb76f04f676",
+      "block": 59956227,
+      "detail": "0 ETH and 0.0149 CVLP to the treasury, 0.000002454545 ETH to the bounty pool; the shareholders' part is owed to them"
+    },
+    "claim": {
+      "title": "The LP claims its share of the fees",
+      "status": "success",
+      "hash": "0x240e4b22d71c185ae1a4e596348c67b04a0c52e1c7b4015db222e14dee801c50",
+      "block": 59956241,
+      "detail": "0.000000245455 ETH and 0.00149 CVLP"
+    },
+    "leave": {
+      "title": "The LP leaves in kind",
+      "status": "success",
+      "hash": "0x981ef478ac606d155a89d9721547abab944c65326b757b3bd0c1d0348fa43146",
+      "block": 59956266,
+      "value": "100000000000000000",
+      "detail": "every share burned for 0.00153 ETH and 9.66 CVLP"
+    }
+  },
+  "pending": {},
+  "finishedAtBlock": 59956267
+}

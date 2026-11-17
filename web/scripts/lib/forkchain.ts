@@ -17,6 +17,8 @@ export interface ForkOptions {
   blockTime?: number;
   /** Auction length in blocks (128 by default). */
   durationBlocks?: number;
+  /** The launch's epoch in seconds (the Standard terms' day by default; an hour is the contract's minimum). */
+  epochLength?: number;
   forkBlock?: number;
   /** Deployment records under deployments/: the dev fork's by default; the test suite keeps its own. */
   records?: string;
@@ -84,6 +86,7 @@ export async function startFork(o: ForkOptions = {}): Promise<Fork> {
       rpcUrl,
       signer: { account: deployer },
       durationBlocks: o.durationBlocks,
+      epochLength: o.epochLength,
       fresh: true,
       resetRuntime: true,
       log: (s) => log(`launch: ${s}`),

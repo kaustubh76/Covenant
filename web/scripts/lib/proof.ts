@@ -2,8 +2,9 @@
 // on record with its receipt. Behind `npm run proof` (scripts/proof-public.ts) and the fork suite.
 //
 // It runs through the app's own public-chain code (pre-flight, send, the market and restore helpers) and checks the whole
-// plan by simulation before it sends anything. Progress is kept in deployments/<name>.proof.json, so a run that stops
-// carries on where it left off. On a rehearsal fork the TWAP window is jumped over instead of waited out.
+// plan by simulation before it sends anything. Progress is kept in deployments/<name>.proof.json, each transaction's hash
+// saved the moment it is broadcast (runkit.ts), so a run that stops carries on where it left off without sending any step
+// twice. On a rehearsal fork the TWAP window is jumped over instead of waited out.
 //
 //   rug      the curator's soft rug: refused in pre-flight (SupportBroken), then sent anyway with a fixed gas limit, so
 //            the chain itself reverts it. The one transaction here meant to fail. The app never sends one.
@@ -15,40 +16,30 @@
 //   fees     anyone collects the swap fees the sell-off paid.
 //   refill   the issuer tops the bounty pool back up by what the keeper was paid.
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Abi, type Address, type Hex, type TransactionReceipt, decodeEventLog, formatEther, isAddressEqual, parseEther } from "viem";
+import { type Abi, type Address, formatEther, isAddressEqual, parseEther } from "viem";
 import type { PrivateKeyAccount } from "viem/accounts";
 import { covenantVaultAbi, testTokenAbi } from "../../src/chain/abi.generated";
-import { type ChainCtx, type ExternalSigner, createChainCtx } from "../../src/chain/client";
+import { type ExternalSigner, createChainCtx } from "../../src/chain/client";
 import { type SimCall, findCrash } from "../../src/chain/crashsim";
-import { type DecodedError, type DescribeContext, decodeRevert } from "../../src/chain/errors";
 import { NEVER } from "../../src/chain/launch";
 import { pushTo } from "../../src/chain/market";
 import { mergeSpans } from "../../src/chain/logs";
-import { NETWORKS, type Runtime, explorerTx, networkOf, parseManifest } from "../../src/chain/network";
+import { NETWORKS, type Runtime, networkOf, parseManifest } from "../../src/chain/network";
 import { type Plan, deepenReserve, softRug } from "../../src/chain/plans";
 import { preflight } from "../../src/chain/preflight";
 import { planRestore, restoreCall } from "../../src/chain/scenarios/restore";
 import { must, send } from "../../src/chain/tx";
 import { readVaultView } from "../../src/chain/view";
 import { ROOT, manifestPath, rpc, runtimePath } from "./localchain";
+import { gasOf, loadRecord, mined, replayTx, runKit, type RunRecord, type RunStep, vaultEvent } from "./runkit";
 
 export type ProofStepKey = "rug" | "deepen" | "crash" | "keeper" | "restore" | "fees" | "refill";
 
-export interface ProofStep {
-  title: string;
-  status: "success" | "reverted";
-  hash: Hex;
-  block: number;
-  detail: string;
-  /** The revert, decoded, for the transaction meant to fail. */
-  error?: string;
-  /** An amount the step moved, in wei: the bounty paid, the pool topped up. */
-  value?: string;
-}
+export type ProofStep = RunStep;
 
-export interface ProofRecord {
+export interface ProofRecord extends RunRecord<ProofStepKey> {
   network: string;
   chainId: number;
   vault: Address;
@@ -59,7 +50,6 @@ export interface ProofRecord {
   finishedAtBlock?: number;
   /** What the simulation said would happen, before anything was sent. */
   plan?: { depth: number; sold: string; supportAfterHold: number; restoreIndices: number[]; supportAfterRestore?: number };
-  steps: Partial<Record<ProofStepKey, ProofStep>>;
 }
 
 export interface ProofOptions {
@@ -89,6 +79,9 @@ export const proofPath = (name: string) => join(ROOT, "deployments", `${name}.pr
 const pct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
 const amt = (wei: bigint) => {
   const v = Number(formatEther(wei));
+  if (v === 0) return "0";
+  // Fees on a testnet vault run to millionths of an ETH: written out in full, never as 2.45e-7.
+  if (Math.abs(v) < 1e-4) return v.toFixed(12).replace(/0+$/, "");
   return v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toPrecision(3);
 };
 
@@ -112,21 +105,13 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
   if (!isAddressEqual(v.people.curator, me)) throw new Error(`${me} is not the curator of ${vault} (${v.people.curator}): the proof's reshapes are the curator's`);
 
   const path = proofPath(o.progress ?? o.records);
-  const prev: ProofRecord | null = !o.fresh && existsSync(path) ? JSON.parse(readFileSync(path, "utf8")) : null;
+  const prev = loadRecord<ProofRecord>(path, o.fresh);
   if (prev && (!isAddressEqual(prev.vault, vault) || !isAddressEqual(prev.signer, me))) {
     throw new Error(`${path} is a proof against ${prev.vault} by ${prev.signer}, not this one. Pass --fresh to start another.`);
   }
   const p: ProofRecord = prev ?? { network: info.name, chainId, vault, token: v.token, signer: me, keeper, startedAtBlock: Number(await ctx.pub.getBlockNumber()), steps: {} };
-  const save = () => {
-    if (!o.check) writeFileSync(path, JSON.stringify(p, null, 2) + "\n");
-  };
-  const link = (h: Hex) => explorerTx(net, h) ?? h;
-  const record = (key: ProofStepKey, step: ProofStep) => {
-    p.steps[key] = step;
-    save();
-    log(`${step.title}: ${step.status === "reverted" ? "reverted on chain" : "settled"} in block ${step.block}  ${link(step.hash)}`);
-    log(`  ${step.detail}`);
-  };
+  const { save, link, record, sending, landed } = runKit<ProofStepKey>({ path, record: p, ctx, check: o.check, log });
+  const onResume = "settled before the runner stopped, and recorded when it resumed";
   const reshape = (plan: Plan) => ({ address: vault, abi: covenantVaultAbi, functionName: "reshape" as const, args: [plan.cuts, plan.legs, NEVER] as const });
   const describe = () => ({ now: v.time + 1, quoteSymbol: v.quoteSymbol, tokenSymbol: v.tokenSymbol });
   const sym = v.tokenSymbol;
@@ -157,17 +142,22 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
 
   // 1. The soft rug, refused before it is sent and then sent anyway, so the chain's own refusal is on record.
   if (!p.steps.rug) {
-    v = await readVaultView(ctx, vault);
-    const call = reshape(softRug(v));
-    const pre = await preflight(ctx, "curator", call, v);
-    if (pre.ok) throw new Error("the soft rug passed pre-flight: the covenant would not hold. Nothing was sent.");
-    // A gas limit from the simulation, so the wallet does not estimate (an estimate of a revert fails) and the call runs
-    // to the same revert rather than out of gas.
-    const gas = await gasOf(ctx, me, call);
-    const hash = await ctx.wallet("curator").writeContract({ ...call, gas } as never);
-    const receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 180_000 });
-    if (receipt.status !== "reverted") throw new Error(`the soft rug was meant to revert, but it settled: ${link(hash)}`);
-    const onChain = await replayRevert(ctx, me, call, receipt.blockNumber, describe());
+    let receipt = await landed("rug", "reverted");
+    if (!receipt) {
+      v = await readVaultView(ctx, vault);
+      const call = reshape(softRug(v));
+      const pre = await preflight(ctx, "curator", call, v);
+      if (pre.ok) throw new Error("the soft rug passed pre-flight: the covenant would not hold. Nothing was sent.");
+      // A gas limit from the simulation, so the wallet does not estimate (an estimate of a revert fails) and the call
+      // runs to the same revert rather than out of gas.
+      const gas = await gasOf(ctx, me, call);
+      const hash = await ctx.wallet("curator").writeContract({ ...call, gas } as never);
+      sending("rug").onHash(hash);
+      receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 180_000 });
+      if (receipt.status !== "reverted") throw new Error(`the soft rug was meant to revert, but it settled: ${link(hash)}`);
+    }
+    const hash = receipt.transactionHash;
+    const onChain = await replayTx(ctx, hash, describe());
     record("rug", {
       title: "The curator's soft rug",
       status: "reverted",
@@ -180,36 +170,57 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
 
   // 2. An honest reshape that sets up what restore exists for.
   if (!p.steps.deepen) {
-    v = await readVaultView(ctx, vault);
-    const sent = must(await send(ctx, "curator", reshape(deepenReserve(v))), "the reshape");
-    const after = await readVaultView(ctx, vault);
-    record("deepen", {
-      title: "An honest reshape: half the reserve four bands deep",
-      status: "success",
-      ...mined(sent.hash, sent.receipt),
-      detail: `support ${pct(v.support.have)} → ${pct(after.support.have)} (needs ${pct(after.support.need)}), within Pace`,
-    });
+    const title = "An honest reshape: half the reserve four bands deep";
+    const prior = await landed("deepen");
+    if (prior) record("deepen", { title, status: "success", ...mined(prior.transactionHash, prior), detail: onResume });
+    else {
+      v = await readVaultView(ctx, vault);
+      const sent = must(await send(ctx, "curator", reshape(deepenReserve(v)), sending("deepen")), "the reshape");
+      const after = await readVaultView(ctx, vault);
+      record("deepen", {
+        title,
+        status: "success",
+        ...mined(sent.hash, sent.receipt),
+        detail: `support ${pct(v.support.have)} → ${pct(after.support.have)} (needs ${pct(after.support.need)}), within Pace`,
+      });
+    }
   }
 
   // 3. The sell-off: the smallest that strands support once it holds, simulated again on the layout as it now is.
   if (!p.steps.crash) {
-    v = await readVaultView(ctx, vault);
-    const sim = await findCrash(ctx, v, me, keeper);
-    if (!sim?.restore?.ok) throw new Error("the deepened layout has no sell-off that strands support. Nothing more was sent.");
-    const budget = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "balanceOf", args: [me] });
-    const sold = must(await pushTo(ctx, v, "market", v.spotTick - sim.depth, budget), "the sell-off");
-    const after = await readVaultView(ctx, vault);
-    record("crash", {
-      title: "The market sells the price down",
-      status: "success",
-      ...mined(sold.hash, sold.receipt),
-      detail: `${amt(sim.sold)} ${sym} sold; spot ${v.spotTick - after.spotTick} ticks down (${dropOf(v.spotTick, after.spotTick)})`,
-    });
+    const title = "The market sells the price down";
+    const prior = await landed("crash");
+    if (prior) record("crash", { title, status: "success", ...mined(prior.transactionHash, prior), detail: onResume });
+    else {
+      v = await readVaultView(ctx, vault);
+      const sim = await findCrash(ctx, v, me, keeper);
+      if (!sim?.restore?.ok) throw new Error("the deepened layout has no sell-off that strands support. Nothing more was sent.");
+      const budget = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "balanceOf", args: [me] });
+      const sold = must(await pushTo(ctx, v, "market", v.spotTick - sim.depth, budget, sending("crash")), "the sell-off");
+      const after = await readVaultView(ctx, vault);
+      const drop = v.spotTick - after.spotTick;
+      record("crash", {
+        title,
+        status: "success",
+        ...mined(sold.hash, sold.receipt),
+        detail: `${amt(sim.sold)} ${sym} sold; spot ${drop} ticks down (${dropOf(v.spotTick, after.spotTick)})`,
+      });
+      // The simulation chose this depth as the smallest that strands support; a sale that moved spot much less will not.
+      if (drop < 0.9 * sim.depth) throw new Error(`the sell-off moved spot ${drop} ticks, short of the ${sim.depth} simulated; support may not lapse. Inspect before resuming.`);
+    }
   }
 
   // 4. The price holds with nobody trading. Support counts against the time-weighted price, so it lapses only as the TWAP
   // follows the sell-off, and the guard lets restore through once spot and the TWAP are within its ticks again: before
   // the full window has passed, so restore goes as soon as its pre-flight does.
+  const restoreTitle = "A stranger restores support, for the bounty";
+  if (!p.steps.restore) {
+    const prior = await landed("restore");
+    if (prior) {
+      const ev = vaultEvent(prior, vault, "Restored") as { bounty: bigint } | null;
+      record("restore", { title: restoreTitle, status: "success", ...mined(prior.transactionHash, prior), value: ev?.bounty.toString(), detail: onResume });
+    }
+  }
   if (!p.steps.restore) {
     let jumped = false;
     for (;;) {
@@ -235,10 +246,16 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
   }
 
   // 5. Gas money for the keeper, whose key the signer's derives (so its ETH is never stranded).
-  if (!p.steps.restore && !p.steps.keeper && (await ctx.pub.getBalance({ address: keeper })) < parseEther("0.0005")) {
-    const hash = await ctx.wallet("issuer").sendTransaction({ to: keeper, value: parseEther("0.001") } as never);
-    const receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 180_000 });
-    record("keeper", { title: "A second address gets gas money", status: "success", hash, block: Number(receipt.blockNumber), detail: `0.001 ETH to ${keeper}` });
+  if (!p.steps.restore && !p.steps.keeper) {
+    const title = "A second address gets gas money";
+    const prior = await landed("keeper");
+    if (prior) record("keeper", { title, status: "success", ...mined(prior.transactionHash, prior), detail: `0.001 ETH to ${keeper}` });
+    else if ((await ctx.pub.getBalance({ address: keeper })) < parseEther("0.0005")) {
+      const hash = await ctx.wallet("issuer").sendTransaction({ to: keeper, value: parseEther("0.001") } as never);
+      sending("keeper").onHash(hash);
+      const receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: 1_000, timeout: 180_000 });
+      record("keeper", { title, status: "success", hash, block: Number(receipt.blockNumber), detail: `0.001 ETH to ${keeper}` });
+    }
   }
 
   // 6. The restore, by an address that is neither issuer nor curator, paid from the bounty pool.
@@ -246,10 +263,10 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
     v = await readVaultView(ctx, vault);
     const plan = await planRestore(ctx, v, keeper);
     if (!plan?.pre.ok) throw new Error(`restore would not settle: ${plan?.pre.error?.signature ?? "nothing to restore"}`);
-    const sent = must(await send(keeperCtx, "keeper", restoreCall(v, [...plan.indices].sort((a, b) => a - b))), "the restore");
-    const ev = eventOf(sent.receipt, vault, "Restored") as { supportBefore: bigint; supportAfter: bigint; bounty: bigint } | null;
+    const sent = must(await send(keeperCtx, "keeper", restoreCall(v, [...plan.indices].sort((a, b) => a - b)), sending("restore")), "the restore");
+    const ev = vaultEvent(sent.receipt, vault, "Restored") as { supportBefore: bigint; supportAfter: bigint; bounty: bigint } | null;
     record("restore", {
-      title: "A stranger restores support, for the bounty",
+      title: restoreTitle,
       status: "success",
       ...mined(sent.hash, sent.receipt),
       value: ev ? ev.bounty.toString() : undefined,
@@ -261,9 +278,12 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
 
   // 7. Fees the sell-off paid, collected by anyone: to the treasury, and part to the bounty pool.
   if (!p.steps.fees) {
-    const sent = await send(ctx, "holder", { address: vault, abi: covenantVaultAbi, functionName: "collectFees", args: [] });
+    const prior = await landed("fees");
+    const sent = prior
+      ? { ok: true, hash: prior.transactionHash, receipt: prior, error: undefined, refused: undefined }
+      : await send(ctx, "holder", { address: vault, abi: covenantVaultAbi, functionName: "collectFees", args: [] }, sending("fees"));
     if (sent.ok) {
-      const ev = eventOf(sent.receipt, vault, "FeesCollected") as { toTreasury0: bigint; toTreasury1: bigint; toBountyPool: bigint } | null;
+      const ev = vaultEvent(sent.receipt, vault, "FeesCollected") as { toTreasury0: bigint; toTreasury1: bigint; toBountyPool: bigint } | null;
       const [q, t] = v.quoteIs0 ? [ev?.toTreasury0, ev?.toTreasury1] : [ev?.toTreasury1, ev?.toTreasury0];
       record("fees", {
         title: "Anyone collects the swap fees",
@@ -278,7 +298,10 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
   // is capped at a share of the quote a restore moves, so it can be small.)
   const paid = BigInt(p.steps.restore?.value ?? "0");
   if (!p.steps.refill && paid > 0n) {
-    const sent = must(await send(ctx, "issuer", { address: vault, abi: covenantVaultAbi, functionName: "fundBounty", args: [paid], value: paid }), "fundBounty");
+    const prior = await landed("refill");
+    const sent = prior
+      ? { hash: prior.transactionHash, receipt: prior }
+      : must(await send(ctx, "issuer", { address: vault, abi: covenantVaultAbi, functionName: "fundBounty", args: [paid], value: paid }, sending("refill")), "fundBounty");
     record("refill", {
       title: "The issuer tops the bounty pool back up",
       status: "success",
@@ -307,40 +330,7 @@ export async function runProof(o: ProofOptions): Promise<ProofRecord> {
   return p;
 }
 
-const mined = (hash: Hex | undefined, receipt: TransactionReceipt | undefined) => ({ hash: hash as Hex, block: Number(receipt?.blockNumber ?? 0n) });
 
-/** A call's gas as the chain would use it (reverting or not), with room to spare, for sending it unestimated. */
-async function gasOf(ctx: ChainCtx, from: Address, call: { address: Address; abi: Abi | readonly unknown[]; functionName: string; args: readonly unknown[] }): Promise<bigint> {
-  const latest = await ctx.pub.getBlock({ blockTag: "latest" });
-  const [block] = (await ctx.pub.simulateBlocks({
-    blockNumber: latest.number,
-    blocks: [{ blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n }, calls: [{ account: from, to: call.address, abi: call.abi, functionName: call.functionName, args: call.args }] }],
-  } as never)) as unknown as { calls: { gasUsed: bigint }[] }[];
-  return (block.calls[0].gasUsed * 3n) / 2n + 100_000n;
-}
-
-/** Why a mined transaction reverted: the same call replayed on the state its block started from. */
-async function replayRevert(ctx: ChainCtx, from: Address, call: { address: Address; abi: Abi | readonly unknown[]; functionName: string; args: readonly unknown[] }, block: bigint, describe: DescribeContext): Promise<DecodedError> {
-  try {
-    await ctx.pub.simulateContract({ ...call, account: from, blockNumber: block - 1n } as never);
-  } catch (e) {
-    return decodeRevert(e, describe);
-  }
-  throw new Error("the replay of the reverted transaction did not revert");
-}
-
-function eventOf(receipt: TransactionReceipt | undefined, vault: Address, name: string): Record<string, unknown> | null {
-  for (const log of receipt?.logs ?? []) {
-    if (!isAddressEqual(log.address, vault)) continue;
-    try {
-      const d = decodeEventLog({ abi: covenantVaultAbi, data: log.data, topics: log.topics });
-      if (d.eventName === name) return d.args as Record<string, unknown>;
-    } catch {
-      /* another event */
-    }
-  }
-  return null;
-}
 
 /** A fall in price ticks as a percentage: ticks are 0.01% steps in price. */
 const dropOf = (before: number, after: number) => `${((1 - 1.0001 ** (after - before)) * 100).toFixed(1)}% lower`;

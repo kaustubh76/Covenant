@@ -53,6 +53,15 @@ export interface PublicLaunchOptions {
   durationBlocks?: number;
   /** The keepers' bounty pool the issuer funds after the seed. */
   bounty?: bigint;
+  /**
+   * The epoch, in seconds: the setup epoch (no deposits until it ends) and Pace's period. The Standard terms' day unless
+   * given; the contract's minimum is an hour.
+   */
+  epochLength?: number;
+  /** The progress file's name under deployments/ (<progress>.launch.json): the records' unless given. */
+  progress?: string;
+  /** Make this launch the runtime's default vault: yes unless false, so a second launch can stand beside the first. */
+  makeDefault?: boolean;
   /** Forget a previous run's progress and start a new launch. */
   fresh?: boolean;
   /** Drop the network's earlier launches from the runtime records (a new fork starts from nothing). */
@@ -63,7 +72,7 @@ export interface PublicLaunchOptions {
 interface Progress {
   net: PublicNetworkKey;
   signer: Address;
-  spec: { symbol: string; shift: number; durationBlocks: number };
+  spec: { symbol: string; shift: number; durationBlocks: number; epochLength?: number };
   /** The block this launch began from: its events are all at or after it. */
   fromBlock: number;
   token?: Address;
@@ -114,7 +123,7 @@ export async function runPublicLaunch(o: PublicLaunchOptions): Promise<PublicLau
     );
   }
 
-  const ppath = progressPath(records);
+  const ppath = progressPath(o.progress ?? records);
   const previous: Progress | null = !o.fresh && existsSync(ppath) ? JSON.parse(readFileSync(ppath, "utf8")) : null;
   if (previous && previous.signer.toLowerCase() !== me.toLowerCase()) {
     throw new Error(`${ppath} is a launch by ${previous.signer}, not ${me}. Pass --fresh to start a new one.`);
@@ -122,14 +131,15 @@ export async function runPublicLaunch(o: PublicLaunchOptions): Promise<PublicLau
   const p: Progress = previous ?? {
     net: o.net,
     signer: me,
-    spec: { symbol: o.symbol ?? "CVNT", shift: o.shift ?? TESTNET_PRICE_SHIFT, durationBlocks: o.durationBlocks ?? 128 },
+    spec: { symbol: o.symbol ?? "CVNT", shift: o.shift ?? TESTNET_PRICE_SHIFT, durationBlocks: o.durationBlocks ?? 128, epochLength: o.epochLength },
     fromBlock: Number(await ctx.pub.getBlockNumber()),
   };
   const save = () => writeFileSync(ppath, JSON.stringify(p, null, 2) + "\n");
   if (previous) log(`resuming the launch in ${ppath}`);
   save();
 
-  const spec = testnetLaunchSpec(PRESETS.standard, { name: `${p.spec.symbol} Launch`, symbol: p.spec.symbol, durationBlocks: p.spec.durationBlocks }, p.spec.shift);
+  const terms = { ...PRESETS.standard, epochLength: p.spec.epochLength ?? PRESETS.standard.epochLength };
+  const spec = testnetLaunchSpec(terms, { name: `${p.spec.symbol} Launch`, symbol: p.spec.symbol, durationBlocks: p.spec.durationBlocks }, p.spec.shift);
   const bids = testnetBids(p.spec.shift);
   const bounty = o.bounty ?? parseEther("0.005");
   const link = (h?: Hex) => (h ? (explorerTx(net, h) ?? h) : "");
@@ -266,7 +276,7 @@ export async function runPublicLaunch(o: PublicLaunchOptions): Promise<PublicLau
   const prior: Runtime | null = existsSync(rpath) ? JSON.parse(readFileSync(rpath, "utf8")) : null;
   const runtime: Runtime = {
     rpcUrl: info.defaultRpc,
-    defaultVault: p.vault,
+    defaultVault: o.makeDefault === false && prior?.defaultVault ? prior.defaultVault : p.vault,
     launches: [...(prior?.launches ?? []).filter((l) => l.vault.toLowerCase() !== p.vault?.toLowerCase()), record],
     seededAt: Date.now(),
   };

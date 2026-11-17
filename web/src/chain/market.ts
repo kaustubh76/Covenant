@@ -7,7 +7,7 @@ import { poolSwapTestAbi, testTokenAbi } from "./abi.generated";
 import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import { sqrtAtTick, sqrtX96ToFloat, tickAtSqrt, toPool, toPrice } from "./price";
-import { type Outcome, must, send } from "./tx";
+import { type Outcome, type SendOptions, must, send } from "./tx";
 import { readSqrtPrice } from "./view";
 import type { VaultView } from "./view";
 
@@ -66,7 +66,7 @@ export function swapCall(ctx: ChainCtx, pool: Pool, buy: boolean, amountIn: bigi
 }
 
 /** Exact-input swap. `buy`: pay quote, receive tokens (the token's price rises). */
-export async function swap(ctx: ChainCtx, pool: Pool, who: Actor, buy: boolean, amountIn: bigint, limitPriceTick?: number): Promise<Outcome> {
+export async function swap(ctx: ChainCtx, pool: Pool, who: Actor, buy: boolean, amountIn: bigint, limitPriceTick?: number, opts?: SendOptions): Promise<Outcome> {
   if (!buy) await fundTokens(ctx, who, pool.token, amountIn);
   const nativeIn = buy && pool.quoteIs0; // native ETH is always currency0
   // A public chain's wallet holds real (testnet) ETH: a budget beyond its balance is cut to what it can spend, keeping
@@ -77,7 +77,7 @@ export async function swap(ctx: ChainCtx, pool: Pool, who: Actor, buy: boolean, 
     if (spendable === 0n) throw new Error("The wallet has no ETH to buy with.");
     if (amountIn > spendable) amountIn = spendable;
   }
-  return send(ctx, who, swapCall(ctx, pool, buy, amountIn, limitPriceTick));
+  return send(ctx, who, swapCall(ctx, pool, buy, amountIn, limitPriceTick), opts);
 }
 
 /** The pool's exact price tick now. */
@@ -86,7 +86,7 @@ export async function spotOf(ctx: ChainCtx, pool: Pool): Promise<number> {
 }
 
 /** Push the price to `targetPriceTick` with an oversized exact-input swap capped by the price limit. */
-export async function pushTo(ctx: ChainCtx, pool: Pool, who: Actor, targetPriceTick: number, budget: bigint): Promise<Outcome> {
+export async function pushTo(ctx: ChainCtx, pool: Pool, who: Actor, targetPriceTick: number, budget: bigint, opts?: SendOptions): Promise<Outcome> {
   const spot = await spotOf(ctx, pool);
-  return swap(ctx, pool, who, targetPriceTick > spot, budget, targetPriceTick);
+  return swap(ctx, pool, who, targetPriceTick > spot, budget, targetPriceTick, opts);
 }

@@ -108,3 +108,26 @@ export function deepenReserve(v: V & Pick<VaultView, "twap">): Plan {
   const bandFloor = ceilTo(v.twap - B, s) + s;
   return { cuts: reserve.map((i) => cut(i)), legs: [bidLeg(v, bandFloor, top, 5000), bidLeg(v, v.twap - 5 * B, bandFloor, SINK)] };
 }
+
+/**
+ * The highest aligned price an honest bid may reach in any market: under the price, and at or below the Anchor ceiling
+ * (the Anchor plus the guard). Normally the ceiling sits above spot and this is bidTop; after a pump it binds.
+ */
+export const bidCeiling = (v: V & Pick<VaultView, "ceiling">) => Math.min(bidTop(v), floorTo(v.ceiling, v.tickSpacing));
+
+/**
+ * Curate's "Re-centre on TWAP": the main support range lifted and put back as one bid range, from a band under the TWAP up
+ * to it, capped at the bid ceiling so it stays valid after a pump.
+ */
+export function recentre(v: V & Pick<VaultView, "twap" | "ceiling">): Plan {
+  const s = v.tickSpacing;
+  const top = Math.min(bidCeiling(v), floorTo(v.twap, s));
+  const bottom = Math.min(top - s, ceilTo(v.twap - v.terms.supportBandTicks, s) + s);
+  return { cuts: [cut(supportIndex(v))], legs: [bidLeg(v, bottom, top, SINK)] };
+}
+
+/** Curate's "Bid above the Anchor": bids from just over the ceiling up to a pumped price. Refused with BidAboveCeiling. */
+export function chasePump(v: V & Pick<VaultView, "ceiling">): Plan {
+  const s = v.tickSpacing;
+  return { cuts: [cut(supportIndex(v))], legs: [bidLeg(v, floorTo(v.ceiling, s) + s, bidTop(v), SINK)] };
+}

@@ -1,0 +1,42 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+  "token": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+  "curator": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+  "startedAtBlock": 59956456,
+  "steps": {
+    "pump": {
+      "title": "The market pumps the price",
+      "status": "success",
+      "hash": "0xb6e7ea6ddb93b3309703ef43eaed6db1b28f6ea259c4c979c51c4d5f3af615b6",
+      "block": 59956473,
+      "detail": "price 0.0001584 \u2192 0.0001802 ETH (+13.7%), above the Anchor ceiling at 0.0001632"
+    },
+    "chase": {
+      "title": "The curator chases the pump",
+      "status": "reverted",
+      "hash": "0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8",
+      "block": 59964211,
+      "error": "BidAboveCeiling(-86280, -86542)",
+      "detail": "BidAboveCeiling(-86280, -86542): a bid up to 0.0001791 ETH, over the Anchor ceiling at 0.0001745"
+    },
+    "recentre": {
+      "title": "The curator re-centres, capped at the Anchor",
+      "status": "success",
+      "hash": "0x2cdb1cb4e3053ba15f85c1aef48d29d9d366bf9a532453d4fd2c083f1d9e4c39",
+      "block": 59964364,
+      "detail": "moved 23.9% of the vault's value into bids from 0.0001532 to 0.0001738 ETH, capped at the Anchor ceiling; support 66.0%; Pace left this epoch: 26.1% of the vault's value"
+    },
+    "overpace": {
+      "title": "The curator tries to move everything at once",
+      "status": "reverted",
+      "hash": "0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5",
+      "block": 59964486,
+      "error": "PaceExceeded(1000000000, 264622709)",
+      "detail": "PaceExceeded(1000000000, 264622709): asked to move 100.0% of the vault's value, 26.5% is left this epoch"
+    }
+  },
+  "pending": {},
+  "finishedAtBlock": 59964498
+}

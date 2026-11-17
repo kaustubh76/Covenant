@@ -60,7 +60,8 @@ async function twoBlocks(ctx: ChainCtx, base: { number: bigint; timestamp: bigin
 /**
  * `seller` sells the price down `depth` ticks (spending at most its whole token balance) and the price then holds for
  * the TWAP window plus `margin` seconds. If that leaves support lapsed, a restore by `keeper` is tried: every candidate
- * range together, then each alone, as planRestore does. Null when the seller holds no tokens or the sale itself fails.
+ * range together, then each alone, as planRestore does. Null when the sale itself fails; an error when the seller holds
+ * no tokens, since then nothing at all can be learned about this layout.
  *
  * `prelude` runs first in the sale's block: a reshape that is not sent yet, say, so a whole plan can be checked before
  * any of it goes on chain. The sale's price limit is taken from `v`, which a reshape does not move.
@@ -77,7 +78,7 @@ export async function simulateCrash(
   const base = await ctx.pub.getBlock({ blockTag: "latest" });
   const hold = BigInt(v.terms.twapWindow + margin);
   const budget = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "balanceOf", args: [seller] });
-  if (budget === 0n) return null;
+  if (budget === 0n) throw new Error(`${seller} holds no ${v.tokenSymbol} to simulate a sell-off with.`);
   const swap = swapCall(ctx, v, false, budget, v.spotTick - depth);
   const sale: SimCall[] = [
     ...prelude,
