@@ -106,7 +106,8 @@ function NetworkSwitcher() {
   return (
     <label className="relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted" title={current?.reason}>
       <Dot tone={current?.state === "ready" ? "pass" : current ? "breach" : "neutral"} />
-      <span className="max-w-[130px] truncate font-medium">{current?.name ?? "Network"}</span>
+      {/* On a phone the dot says it: there is room for the wordmark and the wallet, not for the name too. */}
+      <span className="hidden max-w-[130px] truncate font-medium sm:inline">{current?.name ?? "Network"}</span>
       <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-faint" />
       <select
         aria-label="Network"
@@ -146,7 +147,8 @@ function WalletControl() {
   if (net && wallet.chainId !== net.chainId) {
     return (
       <Button size="sm" variant="danger" onClick={() => void switchWalletChain()} title={`${wallet.name} is on chain ${wallet.chainId}`}>
-        Switch to {net.name}
+        <span className="sm:hidden">Switch network</span>
+        <span className="hidden sm:inline">Switch to {net.name}</span>
       </Button>
     );
   }
@@ -200,7 +202,7 @@ function TopBar() {
   const clear = path === "/" && !scrolled;
   return (
     <header className={clsx("sticky top-0 z-40 border-b transition-colors duration-300", clear ? "border-transparent bg-transparent" : "border-line bg-bg/85 backdrop-blur-md")}>
-      <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-6 px-4 md:px-8">
+      <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-3 px-4 sm:gap-6 md:px-8">
         <Link href="/" className="flex items-center gap-2.5 text-ink">
           <Seal className="h-[22px] w-[22px] text-accent" />
           <span className="display text-[22px] leading-none">Covenant</span>
@@ -221,8 +223,11 @@ function TopBar() {
           <ChainStatus />
           <NetworkSwitcher />
           <WalletControl />
-          <RoleSwitcher />
-          <ThemeToggle />
+          {/* Not on a phone: Curate, Provide and Govern each have their own "Act as" button, and the theme follows the system. */}
+          <div className="hidden items-center gap-2 sm:flex">
+            <RoleSwitcher />
+            <ThemeToggle />
+          </div>
         </div>
       </div>
       <nav className="scroll-x flex items-center gap-1 border-t border-line px-3 py-1.5 lg:hidden" aria-label="Main">
@@ -305,21 +310,35 @@ function LiveDock() {
           </Button>
         </div>
         <div className={clsx("h-5 w-px shrink-0 bg-line", !dev && "hidden")} />
-        <div className="flex shrink-0 items-center gap-1.5">
-          <span className="eyebrow mr-1">Market</span>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(5)}>
-            Sell 5
-          </Button>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(40)}>
-            Dump 40
-          </Button>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(10)}>
-            Buy +10%
-          </Button>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(25)}>
-            Buy +25%
-          </Button>
-        </div>
+        {dev ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <span className="eyebrow mr-1">Market</span>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(5)}>
+              Sell 5
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(40)}>
+              Dump 40
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(10)}>
+              Buy +10%
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(25)}>
+              Buy +25%
+            </Button>
+          </div>
+        ) : (
+          // A public chain's vault is shared: a trade that moved spot past the guard would hold every curator's and
+          // depositor's action until the TWAP caught up. These stay well inside it.
+          <div className="flex shrink-0 items-center gap-1.5" title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}>
+            <span className="eyebrow mr-1">Market</span>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(1)}>
+              Sell 1
+            </Button>
+            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(1)}>
+              Buy +1%
+            </Button>
+          </div>
+        )}
         <div className={clsx("ml-auto shrink-0", !dev && "hidden")}>
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void reset()} title="Revert the chain to the freshly seeded launch">
             <RotateCcw size={13} /> Reset

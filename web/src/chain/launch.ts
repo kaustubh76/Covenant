@@ -125,8 +125,17 @@ export function defaultLaunchSpec(terms: Terms, overrides: Partial<LaunchSpec> =
 }
 
 /**
+ * A wallet's launch on a public chain: the auction must outlast a person approving each bid in their wallet. 1,000
+ * blocks is about 3 min 20 s at 200 ms blocks (and splits the auction's 1e7 mps evenly, as registerLaunch requires);
+ * 50 blocks, about 10 s, lets the registration settle before the auction opens.
+ */
+export const WALLET_AUCTION_BLOCKS = 1000;
+export const WALLET_START_DELAY = 50;
+
+/**
  * The suite's launch sized for a public testnet: every price divided by 2^shift, a fixed-supply token, 128 blocks of
- * auction (about four minutes on Base Sepolia) and ten blocks for the registration to land before the auction opens.
+ * auction (about 26 seconds at Base Sepolia's 200 ms blocks: fine for a script) and ten blocks for the registration to
+ * land before the auction opens. A launch a person signs block by block uses WALLET_AUCTION_BLOCKS instead.
  */
 export function testnetLaunchSpec(terms: Terms, overrides: Partial<LaunchSpec> = {}, shift = TESTNET_PRICE_SHIFT): LaunchSpec {
   return defaultLaunchSpec(terms, {

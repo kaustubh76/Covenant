@@ -142,6 +142,9 @@ export function ShapeChart({
   const xSpot = x(spot);
   const xTwap = x(twap);
   const merged = Math.abs(xSpot - xTwap) < 74;
+  // Clamped by its own width, so a long testnet price never runs off the chart's right edge (about 0.6em a character).
+  const mergedLabel = `Spot ${price(priceAt(spot))} · TWAP ${price(priceAt(twap))}`;
+  const mergedLabelW = mergedLabel.length * 6.6;
   const inView = (p: number) => p > lo && p < hi;
   const hovered = hover !== null ? segs.find((s) => hover >= s.from && hover < s.to) : undefined;
   const hoveredAmt = hovered ? holdingsAtPrice(world.quoteIs0, spot, hovered.from, hovered.to, hovered.L) : null;
@@ -263,8 +266,8 @@ export function ShapeChart({
         <line x1={xTwap} x2={xTwap} y1={padT - 4} y2={base} stroke="var(--accent)" strokeDasharray="4 3" />
         <line x1={xSpot} x2={xSpot} y1={padT - 4} y2={base} stroke="var(--ink)" />
         {merged ? (
-          <text x={Math.min(W - 150, Math.max(4, xSpot + 6))} y={padT - 14} fontSize={11} fill="var(--ink)" className="num">
-            Spot {price(priceAt(spot))} · TWAP {price(priceAt(twap))}
+          <text x={Math.min(W - mergedLabelW - 4, Math.max(4, xSpot + 6))} y={padT - 14} fontSize={11} fill="var(--ink)" className="num">
+            {mergedLabel}
           </text>
         ) : (
           <>

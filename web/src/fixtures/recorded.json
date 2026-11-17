@@ -1,5 +1,5 @@
 {
-  "recordedAt": "2026-11-16T11:28:20.910Z",
+  "recordedAt": "2026-11-17T12:14:25.341Z",
   "hero": {
     "migrated": {
       "spot": 2599.7052209655612,
@@ -729,7 +729,7 @@
             "name": "PaceExceeded",
             "signature": "PaceExceeded(1000000000, 500000000)",
             "rule": "Pace",
-            "reason": "This moves 100.0% of the vault's value, but only 50.0% of the pace allowance is left. It refills every epoch."
+            "reason": "This moves 100.0% of the vault's value, but Pace lets only 50.0% move now. The allowance refills every epoch."
           }
         }
       ]

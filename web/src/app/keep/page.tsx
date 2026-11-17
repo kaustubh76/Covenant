@@ -39,15 +39,20 @@ export default function KeepPage() {
   const party = partyFor(role, v, net);
   const publicChain = !!net && !net.caps.devChain;
   const bal = useBalances(actor);
-  const [plan, setPlan] = useState<{ indices: number[]; pre: Preflight } | null>(null);
-  const [sim, setSim] = useState<"running" | { result: CrashSim | null; deepened: boolean } | null>(null);
+  // Each result is kept with the vault it was worked out for: switching vaults never draws one vault's plan on another's
+  // ranges, and a simulation's answer goes with it.
+  const [planFor, setPlanFor] = useState<{ vault: string; plan: { indices: number[]; pre: Preflight } | null } | null>(null);
+  const [simFor, setSimFor] = useState<{ vault: string; state: "running" | { result: CrashSim | null; deepened: boolean; error?: string } } | null>(null);
+  const plan = v && planFor?.vault === v.address ? planFor.plan : null;
+  const sim = v && simFor?.vault === v.address ? simFor.state : null;
+  const setSim = (state: "running" | { result: CrashSim | null; deepened: boolean; error?: string }) => v && setSimFor({ vault: v.address, state });
 
   useEffect(() => {
     if (!ctx || !v) return;
     let live = true;
     planRestore(ctx, v, party)
-      .then((p) => live && setPlan(p))
-      .catch(() => live && setPlan(null));
+      .then((p) => live && setPlanFor({ vault: v.address, plan: p }))
+      .catch(() => live && setPlanFor({ vault: v.address, plan: null }));
     return () => {
       live = false;
     };
@@ -125,8 +130,8 @@ export default function KeepPage() {
         deepened = !!result;
       }
       setSim({ result, deepened });
-    } catch {
-      setSim({ result: null, deepened: false });
+    } catch (e) {
+      setSim({ result: null, deepened: false, error: e instanceof Error ? e.message.split("\n")[0] : String(e) });
     }
   };
 
@@ -218,7 +223,8 @@ export default function KeepPage() {
                   <Row label="A stranger's restore">{`${pct(sim.result.after.support.have)} → ${pct(sim.result.restore.supportAfter ?? 0)}`}</Row>
                 </div>
               )}
-              {sim && sim !== "running" && !sim.result?.restore?.ok && (
+              {sim && sim !== "running" && sim.error && <p className="mt-3 text-xs text-faint">Could not simulate: {sim.error}</p>}
+              {sim && sim !== "running" && !sim.error && !sim.result?.restore?.ok && (
                 <p className="mt-3 text-xs text-faint">
                   No sell-off of the issuer&apos;s tokens strands support here, even with the reserve spread deeper: every bid stays within reach of the price.
                 </p>

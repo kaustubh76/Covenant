@@ -15,6 +15,8 @@ import {
   type Launch,
   type OnWait,
   TESTNET_PRICE_SHIFT,
+  WALLET_AUCTION_BLOCKS,
+  WALLET_START_DELAY,
   adopt,
   bid,
   closeAuction,
@@ -23,6 +25,7 @@ import {
   registerLaunch,
   seed,
   seedParamsFor,
+  settleBids,
   testnetLaunchSpec,
 } from "@/chain/launch";
 import { priceAt, q96ToNumber, snapToAuctionTick, ticksToPct } from "@/chain/price";
@@ -59,6 +62,41 @@ const wei = (eth: number) => parseEther(eth.toFixed(18));
 
 type Check = { ok: boolean; isCovenantVault: boolean; hookIsCovenant: boolean; poolMatchesVault: boolean; lpGoesToVault: boolean; vaultIsFresh: boolean; tokensReservedForLp: bigint };
 type Phase = "terms" | "bidding" | "bid" | "closed" | "migrated" | "seeded";
+type Settled = { exited: number; claimed: number };
+
+/**
+ * A public chain's launch is permanent and spans minutes of wallet prompts, so the desk keeps where it got to and a
+ * reload resumes it. Kept per network and wallet, in this browser only. The local chain resets, so it keeps nothing.
+ */
+interface SavedLaunch {
+  launch: Launch;
+  phase: Phase;
+  check: Check | null;
+  result: { clearing: number; raised: number; outbid: number } | null;
+  supportBefore: number | null;
+  settled: Settled | null;
+  bids: DraftBid[];
+  draft: Terms;
+  symbol: string;
+}
+const BIG = "$bigint";
+const savedKey = (net: string, wallet: string) => `covenant.launch:${net}:${wallet.toLowerCase()}`;
+function loadLaunch(key: string): SavedLaunch | null {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw, (_k, v) => (v && typeof v === "object" && typeof v[BIG] === "string" ? BigInt(v[BIG]) : v)) as SavedLaunch) : null;
+  } catch {
+    return null;
+  }
+}
+function storeLaunch(key: string, s: SavedLaunch | null) {
+  try {
+    if (s) localStorage.setItem(key, JSON.stringify(s, (_k, v) => (typeof v === "bigint" ? { [BIG]: v.toString() } : v)));
+    else localStorage.removeItem(key);
+  } catch {
+    /* private mode: nothing kept */
+  }
+}
 
 function StepHead({ n, title, state }: { n: number; title: string; state: "done" | "now" | "todo" }) {
   return (
@@ -116,10 +154,34 @@ export default function LaunchPage() {
   const [check, setCheck] = useState<Check | null>(null);
   const [result, setResult] = useState<{ clearing: number; raised: number; outbid: number } | null>(null);
   const [supportBefore, setSupportBefore] = useState<number | null>(null);
+  const [settled, setSettled] = useState<Settled | null>(null);
   // the bids follow the network's scale until they are placed
   useEffect(() => {
     if (phase === "terms") setBids(draftBids(floorEth, scale));
   }, [floorEth, scale, phase]);
+
+  const keep = isPublic && net && wallet ? savedKey(net.key, wallet.address) : null;
+  // Resume this wallet's launch on this network after a reload.
+  useEffect(() => {
+    if (!keep || launch) return;
+    const s = loadLaunch(keep);
+    if (!s) return;
+    setDraft(s.draft);
+    setPresetKey("");
+    setSymbol(s.symbol);
+    setBids(s.bids);
+    setLaunch(s.launch);
+    setCheck(s.check);
+    setResult(s.result);
+    setSupportBefore(s.supportBefore);
+    setSettled(s.settled);
+    setPhase(s.phase);
+    if (s.phase === "migrated" || s.phase === "seeded") void selectVault(s.launch.vault);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [keep]);
+  useEffect(() => {
+    if (keep && launch) storeLaunch(keep, { launch, phase, check, result, supportBefore, settled, bids, draft, symbol });
+  }, [keep, launch, phase, check, result, supportBefore, settled, bids, draft, symbol]);
 
   if (status !== "ready") return <NeedsChain what="the launch desk" />;
 
@@ -137,7 +199,10 @@ export default function LaunchPage() {
   const commit = () =>
     run("Creating the vault and registering the launch", async (ctx, rec) => {
       const named = { name: `${symbol} Launch`, symbol };
-      const l = await registerLaunch(ctx, isPublic ? testnetLaunchSpec(draft, named) : defaultLaunchSpec(draft, named));
+      const l = await registerLaunch(
+        ctx,
+        isPublic ? testnetLaunchSpec(draft, { ...named, durationBlocks: WALLET_AUCTION_BLOCKS, startDelay: WALLET_START_DELAY }) : defaultLaunchSpec(draft, named),
+      );
       const m = ctx.net.manifest;
       const c = await ctx.pub.readContract({ address: m.lens, abi: covenantLensAbi, functionName: "verifyLaunch", args: [m.factory, m.lbpStrategy, l.auction] });
       rec.record(
@@ -207,7 +272,33 @@ export default function LaunchPage() {
       if (o.ok) setPhase("seeded");
     });
 
-  const curveBids = bids.map((b) => ({ id: b.id, bidder: b.bidder === "bob" ? "Bob" : "Alice", maxPrice: snap(b.price), amount: b.amount }));
+  // After the auction: exit every bid, so the ETH it did not spend comes back, then claim the tokens it bought.
+  const settle = () =>
+    run("Settling the bids", async (ctx, rec) => {
+      if (!launch) return;
+      // one pass per bidding address: on a public chain every bid is the wallet's
+      const owners = new Map<string, DraftBid["bidder"]>();
+      for (const b of bids) if (b.amount > 0) owners.set(ctx.address(b.bidder).toLowerCase(), b.bidder);
+      const total: Settled = { exited: 0, claimed: 0 };
+      for (const by of owners.values()) {
+        const r = await settleBids(ctx, launch, by, { claim: true, onWait: (now, target) => rec.progress(`Claims open in ${target - now} blocks`) });
+        total.exited += r.exited;
+        total.claimed += r.claimed;
+      }
+      setSettled(total);
+      rec.record(note("anyone", "Bids settled", `${total.exited} exited, returning the ETH they did not spend; ${total.claimed} claimed the tokens they bought`), { toast: true });
+    });
+  const startOver = () => {
+    if (keep) storeLaunch(keep, null);
+    setLaunch(null);
+    setCheck(null);
+    setResult(null);
+    setSupportBefore(null);
+    setSettled(null);
+    setPhase("terms");
+  };
+
+  const curveBids = bids.map((b) => ({ id: b.id, bidder: who(b), maxPrice: snap(b.price), amount: b.amount }));
 
   return (
     <>
@@ -246,7 +337,7 @@ export default function LaunchPage() {
               <Slider label="Support: minimum share of the quote in the band" value={draft.supportBps} min={2000} max={7000} step={500} onChange={(v) => set("supportBps", v)} display={pct(draft.supportBps, 0)} />
               <Slider label="Band: how far below the price counts" value={draft.supportBandTicks} min={600} max={3000} step={60} onChange={(v) => set("supportBandTicks", v)} display={`${ticksToPct(draft.supportBandTicks).toFixed(1)}%`} />
               <Slider label="Pace: most value moved per epoch" value={draft.paceBps} min={1000} max={10000} step={500} onChange={(v) => set("paceBps", v)} display={pct(draft.paceBps, 0)} />
-              <Slider label="Epoch length" value={draft.epochLength / HOUR} min={6} max={72} step={6} onChange={(v) => set("epochLength", v * HOUR)} display={duration(draft.epochLength)} />
+              <Slider label="Epoch length" value={draft.epochLength / HOUR} min={1} max={72} step={1} onChange={(v) => set("epochLength", v * HOUR)} display={duration(draft.epochLength)} />
               <Slider label="Guard: allowed gap between spot and average" value={draft.guardTicks} min={100} max={800} step={50} onChange={(v) => set("guardTicks", v)} display={`${ticksToPct(draft.guardTicks).toFixed(1)}%`} />
               <Slider label="Averaging window" value={draft.twapWindow / 60} min={5} max={60} step={5} onChange={(v) => set("twapWindow", v * 60)} display={duration(draft.twapWindow)} />
               <Slider label="Lock on issuer principal" value={draft.lockDuration / DAY} min={30} max={365} step={15} onChange={(v) => set("lockDuration", v * DAY)} display={`${Math.round(draft.lockDuration / DAY)} days`} />
@@ -275,8 +366,9 @@ export default function LaunchPage() {
                 </Button>
                 {isPublic && (
                   <p className="mt-2 text-center text-xs text-faint">
-                    On {net?.name}: a fixed-supply token, prices at 1/8192 of the local launch and a 128-block auction, about {duration((128 * (net?.caps.blockTimeMs ?? 2000)) / 1000)}.
-                    Your wallet signs each step.
+                    On {net?.name}: a fixed-supply token, prices at 1/8192 of the local launch and a {WALLET_AUCTION_BLOCKS.toLocaleString("en-US")}-block auction, about{" "}
+                    {duration((WALLET_AUCTION_BLOCKS * (net?.caps.blockTimeMs ?? 2000)) / 1000)}. Your wallet signs each step, and the desk resumes if you reload. A 1-hour epoch
+                    opens the vault to deposits the same day.
                   </p>
                 )}
                 <p className="mt-2 text-center text-xs text-faint">The factory checks the same bounds on-chain and refuses anything else.</p>
@@ -367,6 +459,21 @@ export default function LaunchPage() {
                   Migrate into Covenant
                 </Button>
               )}
+              {live &&
+                (settled ? (
+                  <p className="mt-4 text-[13px] text-pass">
+                    Bids settled: {settled.exited} exited and {settled.claimed} claimed. Unspent ETH is back with the {isPublic ? "wallet" : "bidders"}.
+                  </p>
+                ) : (
+                  <Button variant="secondary" className="mt-5 w-full" disabled={!!busy} onClick={() => void settle()}>
+                    Exit the bids and claim the tokens
+                  </Button>
+                ))}
+              {isPublic && !live && (
+                <button type="button" disabled={!!busy} onClick={startOver} className="mt-3 w-full text-center text-xs text-faint underline-offset-2 hover:text-ink hover:underline disabled:opacity-50">
+                  Abandon this launch and start over
+                </button>
+              )}
             </Panel>
           </div>
         )}
@@ -386,9 +493,16 @@ export default function LaunchPage() {
               <div className="mt-3 flex flex-wrap items-center justify-between gap-4">
                 <ShapeLegend />
                 {phase === "seeded" ? (
-                  <Link href="/vault">
-                    <Button variant="primary">Open the vault</Button>
-                  </Link>
+                  <div className="flex flex-wrap gap-2.5">
+                    {isPublic && (
+                      <Button variant="ghost" disabled={!!busy} onClick={startOver}>
+                        Start a new launch
+                      </Button>
+                    )}
+                    <Link href="/vault">
+                      <Button variant="primary">Open the vault</Button>
+                    </Link>
+                  </div>
                 ) : (
                   <Button variant="primary" disabled={!!busy} onClick={() => void runSeed()}>
                     Run the demand-shaped seed

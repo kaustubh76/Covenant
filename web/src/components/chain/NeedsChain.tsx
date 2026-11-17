@@ -23,7 +23,27 @@ const START: Record<NetworkKey, { where: string; how: string }> = {
 export function NeedsChain({ what = "this page" }: { what?: string }) {
   const status = useChain((s) => s.status);
   const reason = useChain((s) => s.reason);
-  const start = START[useChain((s) => s.netKey) ?? "local"];
+  const netKey = useChain((s) => s.netKey) ?? "local";
+  const served = useChain((s) => s.networks);
+  const start = START[netKey];
+  // A hosted copy offers no local chain, and its public network is deployed: offline there means the RPC did not
+  // answer, which retries on its own. Deploy commands would only be noise to a visitor.
+  const hosted = served.length > 0 && !served.some((n) => n.key === "local");
+  const rpcTrouble = netKey !== "local" && !!reason && /not answering|is chain|429|rate/i.test(reason);
+  if ((hosted || rpcTrouble) && status === "offline") {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <Panel eyebrow="Reconnecting" title={`${what[0].toUpperCase()}${what.slice(1)} reads the live contracts`}>
+          <p className="text-[14px] leading-relaxed text-muted">
+            The network&apos;s public RPC did not answer just now. The app retries on its own, so nothing is needed from you; this page fills in as soon as it
+            answers.
+          </p>
+          {/* the first sentence only: what follows is the server's how-to-deploy hint */}
+          {reason && <p className="mt-3 text-xs text-faint">{reason.split(/(?<=\.)\s/)[0]}</p>}
+        </Panel>
+      </div>
+    );
+  }
   if (status === "connecting" || status === "ready") {
     return (
       <div className="py-24 text-center">

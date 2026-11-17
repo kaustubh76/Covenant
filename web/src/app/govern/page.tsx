@@ -44,6 +44,10 @@ export default function GovernPage() {
   // them; with another role the action runs from the connected wallet and the contract's own refusal shows.
   const party = partyFor(role, v, net);
   const publicChain = !!net && !net.caps.devChain;
+  // collectFees, fundBounty and acceptCurator are open to anyone: on a public chain they go from the connected wallet
+  // whatever role is picked (as the issuer's address they could only ever be simulated).
+  const open: Party = publicChain ? "holder" : party;
+  const openLabel: Who = publicChain ? "anyone" : actor;
   const mine = (p: Party) => canSendAs(p, net, wallet);
   const current = whoIs(v.people.curator);
   const candidate = current === "newCurator" ? "curator" : "newCurator";
@@ -78,10 +82,10 @@ export default function GovernPage() {
 
   const collect = () =>
     run("Collect fees", async (c, rec) => {
-      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "collectFees", args: [] }, { force: true });
+      const o = await send(c, open, { address: v.address, abi: covenantVaultAbi, functionName: "collectFees", args: [] }, { force: true });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "FeesCollected");
       rec.record(
-        beatOf(o, actor, "Collect fees", () =>
+        beatOf(o, openLabel, "Collect fees", () =>
           ev ? `${amt(eth(ev.args.toBountyPool))} ETH to the bounty pool, ${amt(eth(ev.args.toTreasury0))} ETH and ${amt(eth(ev.args.toTreasury1))} ${sym} to the treasury` : undefined,
         ),
         { toast: true },
@@ -90,8 +94,8 @@ export default function GovernPage() {
   const fund = () =>
     run("Fund the bounty pool", async (c, rec) => {
       const amount = parseEther(bounty);
-      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "fundBounty", args: [amount], value: amount });
-      rec.record(beatOf(o, actor, "Fund the bounty pool", () => `${bounty} ETH added`), { toast: true });
+      const o = await send(c, open, { address: v.address, abi: covenantVaultAbi, functionName: "fundBounty", args: [amount], value: amount });
+      rec.record(beatOf(o, openLabel, "Fund the bounty pool", () => `${bounty} ETH added`), { toast: true });
     });
 
   return (
@@ -138,7 +142,7 @@ export default function GovernPage() {
                 {publicChain ? (wallet ? "Propose your wallet as curator" : "Connect a wallet to propose") : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
               </Button>
             )}
-            <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules")}>
+            <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules", open, openLabel)}>
               Accept change
             </Button>
           </div>

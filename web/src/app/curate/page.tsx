@@ -6,7 +6,7 @@ import { covenantVaultAbi } from "@/chain/abi.generated";
 import { shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { NEVER } from "@/chain/launch";
-import { type Leg, SINK, askFloor, askLeg, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
+import { type Leg, SINK, askFloor, askLeg, bidCeiling, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
 import { type Preflight, preflight, vaultEvents } from "@/chain/preflight";
 import { ceilTo, floorTo, holdingsAtPrice, priceAt } from "@/chain/price";
 import { isAddressParty, send } from "@/chain/tx";
@@ -16,6 +16,7 @@ import { type ShapeSource, ShapeChart, ShapeLegend, chartDomain } from "@/compon
 import { ReshapeVerdict } from "@/components/covenant/Verdict";
 import { Button, PageHeader, Panel, Tag } from "@/components/ui";
 import { amt, axisPrice, pct } from "@/lib/format";
+import { layoutKey } from "@/lib/layout";
 import { describeRange } from "@/lib/ranges";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 
@@ -39,8 +40,10 @@ const d = (asset: Draft["asset"], lower: number, upper: number, share: number): 
 function bounds(v: VaultView) {
   const sp = v.tickSpacing;
   const B = v.terms.supportBandTicks;
-  const bidMax = bidTop(v);
-  return { sp, B, p: v.spotTick, bidMax, askMin: askFloor(v), bidBottom: ceilTo(v.spotTick - B, sp) + sp };
+  // Honest bids stop at the Anchor ceiling as well as under the price: after a pump the ceiling binds, and a preset that
+  // ignored it would be refused like the hostile one. The band's bottom stays below that cap, so no range turns inside out.
+  const bidMax = bidCeiling(v);
+  return { sp, B, p: v.spotTick, bidMax, askMin: askFloor(v), bidBottom: Math.min(ceilTo(v.spotTick - B, sp) + sp, bidMax - sp) };
 }
 /** In the setup epoch the whole vault may move; after it, Pace allows the main support range. */
 const movable = (v: VaultView) => (v.pace.setup ? v.ranges.map((_, i) => i) : [supportIndex(v)]);
@@ -118,8 +121,9 @@ const PRESETS: { key: string; name: string; hint: string; hostile?: boolean; whe
     hostile: true,
     when: (v) => (bidTop(v) > v.ceiling + v.tickSpacing ? null : "Needs a pump first: spot has to run above the Anchor ceiling"),
     make: (v) => {
-      const { sp, bidMax } = bounds(v);
-      return { rm: [supportIndex(v)], drafts: [d("quote", floorTo(v.ceiling, sp) + sp, bidMax, 1)] };
+      const { sp } = bounds(v);
+      // The one preset that ignores the ceiling: bids up to the pumped price itself.
+      return { rm: [supportIndex(v)], drafts: [d("quote", floorTo(v.ceiling, sp) + sp, bidTop(v), 1)] };
     },
   },
 ];
@@ -183,12 +187,19 @@ export default function CuratePage() {
     setEd(e);
     refit(view, e);
   };
-  // A settled transaction or a market move changes the vault under the editor: start again from it.
+  // A named preset follows the vault and the price, so it is rebuilt from every new block. A hand-edited draft (preset
+  // "") is kept until the layout under it changes: on a public chain a block lands every poll, and rebuilding on each
+  // one threw the curator's edits away every couple of seconds.
   const block = v?.block;
+  const layout = v ? layoutKey(v) : "";
   useEffect(() => {
-    if (v) apply(preset && !PRESETS.find((p) => p.key === preset)?.when?.(v) ? preset : "tighten", v);
+    if (v && preset) apply(PRESETS.find((p) => p.key === preset)?.when?.(v) ? "tighten" : preset, v);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [block]);
+  useEffect(() => {
+    if (v && !preset) apply("tighten", v);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [layout]);
 
   const legs = useMemo(() => (v && ed ? toLegs(v, ed.drafts) : []), [v, ed]);
   const cuts = useMemo(() => (ed ? [...ed.rm].sort((a, b) => a - b).map((i) => cut(i)) : []), [ed]);

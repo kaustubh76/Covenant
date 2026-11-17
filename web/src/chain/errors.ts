@@ -64,7 +64,7 @@ const REASONS: Record<string, Describer> = {
   ],
   PaceExceeded: ([asked, available]) => [
     "Pace",
-    `This moves ${pctFraction(asked)} of the vault's value, but only ${pctFraction(available)} of the pace allowance is left. It refills every epoch.`,
+    `This moves ${pctFraction(asked)} of the vault's value, but Pace lets only ${pctFraction(available)} move now. The allowance refills every epoch.`,
   ],
   SetupEpoch: ([endsAt], c) => [
     "Pace",

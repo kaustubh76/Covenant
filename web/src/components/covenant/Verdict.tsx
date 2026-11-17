@@ -86,7 +86,7 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
         <Line state={state("pace")} name="Pace">
           {failed === "pace" && e ? (
             <>
-              This moves <span className="num text-breach">{pct(n(e.args[0]) / 1e5)}</span> of the vault, but only <span className="num text-ink">{pct(n(e.args[1]) / 1e5)}</span> of the allowance is left.
+              This moves <span className="num text-breach">{pct(n(e.args[0]) / 1e5)}</span> of the vault, but Pace lets only <span className="num text-ink">{pct(n(e.args[1]) / 1e5)}</span> move now.
             </>
           ) : v.pace.setup ? (
             <>
@@ -94,7 +94,7 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
             </>
           ) : (
             <>
-              This moves <span className="num text-ink">{pct(moved * 1e4)}</span> of the vault&apos;s value. <span className="num text-ink">{pct(v.pace.available * 1e4)}</span> of the allowance is left.
+              This moves <span className="num text-ink">{pct(moved * 1e4)}</span> of the vault&apos;s value. Up to <span className="num text-ink">{pct(v.pace.available * 1e4)}</span> may move now.
             </>
           )}
         </Line>

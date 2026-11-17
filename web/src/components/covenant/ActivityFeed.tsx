@@ -27,7 +27,7 @@ export function ActivityFeed({ limit = 8 }: { limit?: number }) {
             <div className="truncate text-[13.5px] text-ink">{e.title}</div>
             <div className={clsx("truncate text-xs", e.ok ? "text-muted" : "num text-breach")}>{e.ok ? (e.detail ?? e.by ?? ACTOR_LABEL[e.actor]) : e.error?.signature}</div>
           </div>
-          <span className={clsx("text-[11px] font-medium tracking-[0.08em]", e.ok && e.by ? "num normal-case" : "uppercase", e.ok ? "text-faint" : "text-breach")}>{e.ok ? (e.by ?? ACTOR_LABEL[e.actor]) : "Reverted"}</span>
+          <span className={clsx("text-[11px] font-medium tracking-[0.08em]", e.ok && e.by ? "num normal-case" : "uppercase", e.ok ? "text-faint" : "text-breach")}>{e.ok ? (e.by ?? ACTOR_LABEL[e.actor]) : e.error?.name === "NotSent" ? "Not sent" : "Reverted"}</span>
         </motion.li>
       ))}
       </AnimatePresence>

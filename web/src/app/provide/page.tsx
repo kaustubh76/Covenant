@@ -4,33 +4,29 @@ import { useEffect, useState } from "react";
 import { formatEther, maxUint256, parseEther } from "viem";
 import { covenantVaultAbi, testTokenAbi } from "@/chain/abi.generated";
 import { beatOf } from "@/chain/beat";
-import type { ChainCtx } from "@/chain/client";
 import { NEVER } from "@/chain/launch";
-import { type Preflight, preflight, vaultEvents } from "@/chain/preflight";
-import { type Party, must, partyAddress, send } from "@/chain/tx";
+import { swap } from "@/chain/market";
+import { type ActionCall, type Preflight, preflight, vaultEvents } from "@/chain/preflight";
+import { priceAt } from "@/chain/price";
+import { depositCall, ensureAllowance, quoteBudget, withSlack } from "@/chain/provide";
+import { isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { ShapeChart } from "@/components/covenant/ShapeChart";
+import { VaultPicker } from "@/components/covenant/VaultPicker";
 import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
 import { useBalances } from "@/lib/useBalances";
 import { ROLES, actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 
 const eth = (x: bigint) => Number(formatEther(x));
-/** Pay a little over the simulated cost: the vault refunds any native ETH it does not need. */
-const withSlack = (x: bigint) => x + x / 200n + 1n;
-
-function depositCall(v: VaultView, shares: bigint, value: bigint) {
-  return { address: v.address, abi: covenantVaultAbi, functionName: "deposit" as const, args: [shares, maxUint256, maxUint256, NEVER] as const, value };
-}
-
-/** A generous native amount to simulate the deposit with, from the vault's own holdings. */
-const quoteBudget = (v: VaultView, fraction: number) => parseEther(((v.principal.quote + v.idle.quote) * fraction * 1.1 + 0.01).toFixed(18));
-
-async function ensureAllowance(ctx: ChainCtx, who: Party, v: VaultView, amount: bigint) {
-  const allowance = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "allowance", args: [partyAddress(ctx, who), v.address] });
-  if (allowance < amount) must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, maxUint256] }), "approve");
-}
+/** On a public chain the deposit is simulated within the wallet's ETH, less what the market keeps back for gas. */
+const spendable = (quote: number) => parseEther(Math.max(0, quote - 0.002).toFixed(18));
+/**
+ * The token approval a deposit needs, run ahead of it inside the same simulated block: a wallet that has never
+ * approved the vault still sees the exact cost, and the approval itself is sent only when it deposits.
+ */
+const approveFirst = (v: Pick<VaultView, "address" | "token">): ActionCall[] => [{ address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, maxUint256] }];
 
 export default function ProvidePage() {
   const v = useChain((s) => s.view);
@@ -46,6 +42,7 @@ export default function ProvidePage() {
   const [out, setOut] = useState<Preflight | null>(null);
   const net = useChain((s) => s.net);
   const wallet = useChain((s) => s.wallet);
+  const launches = useChain((s) => s.launches);
   const actor = actorFor(role, v);
   // Deposits, withdrawals and fee claims come from the connected wallet on a public chain; the principal from the
   // vault's issuer only (see partyFor). Balances and shares are read for the acting role either way.
@@ -53,6 +50,7 @@ export default function ProvidePage() {
   const publicChain = !!net && !net.caps.devChain;
   const mayAct = canSendAs(party, net, wallet);
   const bal = useBalances(actor);
+  const cap = publicChain && bal ? spendable(bal.quote) : undefined;
 
   const newShares = v ? (v.raw.totalShares * BigInt(addPct)) / 100n : 0n;
   const mine = v?.raw.sharesOf[actor] ?? 0n;
@@ -61,11 +59,11 @@ export default function ProvidePage() {
   useEffect(() => {
     if (!ctx || !v || newShares === 0n) return;
     let live = true;
-    preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100)), v).then((p) => live && setDep(p));
+    preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v)).then((p) => live && setDep(p));
     return () => {
       live = false;
     };
-  }, [ctx, v, party, addPct, newShares]);
+  }, [ctx, v, party, addPct, newShares, cap]);
   useEffect(() => {
     if (!ctx || !v || burn === 0n) {
       setOut(null);
@@ -89,7 +87,7 @@ export default function ProvidePage() {
 
   const deposit = () =>
     run(`Deposit for ${addPct}% new shares`, async (c, rec) => {
-      const p = await preflight(c, party, depositCall(v, newShares, quoteBudget(v, addPct / 100)), v);
+      const p = await preflight(c, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v));
       if (!p.ok) {
         rec.record({ actor, title: `Deposit for ${addPct}% new shares`, ok: false, error: p.error }, { toast: true });
         return;
@@ -135,6 +133,21 @@ export default function ProvidePage() {
       );
     });
 
+  // A wallet on a public chain starts with ETH only: the token side of a deposit is bought from the pool first. With
+  // none of the token the deposit cannot even be simulated (the transfer fails first), so the need is read from the
+  // vault's own holdings, which a proportional deposit matches exactly; once the wallet holds some, the simulation's.
+  const tokenNeed = cost ? eth(cost[1]) : (v.principal.token + v.idle.token) * (addPct / 100) * 1.01;
+  const tokenShort = publicChain && bal ? Math.max(0, tokenNeed - bal.token) : 0;
+  const buyShortfall = () =>
+    run(`Buy ${amt(tokenShort)} ${sym}`, async (c, rec) => {
+      // exact-input: the shortfall plus 2%, at the spot price plus 3% for the pool fee and the price the buy moves
+      if (isAddressParty(party)) return; // a role held by a fixed address (issuer, curator) does not shop for itself
+      const ethIn = parseEther((tokenShort * 1.02 * priceAt(v.spot) * 1.03).toFixed(18));
+      const o = await swap(c, v, party, true, ethIn);
+      rec.record(beatOf(o, actor, `Buy ${sym} for the deposit`, () => `About ${amt(tokenShort * 1.02)} ${sym} for ${amt(eth(ethIn))} ETH`), { toast: true });
+    });
+  const otherVaults = launches.filter((l) => l.adopted && l.vault.toLowerCase() !== v.address.toLowerCase()).length;
+
   const canPay = !!bal && !!cost && bal.quote >= eth(cost[0]) && bal.token >= eth(cost[1]);
   return (
     <>
@@ -143,13 +156,16 @@ export default function ProvidePage() {
         title="Add liquidity beside the issuer's. Leave whenever you like."
         lead="Vault shares are in kind. A deposit buys the same slice of every range, at exactly what that slice holds right now. There is no share price, so there is no oracle to trust and nothing to manipulate. Swap fees accrue to every share; the curator takes its cut and nothing else."
         aside={
-          role === "lp" ? (
-            <Tag tone="accent">Acting as outside LP</Tag>
-          ) : (
-            <Button size="sm" onClick={() => setRole("lp")}>
-              Act as outside LP
-            </Button>
-          )
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <VaultPicker />
+            {role === "lp" ? (
+              <Tag tone="accent">Acting as outside LP</Tag>
+            ) : (
+              <Button size="sm" onClick={() => setRole("lp")}>
+                Act as outside LP
+              </Button>
+            )}
+          </div>
         }
       />
 
@@ -157,21 +173,40 @@ export default function ProvidePage() {
         <Panel eyebrow="Deposit" title="Join every range, proportionally">
           <Slider label="New shares, as a share of the vault today" value={addPct} min={1} max={25} onChange={setAddPct} display={`${addPct}%`} />
           <div className="mt-4">
-            <Row label="You pay">{cost ? `${amt(eth(cost[0]))} ETH + ${amt(eth(cost[1]))} ${sym}` : dep && !dep.ok ? "—" : "…"}</Row>
+            <Row label="You pay">
+              {cost
+                ? `${amt(eth(cost[0]))} ETH + ${amt(eth(cost[1]))} ${sym}`
+                : dep && !dep.ok && tokenShort > 0
+                  ? `about ${amt((v.principal.quote + v.idle.quote) * (addPct / 100))} ETH + ${amt(tokenNeed)} ${sym}`
+                  : dep && !dep.ok
+                    ? "—"
+                    : "…"}
+            </Row>
             <Row label="You will own">{pct((addPct / (100 + addPct)) * 1e4)} of the vault</Row>
             <Row label={`${name} wallet`}>
               <span className={canPay || !cost ? "" : "text-breach"}>{bal ? `${amt(bal.quote)} ETH · ${amt(bal.token)} ${sym}` : publicChain && !wallet ? "Connect a wallet" : "…"}</span>
             </Row>
           </div>
-          <Button variant="primary" className="mt-5 w-full" onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
+          {tokenShort > 0 && mayAct && !isAddressParty(party) && (
+            <Button variant="secondary" className="mt-5 w-full" onClick={buyShortfall} disabled={!!busy}>
+              Buy {amt(tokenShort * 1.02)} {sym} from the pool first
+            </Button>
+          )}
+          <Button variant="primary" className={tokenShort > 0 && mayAct ? "mt-2.5 w-full" : "mt-5 w-full"} onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
             {publicChain && !wallet ? "Connect a wallet to deposit" : "Deposit"}
           </Button>
           <p className="mt-2 text-center text-xs text-faint">
-            {dep && !dep.ok
+            {dep && !dep.ok && tokenShort > 0 && dep.error?.name !== "SetupEpoch"
+              ? `The deposit takes ${sym} too, in proportion, and this wallet holds ${amt(bal?.token ?? 0)}: buy the difference, then deposit.`
+              : dep && !dep.ok
               ? dep.error?.name === "SetupEpoch"
-                ? `Deposits open when the setup epoch ends, in ${duration(v.pace.setupEndsAt - v.time)}.${publicChain ? "" : " Use +1d below."}`
+                ? `Deposits open when the setup epoch ends, in ${duration(v.pace.setupEndsAt - v.time)}.${publicChain ? (otherVaults ? " Another launch may already take them: pick it above." : "") : " Use +1d below."}`
                 : dep.error?.reason
-              : "Simulated against the vault first: the cost shown is exactly what the contract will take."}
+              : tokenShort > 0
+                ? `The deposit takes ${sym} too, in proportion: buy the difference, then deposit.`
+                : publicChain
+                  ? `Simulated against the vault first, approval included: the cost shown is exactly what the contract will take. A first deposit asks your wallet to approve ${sym}, then to deposit.`
+                  : "Simulated against the vault first: the cost shown is exactly what the contract will take."}
           </p>
         </Panel>
 
@@ -220,9 +255,11 @@ export default function ProvidePage() {
                 className="mt-4 w-full"
                 variant={v.raw.principalWithdrawable > 0n ? "secondary" : "danger"}
                 onClick={withdrawPrincipal}
-                disabled={!!busy || (publicChain && (!mayAct || v.raw.principalWithdrawable === 0n))}
+                // On a public chain a refused call is never sent, so the early exit can always be tried: it comes
+                // back with the contract's own refusal, simulated as the issuer.
+                disabled={!!busy || (publicChain && !mayAct && v.raw.principalWithdrawable > 0n)}
               >
-                {publicChain && !mayAct ? "Only the issuer's wallet can withdraw" : v.raw.principalWithdrawable > 0n ? "Withdraw principal" : publicChain ? "Nothing has vested yet" : "Try to withdraw early"}
+                {publicChain && !mayAct && v.raw.principalWithdrawable > 0n ? "Only the issuer's wallet can withdraw" : v.raw.principalWithdrawable > 0n ? "Withdraw principal" : "Try to withdraw early"}
               </Button>
               <p className="mt-2 text-center text-xs text-faint">The issuer&apos;s principal is locked. Only the vested share can leave, and only to the treasury.</p>
             </div>

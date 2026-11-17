@@ -46,9 +46,14 @@ export function vaultEvents(logs: readonly { address: Address; data: Hex; topics
   return out;
 }
 
-export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, base: VaultView): Promise<Preflight> {
+/**
+ * `setup` calls run first, from the same account and in the same simulated block: an `approve` a wallet has not sent
+ * yet, so a deposit's cost can be shown exactly before the approval exists. A setup call that fails fails the action.
+ */
+export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, base: VaultView, setup: ActionCall[] = []): Promise<Preflight> {
   const describe = { now: base.time + 1, quoteSymbol: base.quoteSymbol, tokenSymbol: base.tokenSymbol };
   const latest = await ctx.pub.getBlock({ blockTag: "latest" });
+  const account = partyAddress(ctx, party);
   try {
     const [block] = await ctx.pub.simulateBlocks({
       // On top of the block just read. Unpinned, the simulation builds on the RPC's head at the time of this call, and
@@ -59,13 +64,17 @@ export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, b
           // the block the transaction would land in: next number, next second
           blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n },
           calls: [
-            { account: partyAddress(ctx, party), to: call.address, abi: call.abi, functionName: call.functionName, args: call.args, value: call.value },
+            ...setup.map((s) => ({ account, to: s.address, abi: s.abi, functionName: s.functionName, args: s.args, value: s.value })),
+            { account, to: call.address, abi: call.abi, functionName: call.functionName, args: call.args, value: call.value },
             { to: ctx.net.manifest.lens, abi: covenantLensAbi, functionName: "snapshot", args: [base.address] },
           ],
         },
       ],
     } as never);
-    const [action, snapshot] = (block as unknown as { calls: { status: string; result?: unknown; error?: unknown; logs?: never[] }[] }).calls;
+    const calls = (block as unknown as { calls: { status: string; result?: unknown; error?: unknown; logs?: never[] }[] }).calls;
+    const failedSetup = calls.slice(0, setup.length).find((c) => c.status !== "success");
+    if (failedSetup) return { ok: false, error: decodeRevert(failedSetup.error, describe), events: [] };
+    const [action, snapshot] = calls.slice(setup.length);
     if (action.status !== "success") return { ok: false, error: decodeRevert(action.error, describe), events: [] };
     return {
       ok: true,
@@ -74,7 +83,8 @@ export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, b
       events: vaultEvents(action.logs, base.address),
     };
   } catch {
-    // No eth_simulateV1 on this RPC: fall back to a plain call, which still gives the verdict.
+    // No eth_simulateV1 on this RPC: fall back to a plain call, which still gives the verdict (without setup calls,
+    // so a missing approval shows as the transfer's failure).
     const o = await simulate(ctx, party, call as never, describe);
     return { ok: o.ok, error: o.error, value: o.value, events: [] };
   }
