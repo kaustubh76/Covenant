@@ -10,7 +10,7 @@ import { recorded } from "@/fixtures";
 import { amt, pct } from "@/lib/format";
 
 /** The landing page's vault: reshape it, then try to take it. Every outcome was recorded from the deployed contracts. */
-export function HeroStage() {
+export function HeroStage({ live = false }: { live?: boolean }) {
   const { migrated, shaped, tries } = recorded.hero;
   const [isShaped, setShaped] = useState(false);
   const [last, setLast] = useState<string | null>(null);
@@ -98,7 +98,20 @@ export function HeroStage() {
           )}
         </div>
       </div>
-      <div className="border-t border-line px-5 py-2.5 text-[11.5px] text-faint md:px-7">Recorded from the deployed contracts on a local chain. Run it live with <span className="num text-muted">make demo</span>.</div>
+      <div className="border-t border-line px-5 py-2.5 text-[11.5px] text-faint md:px-7">
+        {live ? (
+          <>
+            Recorded from the same contracts on a local chain. They are live on Base Sepolia:{" "}
+            <Link href="/vault?net=base-sepolia" className="text-muted underline-offset-2 hover:text-ink hover:underline">
+              open the vault →
+            </Link>
+          </>
+        ) : (
+          <>
+            Recorded from the deployed contracts on a local chain. Run it live with <span className="num text-muted">make demo</span>.
+          </>
+        )}
+      </div>
     </div>
   );
 }
