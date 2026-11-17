@@ -1,0 +1,73 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+  "token": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+  "signer": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+  "keeper": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+  "startedAtBlock": 59870037,
+  "steps": {
+    "rug": {
+      "title": "The curator's soft rug",
+      "status": "reverted",
+      "hash": "0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4",
+      "block": 59870064,
+      "error": "SupportBroken(277, 4000)",
+      "detail": "SupportBroken(277, 4000): support would have been 2.8%, the covenant needs 40.0%"
+    },
+    "deepen": {
+      "title": "An honest reshape: half the reserve four bands deep",
+      "status": "success",
+      "hash": "0xdcf89d9801c7c4bc07e6a579fb3d52ab8ab9c8b9fffec50492c61284a28db58a",
+      "block": 59870080,
+      "detail": "support 52.8% → 52.2% (needs 40.0%), within Pace"
+    },
+    "crash": {
+      "title": "The market sells the price down",
+      "status": "success",
+      "hash": "0xeaf892b56b3de475728de3958204222edca89c67b90a6ae387b75a7ba157fc25",
+      "block": 59870124,
+      "detail": "54.84 CVNT sold; spot 1499 ticks down (13.9% lower)"
+    },
+    "keeper": {
+      "title": "A second address gets gas money",
+      "status": "success",
+      "hash": "0x521364ec89da0da0670a721cc28ba93532bc766b15a5e984afef0dee87da7428",
+      "block": 59877876,
+      "detail": "0.001 ETH to 0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B"
+    },
+    "restore": {
+      "title": "A stranger restores support, for the bounty",
+      "status": "success",
+      "hash": "0x76baab6f8cc6aa702eda2636de00e74e4b19da6572974ba2f0ba2d23f6e695c1",
+      "block": 59877894,
+      "value": "73855021164064",
+      "detail": "support 32.6% → 100.0%; 0.000073855021164064 ETH bounty paid to 0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B"
+    },
+    "fees": {
+      "title": "Anyone collects the swap fees",
+      "status": "success",
+      "hash": "0x753e022a51ba51fdc0ef480d6b354b695a6d6d40bae332b86c06556d779730c7",
+      "block": 59877905,
+      "detail": "0.00 ETH and 0.148 CVNT to the treasury, 0.00 ETH to the bounty pool"
+    },
+    "refill": {
+      "title": "The issuer tops the bounty pool back up",
+      "status": "success",
+      "hash": "0x57784c77ce5682e47cd72bdf117e3296a0c01254ba531b2e6b7a25e5ece11890",
+      "block": 59877916,
+      "value": "73855021164064",
+      "detail": "0.000073855021164064 ETH, what the keeper was paid"
+    }
+  },
+  "plan": {
+    "depth": 1500,
+    "sold": "54.8402730723039043",
+    "supportAfterHold": 2776,
+    "restoreIndices": [
+      2
+    ],
+    "supportAfterRestore": 9999
+  },
+  "finishedAtBlock": 59877918
+}

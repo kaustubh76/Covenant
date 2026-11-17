@@ -21,3 +21,6 @@ deployments/31337*.json
 # the Base Sepolia rehearsal on a local fork (`make fork`), and a public launch's resumable progress
 deployments/84532-fork*.json
 deployments/*.launch.json
+
+# Vercel's local project link
+.vercel

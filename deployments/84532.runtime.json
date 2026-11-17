@@ -1,0 +1,25 @@
+{
+  "rpcUrl": "https://sepolia.base.org",
+  "defaultVault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+  "launches": [
+    {
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "token": "0xbd539bdf1864d951eda75ec5760d04ba554fc989",
+      "symbol": "CVNT",
+      "auction": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "createdAtBlock": 59849701,
+      "adopted": true,
+      "spans": [
+        [
+          59870080,
+          59870124
+        ],
+        [
+          59877894,
+          59877916
+        ]
+      ]
+    }
+  ],
+  "seededAt": 1794891882760
+}
