@@ -104,7 +104,10 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
           {[
             { big: <><CountUp to={proof.from} suffix="%" /> → <CountUp to={proof.to} from={proof.from} suffix="%" /></>, small: "of the vault's ETH bidding near the price, after one reshape" },
             { big: <CountUp to={proof.ratio} dp={1} suffix="×" />, small: "less price impact from the same sell order" },
-            { big: <><CountUp to={proof.blocked} /> of {proof.total}</>, small: "attacks from the contracts' test suite, blocked on-chain" },
+            {
+              big: <><CountUp to={proof.blocked} /> of {proof.total}</>,
+              small: live ? `attacks from the contracts' test suite, blocked; the attack lab re-runs most of them live against ${live.network}` : "attacks from the contracts' test suite, blocked on-chain",
+            },
             { big: "0", small: "functions that let a curator withdraw" },
           ].map((s, i) => (
             <Reveal key={s.small} delay={i * 0.08}>
