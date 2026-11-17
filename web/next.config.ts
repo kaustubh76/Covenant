@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 
 // Base Sepolia's records, which a hosted copy has to carry in its API routes' bundle: the deployment, its launches and
 // the live proof. The local chain's and the fork's records only ever exist on the machine running them.
-const PUBLIC_RECORDS = ["../deployments/84532.json", "../deployments/84532.runtime.json", "../deployments/84532.proof.json"];
+const PUBLIC_RECORDS = ["../deployments/84532.json", "../deployments/84532.runtime.json", "../deployments/84532.proof.json", "../deployments/84532-lp.proof.json", "../deployments/84532-manage.proof.json"];
 
 const nextConfig: NextConfig = {
   // The repository root: the API routes read deployments/ beside web/. Set explicitly, too, because lockfiles further

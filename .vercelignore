@@ -7,6 +7,8 @@
 !/deployments/84532.json
 !/deployments/84532.runtime.json
 !/deployments/84532.proof.json
+!/deployments/84532-lp.proof.json
+!/deployments/84532-manage.proof.json
 /web/node_modules
 /web/.next
 /web/.chain

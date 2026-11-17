@@ -37,6 +37,36 @@ The restorer's key is derived from the issuer's, to keep the demo self-contained
 
 <img src="docs/img/proof-feed.png" alt="The live vault's activity feed: the launch, then the proof's reshape, sell-off, restore, fees and top-up" width="560" />
 
+**An outside LP, live.** A second launch, CVLP, has a one-hour epoch so that its rules bind within the hour. On 2026-11-17 it took an outside LP's deposit, paid the LP its share of the fees and let it leave (`npm run proof -- --lp`; the record is [`deployments/84532-lp.proof.json`](deployments/84532-lp.proof.json)).
+
+| Step | Transaction | What the chain recorded |
+|---|---|---|
+| An outside LP joins, in kind | [`0xd88268b6…d599`](https://sepolia.basescan.org/tx/0xd88268b608f252dbe000545a36077a6c863786bcfd210aa7ed6aae74d5a9d599) | 0.00153 ETH and 9.67 CVLP for 9.1% of the vault's shares |
+| The market buys, then sells | [`0x20659845…ae0f`](https://sepolia.basescan.org/tx/0x20659845ed521a1a406ee0673a3f0258fa88c34592ce75dd33834a653d68ae0f), [`0x4bb83c94…144f`](https://sepolia.basescan.org/tx/0x4bb83c949f39365e70867eb22cc6579ae502c84b350b8d653bf60d88fe0e144f) | 0.001 ETH of CVLP, then 6.08 CVLP back. Each trade paid the pool's 0.3% fee |
+| Anyone collects the fees | [`0x522ffe59…f676`](https://sepolia.basescan.org/tx/0x522ffe59247a21d687c14399aef30662a9b7a6f489713b074ab55eb76f04f676) | The issuer's principal share: 0.0149 CVLP to the treasury, and 0.0000025 ETH to the bounty pool, which is topped up before the treasury is paid |
+| The LP claims its share of the fees | [`0x240e4b22…1c50`](https://sepolia.basescan.org/tx/0x240e4b22d71c185ae1a4e596348c67b04a0c52e1c7b4015db222e14dee801c50) | 0.000000245 ETH and 0.00149 CVLP, a tenth of the principal's, as its shares are a tenth of the principal's |
+| The LP leaves, in kind | [`0x981ef478…3146`](https://sepolia.basescan.org/tx/0x981ef478ac606d155a89d9721547abab944c65326b757b3bd0c1d0348fa43146) | Every share burned for 0.00153 ETH and 9.66 CVLP: its 9.1% of the vault as the trades left it |
+
+The LP's address is derived from the issuer's key, like the restorer's; its gas money and CVLP are [`0x504b000a…fa6f`](https://sepolia.basescan.org/tx/0x504b000a1df44ace002fec3773d460ab94edc57f19d29cd892d1bc9e84cffa6f) and [`0x3a4823b8…3b0a`](https://sepolia.basescan.org/tx/0x3a4823b8ca0991d4765a6f3860a9532201b8d4fe382d82182590fb33a6423b0a).
+
+**Active management, live.** The curator can reshape the launch whenever it likes. One `reshape` call cuts any of the vault's ranges and places new ones anywhere, each sized at the price the call lands on. Four checks in the same call bound it, in this order:
+
+- the price must be within the guard, G = 300 ticks (about 3%), of its 30-minute TWAP (`PriceGuard`), so nobody reshapes into a spike;
+- the share of the vault's value it cuts must fit the Pace allowance, M per epoch and refilling (`PaceExceeded`);
+- no bid may sit above the Anchor ceiling, G above the Anchor (`BidAboveCeiling`). The Anchor follows the TWAP down at once but climbs at most B per epoch, so a pump cannot pull the vault's quote up to be sold into ([why](#1-the-pump-ratchet-and-the-anchor-that-closes-it));
+- Support must still hold (`SupportBroken`), as the soft rug above showed.
+
+On 2026-11-17, in CVLP's first enforced epoch, the curator ran into the middle two on chain, with an honest re-centre settling between them (`npm run proof -- --manage`; the record is [`deployments/84532-manage.proof.json`](deployments/84532-manage.proof.json)).
+
+| Step | Transaction | What the chain recorded |
+|---|---|---|
+| The market pumps the price | [`0xb6e7ea6d…15b6`](https://sepolia.basescan.org/tx/0xb6e7ea6ddb93b3309703ef43eaed6db1b28f6ea259c4c979c51c4d5f3af615b6) | +13.7% in one trade, from 0.0001584 to 0.0001802 ETH, over the Anchor ceiling at 0.0001632. Nobody traded for the next 26 minutes, until the TWAP had followed the price to within the guard |
+| The curator chases the pump with a bid up to the price | [`0x60ab2404…aeb8`](https://sepolia.basescan.org/tx/0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8) ([decoded](https://base-sepolia.blockscout.com/tx/0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8)) | **Reverted**: `BidAboveCeiling(-86280, -86542)`. The bid would have reached 0.0001791 ETH; the ceiling was 0.0001745 |
+| The curator re-centres its support, capped at the ceiling | [`0x2cdb1cb4…4c39`](https://sepolia.basescan.org/tx/0x2cdb1cb4e3053ba15f85c1aef48d29d9d366bf9a532453d4fd2c083f1d9e4c39) | Settled. 23.9% of the vault's value moved into bids from 0.0001532 to 0.0001738 ETH. Support 66.0%. Pace left this epoch: 26.1% of the vault |
+| The curator tries to move everything at once | [`0x3ad94a43…88f5`](https://sepolia.basescan.org/tx/0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5) ([decoded](https://base-sepolia.blockscout.com/tx/0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5)) | **Reverted**: `PaceExceeded(1000000000, 264622709)`. It asked to move 100% of the vault's value; 26.5% was left this epoch |
+
+In those 26 minutes the ceiling rose 6.9%, while the pump had lifted the price 13.7% in one trade: the Anchor climbs at most B per epoch, whatever the price does. A bid that follows a pump stays refused until the Anchor catches up; for a pump this size that is over half an hour on CVLP's one-hour epoch, or about 15 hours on the standard one-day epoch. The pump came from the issuer's address, standing in for the market, as in the CVNT proof. Each refused call was simulated first and then sent with a fixed gas limit, so the refusal is the chain's own.
+
 **The contracts** sit beside Uniswap's own launch stack on Base Sepolia and are verified on Sourcify; Blockscout shows the source and decodes every call and revert ([Deployment](#deployment)). **On your machine**, `make demo` runs everything on a local chain, including the attack lab's 20 attacks and the spec's 10-step demo as real transactions ([Demo app](#demo-app)).
 
 ---
@@ -177,7 +207,7 @@ CI (`.github/workflows/ci.yml`) runs the formatting check, the size gate and `fo
 `web/` is a Next.js app that runs on these contracts. One command starts everything:
 
 ```bash
-make demo        # Anvil, Uniswap's launch stack and Covenant, a seeded launch, and the app on http://localhost:3000
+make demo        # Anvil, Uniswap's launch stack and Covenant, a seeded launch, and the app on http://localhost:3000/?net=local
 ```
 
 It needs Foundry (`forge`, `anvil`) and Node 20 or newer. The bring-up takes a few seconds:
@@ -201,7 +231,7 @@ The same app runs on Base Sepolia, where Covenant is live (see [Deployment](#dep
 
 ```bash
 make web-test    # unit tests, then the demo and attack lab against a dedicated chain
-cd web && npm run test:fork   # the public-chain code path against a fresh fork of Base Sepolia (needs network)
+cd web && npm run test:fork   # the public-chain code path, and all three proof runners, on fresh forks of Base Sepolia (needs network)
 ```
 
 ### Repository
@@ -236,7 +266,7 @@ make verify-sepolia   # publish the source on Sourcify, no API key needed (forge
 make proof-sepolia    # the live proof below, about half an hour; simulated first (cd web && npm run proof -- --check)
 ```
 
-- **The rehearsal.** `make fork` runs the whole path against Uniswap's deployed contracts without sending anything to the live chain. On the fork, support goes from 722 to 5,276 bps (4,000 needed), and all three bids are refunded or claimed. The app's public-chain mode is tested against it with `npm run test:fork` in `web/` (9 tests).
+- **The rehearsal.** `make fork` runs the whole path against Uniswap's deployed contracts without sending anything to the live chain. On the fork, support goes from 722 to 5,276 bps (4,000 needed), and all three bids are refunded or claimed. The app's public-chain mode and all three proof runners (the live proof, the LP proof, the management proof) are tested against it with `npm run test:fork` in `web/` (19 tests).
 - **The deploy.** Broadcast on 2026-11-17 from `0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1`: six transactions in blocks 59,849,420 to 59,849,448, 21.5M gas, about 0.00008 ETH. The hook goes to a CREATE2 address mined for its three permission flags, and the script checks its flags, its initializer and the factory wiring before finishing. `deployments/84532.json` holds the full manifest the app reads.
 - **The testnet launch.** It is the suite's launch with every price and bid divided by 2^13. It sells a fixed-supply `LaunchToken` (`script/tokens/`), so nobody can mint tokens and drain the vault's bids. It sends about 0.24 ETH of bids, and the outbid ETH comes back at the end. On Base Sepolia it took 71 seconds, from the token to the last claim: blocks come every 200 ms there, so the 128-block auction lasted 26 seconds. Support went from 722 to 5,276 bps (4,000 needed) across 5 ranges, all three bids were exited and claimed, and the signer ended 0.0206 ETH lighter, deploy included: 0.0155 ETH is the vault's ETH in the pool (issuer principal, locked for 90 days), 0.005 ETH funds the keepers' bounty pool, and gas came to about 0.0001 ETH. Any signer account that has code is refused: on Base Sepolia, Anvil's well-known dev accounts carry EIP-7702 delegations to sweepers.
 
@@ -260,7 +290,16 @@ The first launch on it, made by `make launch-sepolia`. The deployer is its issue
 | CCA auction | [`0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97`](https://sepolia.basescan.org/address/0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97) |
 | Pool id | `0x2b98cfd9f5acea3e2bcbec77cc1bd6a29d319ca7c6d9ab58d644424feb9e2ad5` |
 
-Every contract above is verified on [Sourcify](https://repo.sourcify.dev/84532/0x1ae2FdAED268851B72268E9369651e901ee4B040) (`make verify-sepolia`), including the linked `CovenantLogic` library at `0x36284778f92404a633febdad6423d7e4a4e83570` and the CVNT token. [Blockscout](https://base-sepolia.blockscout.com/address/0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc) reads the source from there and decodes every call and revert; Basescan does not import Sourcify, so it shows bytecode only.
+A second launch, CVLP, made the same way with the contract's minimum one-hour epoch so that its rules bind within the hour (`npm run launch -- --epoch 3600 --no-default`). The LP and management proofs ran on it:
+
+| | |
+|---|---|
+| Vault (CVLP/ETH, 0.30% pool) | [`0xaF846Eb3396CC95Ef073e860D55a52d043644095`](https://sepolia.basescan.org/address/0xaF846Eb3396CC95Ef073e860D55a52d043644095) |
+| Token (CVLP, fixed supply) | [`0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9`](https://sepolia.basescan.org/address/0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9) |
+| CCA auction | [`0xb345FF399a44d2D029e16C5D51373A7B724a9f1C`](https://sepolia.basescan.org/address/0xb345FF399a44d2D029e16C5D51373A7B724a9f1C) |
+| Pool id | `0xbf487dae80be353ba88fb5d91a9e384dbb7e9e4b181f725f8fe46ed3714e7238` |
+
+The contracts in the first table are verified on [Sourcify](https://repo.sourcify.dev/84532/0x1ae2FdAED268851B72268E9369651e901ee4B040) (`make verify-sepolia`), as are the linked `CovenantLogic` library at `0x36284778f92404a633febdad6423d7e4a4e83570` and the CVNT token. Each vault is a minimal clone of the verified implementation, so [Blockscout](https://base-sepolia.blockscout.com/address/0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc) shows its source as well and decodes every call and revert. Basescan does not import Sourcify, so it shows bytecode only.
 
 The app reads all of this with no wallet, at **https://covenant-uhi11.vercel.app** or locally (`cd web && npm run dev`, then http://localhost:3000/vault?net=base-sepolia). Connect a wallet to act.
 

@@ -19,7 +19,8 @@ It needs Foundry (`forge`, `anvil`) and Node 20 or newer. In a few seconds it do
    pinned sources (`script/LocalStack.s.sol`).
 3. Runs one real launch with the app's own launch code: vault, CCA auction, bids, migration, adoption and the
    demand-shaped seed. It then funds a bounty and takes a baseline snapshot.
-4. Starts the app on http://localhost:3000.
+4. Starts the app on http://localhost:3000/?net=local. Without `?net=`, a browser that has not picked a network opens
+   the live Base Sepolia deployment, if it answers.
 
 Ctrl-C stops both. Inside `web/` the same pieces run separately: `npm run chain` starts the chain, `npm run dev`
 starts the app.
@@ -68,7 +69,7 @@ anyway, so it is mined as a failed transaction with a hash.
 ```bash
 npm test            # unit tests: price maths, error decoding, launch helpers, terms, networks, log scans, RPC retries
 npm run test:chain  # the guided demo and the attack lab against a dedicated chain on :8546
-npm run test:fork   # the public-chain code path against a fresh fork of Base Sepolia on :8550 (needs network)
+npm run test:fork   # the public-chain code path (:8550), and the three proof runners on forks of their own (:8551–8552); needs network
 npm run lint && npm run build
 ```
 
@@ -103,7 +104,7 @@ The local-chain tools need a clock that can jump: time travel, the attack lab an
 
 - **Logs.** Public RPCs cap a single log scan (Base Sepolia's at 200 blocks). Discovery and history read a bounded recent window in 200-block spans, then only new blocks (`src/chain/logs.ts`). Launches older than that window come from `deployments/84532.runtime.json`, which the launch script writes. Their first 600 blocks, and any spans the runtime record lists (the live proof's), are read once, so the vault's own story stays in its activity feed.
 - **The launch runner** (`scripts/launch-public.ts`, behind `make launch-sepolia`) is resumable. Every step is recorded in `deployments/84532.launch.json` as it lands and checked against the chain before it runs again.
-- **The live proof** (`scripts/proof-public.ts`, behind `make proof-sepolia`) runs Covenant's rules as real transactions against the CVNT vault and records each in `deployments/84532.proof.json`. Before it sends anything it simulates the whole plan, including the crash: `src/chain/crashsim.ts` finds the smallest sell-off that strands support once it has held for the TWAP window, with one `eth_simulateV1` of two blocks (the sale, then the vault a window later), so no snapshots are needed. `npm run proof -- --rehearse` runs it on a fork of Base Sepolia as it is now; `--check` only simulates.
+- **The live proof** (`scripts/proof-public.ts`, behind `make proof-sepolia`) runs Covenant's rules as real transactions against the CVNT vault and records each in `deployments/84532.proof.json`. Before it sends anything it simulates the whole plan, including the crash: `src/chain/crashsim.ts` finds the smallest sell-off that strands support once it has held for the TWAP window, with one `eth_simulateV1` of two blocks (the sale, then the vault a window later), so no snapshots are needed. `npm run proof -- --rehearse` runs it on a fork of Base Sepolia as it is now; `--check` only simulates. `--lp` runs the LP proof instead (`scripts/lib/lpproof.ts`): an outside LP joins in kind, earns its share of the fees and leaves in kind, recorded in `deployments/84532-lp.proof.json`. Deposits stay closed for a vault's first epoch, so it runs against CVLP, a second launch made with the contract's minimum one-hour epoch (`npm run launch -- --epoch 3600 --no-default`). `--manage` runs the management proof (`scripts/lib/manageproof.ts`): a pump; the curator's chase above the Anchor, refused with `BidAboveCeiling`; a re-centre capped at the ceiling, which settles within Pace; and moving everything in the same epoch, refused with `PaceExceeded`. Recorded in `deployments/84532-manage.proof.json`. Every runner saves each transaction's hash the moment it is broadcast (`scripts/lib/runkit.ts`), so a rerun after a crash never sends a step twice.
 - **The RPC.** The browser uses the public endpoint unless `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` names another. `BASE_SEPOLIA_RPC_URL` in `.env` is for the scripts and is never sent to the browser. The public endpoint answers more than 25 calls a second with error -32007 or HTTP 429; the app backs off and retries both (`patient` in `src/chain/client.ts`). For heavy use, set your own endpoint.
 
 ### Hosted
