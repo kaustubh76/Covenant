@@ -66,8 +66,9 @@ anyway, so it is mined as a failed transaction with a hash.
 ## Test
 
 ```bash
-npm test            # unit tests: price maths, error decoding, launch helpers, terms
+npm test            # unit tests: price maths, error decoding, launch helpers, terms, networks, log scans, RPC retries
 npm run test:chain  # the guided demo and the attack lab against a dedicated chain on :8546
+npm run test:fork   # the public-chain code path against a fresh fork of Base Sepolia on :8550 (needs network)
 npm run lint && npm run build
 ```
 
@@ -79,6 +80,42 @@ npm run lint && npm run build
 
 ## Base Sepolia
 
-The data layer is chain-agnostic. Reads go through the lens, and each network has capabilities: only the local chain
-has time travel, sandboxes and dev keys. Pointing the app at Base Sepolia needs a broadcast deployment
-(`deployments/84532.json`) and a browser-wallet signer in `src/chain/client.ts`.
+The app reads and signs on three networks, picked at the top of every page (a `?net=` link opens one directly):
+
+| Network | Signs with | Started by |
+|---|---|---|
+| Local chain | Anvil's dev keys, one per role | `make demo` or `npm run chain` |
+| Base Sepolia | your browser wallet (EIP-6963; MetaMask, Rabby, Coinbase Wallet) | already deployed and launched (below) |
+| Base Sepolia fork | your wallet, on a local fork of the live chain | `make fork` |
+
+Covenant is live on Base Sepolia. `deployments/84532.json` holds its contracts and `deployments/84532.runtime.json`
+its first launch, the CVNT vault, so http://localhost:3000/vault?net=base-sepolia opens that vault with no setup and no
+wallet. The root README lists the addresses. A new deployment is `make deploy-sepolia`, then `make launch-sepolia`.
+
+On Base Sepolia and its fork, there are three rules:
+- **Your wallet signs everything.** The role switcher shows which roles your address really holds.
+- **A call that would revert is never sent.** Its decoded error is shown instead, so a refusal costs no gas.
+- **An action your wallet cannot take is simulated, not sent.** A reshape when you are not the curator runs as the vault's real curator, so the verdict is exact; only the curator's wallet can send it.
+
+The local-chain tools need a clock that can jump: time travel, the attack lab and the guided demo. On a public chain they show the recorded runs and offer to switch. Crashes are the exception: on a public chain, Keep simulates the smallest sell-off that would strand support, the sale in one simulated block and the vault read back a TWAP window later (`src/chain/crashsim.ts`). Nothing is sent.
+
+<img src="../docs/img/keep-crash-sim.png" alt="Keep's crash simulator on Base Sepolia: the sell-off, support a window later, and a stranger's restore" width="380" />
+
+- **Logs.** Public RPCs cap a single log scan (Base Sepolia's at 200 blocks). Discovery and history read a bounded recent window in 200-block spans, then only new blocks (`src/chain/logs.ts`). Launches older than that window come from `deployments/84532.runtime.json`, which the launch script writes. Their first 600 blocks, and any spans the runtime record lists (the live proof's), are read once, so the vault's own story stays in its activity feed.
+- **The launch runner** (`scripts/launch-public.ts`, behind `make launch-sepolia`) is resumable. Every step is recorded in `deployments/84532.launch.json` as it lands and checked against the chain before it runs again.
+- **The live proof** (`scripts/proof-public.ts`, behind `make proof-sepolia`) runs Covenant's rules as real transactions against the CVNT vault and records each in `deployments/84532.proof.json`. Before it sends anything it simulates the whole plan, including the crash: `src/chain/crashsim.ts` finds the smallest sell-off that strands support once it has held for the TWAP window, with one `eth_simulateV1` of two blocks (the sale, then the vault a window later), so no snapshots are needed. `npm run proof -- --rehearse` runs it on a fork of Base Sepolia as it is now; `--check` only simulates.
+- **The RPC.** The browser uses the public endpoint unless `NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL` names another. `BASE_SEPOLIA_RPC_URL` in `.env` is for the scripts and is never sent to the browser. The public endpoint answers more than 25 calls a second with error -32007 or HTTP 429; the app backs off and retries both (`patient` in `src/chain/client.ts`). For heavy use, set your own endpoint.
+
+### Hosted
+
+The app is live at **https://covenant-uhi11.vercel.app**, reading Base Sepolia. Without a wallet it shows everything,
+and Curate's pre-flight still gives the contract's exact verdict. Connect a wallet to act.
+
+- **One network.** `COVENANT_NETWORKS=base-sepolia` (a server env, comma-separated) limits the networks the server
+  offers. Unset, it offers all three. A link to a network it does not offer opens the first one it does.
+- **Records in the bundle.** The API routes read `deployments/` beside `web/`, so `outputFileTracingRoot` is the
+  repository root and Next.js traces Base Sepolia's records into the functions.
+- **What is uploaded.** The repository-root `.vercelignore` lets through `web/` and `deployments/84532*.json` only:
+  never `.env`, `lib/`, `out/` or `broadcast/`.
+- **Deploying.** From the repository root, with the Vercel project's root directory set to `web`:
+  `vercel deploy --prod`.

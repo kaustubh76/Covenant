@@ -2,12 +2,14 @@
 
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ChevronDown, Loader2, Moon, RotateCcw, Sun } from "lucide-react";
+import { ChevronDown, Loader2, Moon, RotateCcw, Sun, Wallet } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { parseEther } from "viem";
+import { shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
+import { type NetworkKey, explorerTx } from "@/chain/network";
 import { pushTo, spotOf, swap } from "@/chain/market";
 import { priceAt, ticksToPct } from "@/chain/price";
 import { advance } from "@/chain/time";
@@ -58,9 +60,23 @@ function ThemeToggle() {
   );
 }
 
+/**
+ * Which party the pages act as. Locally each role signs with its own dev account. On a public chain the connected wallet
+ * signs everything, so the list says which roles are really yours: anyone can keep or provide, but only the vault's
+ * issuer and curator can act as them (the pages still preview what they could do).
+ */
 function RoleSwitcher() {
   const role = useChain((s) => s.role);
   const setRole = useChain((s) => s.setRole);
+  const net = useChain((s) => s.net);
+  const view = useChain((s) => s.view);
+  const wallet = useChain((s) => s.wallet);
+  const mine = (r: Role) => {
+    if (!net || net.caps.devChain) return null;
+    const holder = r === "issuer" ? view?.people.issuer : r === "curator" ? view?.people.curator : null;
+    if (!holder) return "open to anyone";
+    return wallet && holder.toLowerCase() === wallet.address.toLowerCase() ? "your wallet" : `${shortAddress(holder)} only`;
+  };
   return (
     <label className="relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted">
       <span className="hidden text-faint sm:inline">Acting as</span>
@@ -69,7 +85,7 @@ function RoleSwitcher() {
       <select aria-label="Acting as" value={role} onChange={(e) => setRole(e.target.value as Role)} className="absolute inset-0 cursor-pointer opacity-0">
         {ROLES.map((r) => (
           <option key={r.key} value={r.key}>
-            {r.name} — {r.does}
+            {r.name} — {mine(r.key) ?? r.does}
           </option>
         ))}
       </select>
@@ -77,12 +93,80 @@ function RoleSwitcher() {
   );
 }
 
-/** Where the app's numbers come from right now, and what it is doing. */
+/** Which chain the app reads and signs on: the local chain, Base Sepolia, or the rehearsal fork of it. */
+function NetworkSwitcher() {
+  const netKey = useChain((s) => s.netKey);
+  const networks = useChain((s) => s.networks);
+  const setNetwork = useChain((s) => s.setNetwork);
+  const loadNetworks = useChain((s) => s.loadNetworks);
+  useEffect(() => {
+    void loadNetworks();
+  }, [loadNetworks]);
+  const current = networks.find((n) => n.key === netKey);
+  return (
+    <label className="relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted" title={current?.reason}>
+      <Dot tone={current?.state === "ready" ? "pass" : current ? "breach" : "neutral"} />
+      <span className="max-w-[130px] truncate font-medium">{current?.name ?? "Network"}</span>
+      <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-faint" />
+      <select
+        aria-label="Network"
+        value={netKey ?? "local"}
+        onFocus={() => void loadNetworks()}
+        onChange={(e) => void setNetwork(e.target.value as NetworkKey)}
+        className="absolute inset-0 cursor-pointer opacity-0"
+      >
+        {networks.map((n) => (
+          <option key={n.key} value={n.key}>
+            {n.name} — {n.state === "ready" ? "live" : "offline"}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** The browser wallet that signs on a public chain: connect it, put it on the right chain, or let it go. */
+function WalletControl() {
+  const net = useChain((s) => s.net);
+  const netKey = useChain((s) => s.netKey);
+  const wallet = useChain((s) => s.wallet);
+  const wallets = useChain((s) => s.wallets);
+  const walletError = useChain((s) => s.walletError);
+  const connectWallet = useChain((s) => s.connectWallet);
+  const disconnectWallet = useChain((s) => s.disconnectWallet);
+  const switchWalletChain = useChain((s) => s.switchWalletChain);
+  if (!netKey || netKey === "local") return null;
+  if (!wallet) {
+    return (
+      <Button size="sm" variant="secondary" onClick={() => void connectWallet(wallets[0]?.id)} title={walletError ?? (wallets.length ? `Connect ${wallets.map((w) => w.name).join(" or ")}` : "No browser wallet found")}>
+        <Wallet size={14} /> Connect wallet
+      </Button>
+    );
+  }
+  if (net && wallet.chainId !== net.chainId) {
+    return (
+      <Button size="sm" variant="danger" onClick={() => void switchWalletChain()} title={`${wallet.name} is on chain ${wallet.chainId}`}>
+        Switch to {net.name}
+      </Button>
+    );
+  }
+  return (
+    <button
+      onClick={disconnectWallet}
+      title={`${wallet.name} · ${wallet.address}. Click to disconnect.`}
+      className="num flex h-9 items-center gap-2 rounded-md border border-line-strong px-3 text-[13px] text-ink hover:border-muted"
+    >
+      <Dot tone="pass" />
+      {shortAddress(wallet.address)}
+    </button>
+  );
+}
+
+/** What the app is doing right now, and when it has no chain, why. Live is the switcher's green dot beside it. */
 function ChainStatus() {
   const status = useChain((s) => s.status);
   const reason = useChain((s) => s.reason);
   const busy = useChain((s) => s.busy);
-  const net = useChain((s) => s.net);
   if (busy) {
     return (
       <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex" aria-live="polite">
@@ -91,11 +175,13 @@ function ChainStatus() {
       </span>
     );
   }
+  if (status === "ready") return null;
+  const tone = status === "offline" ? "breach" : "neutral";
   return (
-    <span className="hidden sm:inline-flex" title={status === "ready" ? `${net?.rpcUrl}` : (reason ?? undefined)}>
-      <Tag tone={status === "ready" ? "pass" : status === "offline" ? "breach" : "neutral"}>
-        <Dot tone={status === "ready" ? "pass" : status === "offline" ? "breach" : "neutral"} />
-        {status === "ready" ? `Live · ${net?.name ?? "chain"}` : status === "offline" ? "Offline" : "Connecting"}
+    <span className="hidden sm:inline-flex" title={reason ?? undefined}>
+      <Tag tone={tone}>
+        <Dot tone={tone} />
+        {status === "offline" ? "Offline" : "Connecting"}
       </Tag>
     </span>
   );
@@ -133,6 +219,8 @@ function TopBar() {
         </nav>
         <div className="ml-auto flex items-center gap-2">
           <ChainStatus />
+          <NetworkSwitcher />
+          <WalletControl />
           <RoleSwitcher />
           <ThemeToggle />
         </div>
@@ -164,6 +252,7 @@ function LiveDock() {
   const run = useChain((s) => s.run);
   const reset = useChain((s) => s.reset);
   const busy = useChain((s) => s.busy);
+  const dev = useChain((s) => s.net?.caps.devChain ?? true);
   if (!view) return null;
   const sym = view.tokenSymbol;
   const toMidVest = view.lock.unlockStartsAt + (view.lock.fullyVestedAt - view.lock.unlockStartsAt) / 2 - view.time;
@@ -202,7 +291,8 @@ function LiveDock() {
           </span>
         </div>
         <div className="h-5 w-px shrink-0 bg-line" />
-        <div className="flex shrink-0 items-center gap-1.5">
+        {/* Only the local chain's clock can be moved; a public chain's runs on its own. */}
+        <div className={clsx("flex shrink-0 items-center gap-1.5", !dev && "hidden")}>
           <span className="eyebrow mr-1">Clock</span>
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("1 hour passes", 3600)}>
             +1h
@@ -214,7 +304,7 @@ function LiveDock() {
             To mid-vest
           </Button>
         </div>
-        <div className="h-5 w-px shrink-0 bg-line" />
+        <div className={clsx("h-5 w-px shrink-0 bg-line", !dev && "hidden")} />
         <div className="flex shrink-0 items-center gap-1.5">
           <span className="eyebrow mr-1">Market</span>
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(5)}>
@@ -230,7 +320,7 @@ function LiveDock() {
             Buy +25%
           </Button>
         </div>
-        <div className="ml-auto shrink-0">
+        <div className={clsx("ml-auto shrink-0", !dev && "hidden")}>
           <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void reset()} title="Revert the chain to the freshly seeded launch">
             <RotateCcw size={13} /> Reset
           </Button>
@@ -243,13 +333,14 @@ function LiveDock() {
 function Toast() {
   const toast = useChain((s) => s.toast);
   const dismiss = useChain((s) => s.dismissToast);
+  const net = useChain((s) => s.net);
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(dismiss, toast.ok ? 3200 : 7000);
     return () => clearTimeout(t);
   }, [toast, dismiss]);
   const item = toast
-    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash }
+    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash, notSent: toast.error?.name === "NotSent" }
     : null;
   return (
     <div className="pointer-events-none fixed bottom-16 right-4 z-50 w-[min(380px,calc(100vw-2rem))]" aria-live="polite">
@@ -265,17 +356,25 @@ function Toast() {
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-ink">{item.title}</span>
-              <Tag tone={item.ok ? "pass" : "breach"}>{item.ok ? "Settled" : "Reverted"}</Tag>
+              {/* "Not sent": the pre-flight passed, but the connected wallet cannot sign for this role */}
+              <Tag tone={item.ok ? "pass" : item.notSent ? "warn" : "breach"}>{item.ok ? "Settled" : item.notSent ? "Not sent" : "Reverted"}</Tag>
             </div>
             {item.ok ? (
               item.detail && <p className="mt-1.5 text-[13px] text-muted">{item.detail}</p>
             ) : (
               <>
-                {item.signature && <p className="num mt-2 break-words text-[13px] text-breach">{item.signature}</p>}
+                {item.signature && !item.notSent && <p className="num mt-2 break-words text-[13px] text-breach">{item.signature}</p>}
                 {item.reason && <p className="mt-1 text-[13px] leading-relaxed text-muted">{item.reason}</p>}
               </>
             )}
-            {item.hash && <p className="num mt-2 truncate text-[11px] text-faint">tx {item.hash}</p>}
+            {item.hash &&
+              (net && explorerTx(net, item.hash) ? (
+                <a href={explorerTx(net, item.hash)} target="_blank" rel="noreferrer" className="num mt-2 block truncate text-[11px] text-faint underline-offset-2 hover:text-ink hover:underline">
+                  tx {item.hash} ↗
+                </a>
+              ) : (
+                <p className="num mt-2 truncate text-[11px] text-faint">tx {item.hash}</p>
+              ))}
           </motion.div>
         )}
       </AnimatePresence>

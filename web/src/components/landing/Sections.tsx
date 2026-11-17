@@ -11,7 +11,7 @@ import { ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/Shap
 import { BeatList, RevertCard } from "@/components/covenant/Verdict";
 import { Button, Tag } from "@/components/ui";
 import { type RecordedError, type RecordedView, recorded } from "@/fixtures";
-import { amt, pct } from "@/lib/format";
+import { amt, axisPrice, pct } from "@/lib/format";
 import { RULES } from "@/lib/rules";
 import { Reveal } from "./motion";
 
@@ -163,7 +163,7 @@ function useChapters(): { chapters: Chapter[]; domain: [number, number] } {
         ),
         world: s.dumped,
         ghost: s.shaped,
-        stat: { label: "Price after", value: `${priceAt(s.dumped.spot).toFixed(3)} ETH`, tone: "neutral" },
+        stat: { label: "Price after", value: `${axisPrice(priceAt(s.dumped.spot))} ETH`, tone: "neutral" },
       },
       {
         kicker: "Betrayal",

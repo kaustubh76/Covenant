@@ -1,14 +1,16 @@
 "use client";
 
-import type { Address } from "viem";
+import { type Address, custom } from "viem";
 import { create } from "zustand";
 import { type Actor, actorOf } from "@/chain/accounts";
 import type { Beat, BeatInput } from "@/chain/beat";
 import { type ChainCtx, createChainCtx } from "@/chain/client";
 import { discoverLaunches } from "@/chain/discover";
 import { readHistory } from "@/chain/history";
-import type { LaunchRecord, Network } from "@/chain/network";
+import { type LaunchRecord, type Network, type NetworkKey, isNetworkKey } from "@/chain/network";
+import { type Party, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
+import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
 
 export type Role = "holder" | "issuer" | "curator" | "keeper" | "lp";
 
@@ -27,7 +29,43 @@ export function actorFor(role: Role, view: VaultView | null): Actor {
   return role;
 }
 
+/**
+ * Who sends for a role. Locally, the dev account behind it (actorFor). On a public chain, the vault's issuer or curator
+ * by address: a page's preview then runs as them, and only their own wallet can send. Every other role is open to
+ * anyone, so it is the connected wallet.
+ */
+export function partyFor(role: Role, view: VaultView | null, net: Network | null): Party {
+  if (net && !net.caps.devChain && view) {
+    if (role === "curator") return view.people.curator;
+    if (role === "issuer") return view.people.issuer;
+  }
+  return actorFor(role, view);
+}
+
+/** On a public chain, whether the connected wallet holds `party`'s place; always true locally. */
+export function canSendAs(party: Party, net: Network | null, wallet: WalletState | null): boolean {
+  if (!net || net.caps.devChain) return true;
+  if (!wallet) return false;
+  return !isAddressParty(party) || party.toLowerCase() === wallet.address.toLowerCase();
+}
+
 export type Status = "connecting" | "offline" | "ready";
+
+/** A network in the switcher: its name and whether it is reachable now. */
+export interface NetworkSummary {
+  key: NetworkKey;
+  name: string;
+  state: "ready" | "offline";
+  reason?: string;
+}
+
+/** The browser wallet that signs on a public chain. */
+export interface WalletState {
+  id: string;
+  name: string;
+  address: Address;
+  chainId: number;
+}
 
 export interface Recorder {
   /** Add beats to the activity log as they happen. The last one can raise the toast. */
@@ -54,9 +92,22 @@ interface ChainState {
   toast: Beat | null;
   role: Role;
   busy: string | null;
+  /** The network the app is on, or connecting to. */
+  netKey: NetworkKey | null;
+  /** Every network the app knows, with whether each is reachable: the switcher's list. */
+  networks: NetworkSummary[];
+  /** Browser wallets on the page, and the one connected. Only public chains sign with a wallet. */
+  wallets: DiscoveredWallet[];
+  wallet: WalletState | null;
+  walletError: string | null;
   connect(): Promise<void>;
   refresh(): Promise<void>;
   setRole(role: Role): void;
+  setNetwork(key: NetworkKey): Promise<void>;
+  loadNetworks(): Promise<void>;
+  connectWallet(id?: string): Promise<void>;
+  disconnectWallet(): void;
+  switchWalletChain(): Promise<void>;
   selectVault(vault: Address): Promise<void>;
   run<T>(label: string, job: (ctx: ChainCtx, rec: Recorder) => Promise<T>, opts?: RunOptions): Promise<T | undefined>;
   record(beats: BeatInput | BeatInput[], opts?: { toast?: boolean }): void;
@@ -64,7 +115,12 @@ interface ChainState {
   reset(): Promise<boolean>;
 }
 
-const VAULT_KEY = "covenant.vault";
+const NET_KEY = "covenant.net";
+const WALLET_KEY = "covenant.wallet";
+// The local chain keeps the key it always had, so an existing selection survives.
+const vaultKey = (net: NetworkKey) => (net === "local" ? "covenant.vault" : `covenant.vault.${net}`);
+/** Public chains: the launches this browser has seen, so one older than the recent log window is still listed. */
+const launchesKey = (net: NetworkKey) => `covenant.launches.${net}`;
 const LOG_LIMIT = 200;
 
 let seq = 0;
@@ -73,21 +129,62 @@ let quiet = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let unwatch: (() => void) | null = null;
 let retry: ReturnType<typeof setTimeout> | null = null;
+let unwallets: (() => void) | null = null;
+let unwallet: (() => void) | null = null;
+let restoring = false;
 
 const message = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
-function remember(vault: Address) {
+function load(key: string): string | null {
   try {
-    localStorage.setItem(VAULT_KEY, vault);
+    return localStorage.getItem(key);
+  } catch {
+    return null; // private mode
+  }
+}
+/** The launches remembered for `net`, as far as they still look like launch records; discovery re-checks each. */
+function rememberedLaunches(net: Network): LaunchRecord[] {
+  if (net.caps.devChain) return [];
+  try {
+    const all = JSON.parse(load(launchesKey(net.key)) ?? "[]") as unknown;
+    const addr = (x: unknown) => typeof x === "string" && /^0x[0-9a-fA-F]{40}$/.test(x);
+    return Array.isArray(all) ? all.filter((l) => l && addr(l.vault) && addr(l.token) && addr(l.auction) && Number.isFinite(l.createdAtBlock)) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Remember the adopted launches not in the runtime records, the latest 20, writing only when that set changes. */
+function rememberLaunches(net: Network, launches: LaunchRecord[]) {
+  if (net.caps.devChain) return;
+  const recorded = new Set((net.runtime?.launches ?? []).map((l) => l.vault.toLowerCase()));
+  const mine = launches.filter((l) => l.adopted && !recorded.has(l.vault.toLowerCase())).slice(-20);
+  const value = mine.length ? JSON.stringify(mine) : null;
+  if (value !== load(launchesKey(net.key))) save(launchesKey(net.key), value);
+}
+
+function save(key: string, value: string | null) {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
   } catch {
     /* private mode */
   }
 }
-function remembered(): Address | null {
-  try {
-    return localStorage.getItem(VAULT_KEY) as Address | null;
-  } catch {
-    return null;
-  }
+
+/** The network to open: ?net= first (a shared link), then the one last chosen in this browser. */
+function chosenNetwork(): NetworkKey | null {
+  if (typeof window === "undefined") return null;
+  const q = new URLSearchParams(window.location.search).get("net");
+  if (isNetworkKey(q)) return q;
+  const saved = load(NET_KEY);
+  return isNetworkKey(saved) ? saved : null;
+}
+
+/** The chain context for `net`: dev keys locally; on a public chain, the wallet signs once it is on the right chain. */
+function ctxFor(net: Network, wallet: WalletState | null, wallets: DiscoveredWallet[]): ChainCtx {
+  if (net.caps.devChain || !wallet || wallet.chainId !== net.chainId) return createChainCtx(net);
+  const provider = wallets.find((w) => w.id === wallet.id)?.provider;
+  return provider ? createChainCtx(net, { account: wallet.address, transport: custom(provider) }) : createChainCtx(net);
 }
 
 export const useChain = create<ChainState>((set, get) => ({
@@ -103,38 +200,133 @@ export const useChain = create<ChainState>((set, get) => ({
   toast: null,
   role: "holder",
   busy: null,
+  netKey: null,
+  networks: [],
+  wallets: [],
+  wallet: null,
+  walletError: null,
 
   async connect() {
     if (retry) clearTimeout(retry);
-    const res = await fetch("/api/chain", { cache: "no-store" })
-      .then((r) => r.json() as Promise<{ state: "ready"; network: Network } | { state: "offline"; reason: string }>)
+    if (!unwallets) {
+      unwallets = discoverWallets((wallets) => {
+        set({ wallets });
+        void restoreWallet();
+      });
+    }
+    let key = get().netKey ?? chosenNetwork();
+    // A network opened from a ?net= link is the one this browser is now on, after a reload or on another page too.
+    if (key && !get().netKey) save(NET_KEY, key);
+    if (!key) {
+      // Nothing chosen yet: the first network that is up, the local chain first.
+      await get().loadNetworks();
+      key = get().networks.find((n) => n.state === "ready")?.key ?? "local";
+    }
+    set({ netKey: key });
+    const res = await fetch(`/api/chain?net=${key}`, { cache: "no-store" })
+      .then((r) => r.json() as Promise<{ state: "ready"; network: Network } | { state: "offline"; reason: string; unavailable?: boolean }>)
       .catch(() => ({ state: "offline" as const, reason: "The app server did not answer." }));
+    if (get().netKey !== key) return; // switched networks while this was in flight
+    if (res.state !== "ready" && "unavailable" in res && res.unavailable) {
+      // This server does not offer that network (a hosted copy offers only Base Sepolia, say), so a stale link or saved
+      // choice opens the first network it does offer instead of waiting for one that can never come up.
+      await get().loadNetworks();
+      const fallback = get().networks.find((n) => n.state === "ready")?.key;
+      if (fallback && fallback !== key) return get().setNetwork(fallback);
+    }
     if (res.state !== "ready") {
-      set({ status: "offline", reason: res.reason, ctx: null, view: null });
+      set({ status: "offline", reason: res.reason, net: null, ctx: null, view: null });
       retry = setTimeout(() => void get().connect(), 3000);
       return;
     }
     const net = res.network;
-    const ctx = createChainCtx(net);
-    const launches = await discoverLaunches(ctx).catch(() => [] as LaunchRecord[]);
-    const saved = remembered();
-    const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? saved : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
+    const ctx = ctxFor(net, get().wallet, get().wallets);
+    const launches = await discoverLaunches(ctx, rememberedLaunches(net)).catch(() => [] as LaunchRecord[]);
+    rememberLaunches(net, launches);
+    const saved = load(vaultKey(key));
+    const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? (saved as Address) : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
     set({ net, ctx, launches, vault, status: "ready", reason: null });
     await get().refresh();
     unwatch?.();
     unwatch = ctx.pub.watchBlockNumber({
       poll: true,
-      pollingInterval: 1000,
+      pollingInterval: net.caps.pollMs,
       onBlockNumber: () => {
         if (!quiet) void get().refresh();
       },
       onError: () => {
-        set({ status: "offline", reason: "Lost the local chain." });
+        set({ status: "offline", reason: `Lost ${net.name}.` });
         unwatch?.();
         unwatch = null;
         retry = setTimeout(() => void get().connect(), 3000);
       },
     });
+  },
+
+  async setNetwork(key) {
+    if (key === get().netKey && get().status === "ready") return;
+    save(NET_KEY, key);
+    if (retry) clearTimeout(retry);
+    unwatch?.();
+    unwatch = null;
+    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], log: [], toast: null });
+    // Keep ?net= in step, so a copied link opens the same network.
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("net", key);
+      window.history.replaceState(window.history.state, "", url);
+    } catch {
+      /* not in a browser */
+    }
+    await get().connect();
+  },
+
+  async loadNetworks() {
+    const networks = await fetch("/api/chain/networks", { cache: "no-store" })
+      .then((r) => r.json() as Promise<NetworkSummary[]>)
+      .catch(() => [] as NetworkSummary[]);
+    set({ networks });
+  },
+
+  async connectWallet(id) {
+    const { wallets, net } = get();
+    const w = (id ? wallets.find((x) => x.id === id) : undefined) ?? wallets[0];
+    if (!w) {
+      set({ walletError: "No browser wallet found. Install one (MetaMask, Rabby or Coinbase Wallet) to sign on Base Sepolia." });
+      return;
+    }
+    try {
+      const address = await requestAccount(w.provider);
+      let chainId = await walletChainId(w.provider);
+      if (net && !net.caps.devChain && chainId !== net.chainId) {
+        await switchWalletTo(w.provider, net);
+        chainId = await walletChainId(w.provider);
+      }
+      follow(w);
+      save(WALLET_KEY, w.rdns ?? w.id);
+      setWallet({ id: w.id, name: w.name, address, chainId });
+      set({ walletError: null });
+    } catch (e) {
+      set({ walletError: walletMessage(e) });
+    }
+  },
+
+  disconnectWallet() {
+    unwallet?.();
+    unwallet = null;
+    save(WALLET_KEY, null);
+    setWallet(null);
+  },
+
+  async switchWalletChain() {
+    const { wallet, wallets, net } = get();
+    const provider = wallets.find((w) => w.id === wallet?.id)?.provider;
+    if (!provider || !net) return;
+    try {
+      await switchWalletTo(provider, net);
+    } catch (e) {
+      set({ walletError: walletMessage(e) });
+    }
   },
 
   async refresh() {
@@ -145,8 +337,11 @@ export const useChain = create<ChainState>((set, get) => ({
       const view = await readVaultView(ctx, vault);
       if (mine !== refreshSeq) return;
       set({ view, reason: null });
-      const [history, launches] = await Promise.all([readHistory(ctx, view), discoverLaunches(ctx)]);
-      if (mine === refreshSeq) set({ history, launches });
+      const [history, launches] = await Promise.all([readHistory(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
+      if (mine === refreshSeq) {
+        set({ history, launches });
+        rememberLaunches(ctx.net, launches);
+      }
     } catch (e) {
       if (mine !== refreshSeq) return;
       // A vault that cannot be read (not adopted yet, or gone after a reset) is not worth staying on.
@@ -163,7 +358,8 @@ export const useChain = create<ChainState>((set, get) => ({
   setRole: (role) => set({ role }),
 
   async selectVault(vault) {
-    remember(vault);
+    const key = get().netKey;
+    if (key) save(vaultKey(key), vault);
     set({ vault, view: null, history: [] });
     await get().refresh();
   },
@@ -201,6 +397,8 @@ export const useChain = create<ChainState>((set, get) => ({
   dismissToast: () => set({ toast: null }),
 
   async reset() {
+    // Only the local chain can be rewound; a public chain's history is final.
+    if (!get().net?.caps.devChain) return false;
     const done = await get().run("Resetting the chain", async () => {
       const r = await fetch("/api/chain/reset", { method: "POST" }).then((x) => x.json() as Promise<{ ok: boolean; reason?: string }>);
       if (!r.ok) throw new Error(r.reason ?? "reset failed");
@@ -214,6 +412,50 @@ export const useChain = create<ChainState>((set, get) => ({
     return !!done;
   },
 }));
+
+/** Set the wallet and rebuild the chain context around it, then read the vault again (balances, shares, roles). */
+function setWallet(wallet: WalletState | null) {
+  const { net, wallets } = useChain.getState();
+  useChain.setState({ wallet, ...(net ? { ctx: ctxFor(net, wallet, wallets) } : {}) });
+  void useChain.getState().refresh();
+}
+
+/** Follow the connected wallet's account and chain as the user changes them in the wallet itself. */
+function follow(w: DiscoveredWallet) {
+  unwallet?.();
+  unwallet = watchWallet(w.provider, {
+    accounts: (a) => {
+      const cur = useChain.getState().wallet;
+      if (!a.length) useChain.getState().disconnectWallet();
+      else if (cur) setWallet({ ...cur, address: a[0] });
+    },
+    chain: (chainId) => {
+      const cur = useChain.getState().wallet;
+      if (cur) setWallet({ ...cur, chainId });
+    },
+  });
+}
+
+/** Reconnect, without a prompt, the wallet this browser connected last time, if it still shares its account. */
+async function restoreWallet() {
+  const { wallet, wallets } = useChain.getState();
+  const want = load(WALLET_KEY);
+  if (wallet || restoring || !want) return;
+  const w = wallets.find((x) => (x.rdns ?? x.id) === want);
+  if (!w) return;
+  restoring = true;
+  try {
+    const accounts = (await w.provider.request({ method: "eth_accounts" })) as Address[];
+    if (accounts[0] && !useChain.getState().wallet) {
+      follow(w);
+      setWallet({ id: w.id, name: w.name, address: accounts[0], chainId: await walletChainId(w.provider) });
+    }
+  } catch {
+    /* the wallet will be asked when the user connects */
+  } finally {
+    restoring = false;
+  }
+}
 
 /** The activity feed: this app's attempts (including refusals) merged with the chain's events, newest first. */
 export function feed(log: Beat[], history: Beat[], limit = 50): Beat[] {

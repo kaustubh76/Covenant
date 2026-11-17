@@ -57,14 +57,74 @@ function chainOf(net: Network): Chain {
   });
 }
 
+/**
+ * Base Sepolia's public endpoint answers more than 25 calls a second with JSON-RPC error -32007 ("request limit
+ * reached"), or with HTTP 429. viem does not retry the first at all, and retries the second only three times within a
+ * second, so a burst of reads (a page's first log scans) could fail outright. Retry both after a short, growing,
+ * jittered pause; any other error passes straight through.
+ */
+export function patient(inner: Transport, tries = 6, baseMs = 200, perSecond = 12, burst = 4): Transport {
+  return (opts) => {
+    const t = inner(opts);
+    // Paced under the limit to begin with, so a page's first burst of log scans queues for a moment instead of being
+    // refused and retried. A batched request counts each call in it, so the pace is per call. Any one second carries at
+    // most burst + perSecond calls (16), leaving the rest of the endpoint's 25 to whatever else shares the address.
+    const turn = pacer(perSecond, burst);
+    const request = async (args: unknown, options?: unknown): Promise<unknown> => {
+      for (let attempt = 1; ; attempt++) {
+        await turn();
+        try {
+          return await t.request(args as never, options as never);
+        } catch (e) {
+          if (attempt >= tries || !rateLimited(e)) throw e;
+          await new Promise((r) => setTimeout(r, baseMs * 2 ** attempt + Math.random() * baseMs));
+        }
+      }
+    };
+    return { ...t, request: request as unknown as typeof t.request };
+  };
+}
+
+/** A token bucket: `burst` turns at once, then `perSecond` a second; the rest wait their turn, in order. */
+export function pacer(perSecond: number, burst = perSecond): () => Promise<void> {
+  let tokens = burst;
+  let last = Date.now();
+  const queue: (() => void)[] = [];
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const pump = () => {
+    timer = null;
+    const now = Date.now();
+    tokens = Math.min(burst, tokens + ((now - last) / 1000) * perSecond);
+    last = now;
+    while (queue.length && tokens >= 1) {
+      tokens -= 1;
+      queue.shift()!();
+    }
+    if (queue.length) timer = setTimeout(pump, Math.ceil(((1 - tokens) / perSecond) * 1000));
+  };
+  return () =>
+    new Promise<void>((resolve) => {
+      queue.push(resolve);
+      if (!timer) pump();
+    });
+}
+
+function rateLimited(e: unknown): boolean {
+  for (let x = e as { code?: unknown; status?: unknown; message?: unknown; cause?: unknown } | undefined, depth = 0; x && depth < 4; x = x.cause as typeof x, depth++) {
+    if (x.code === -32007 || x.code === 429 || x.status === 429) return true;
+    if (typeof x.message === "string" && /request limit reached|rate limit/i.test(x.message)) return true;
+  }
+  return false;
+}
+
 export function createChainCtx(net: Network, signer?: ExternalSigner): ChainCtx {
   const chain = chainOf(net);
   const dev = net.caps.devChain;
-  // Public RPCs rate-limit: batch concurrent reads into one request and retry transient failures. Anvil needs neither,
-  // and a failed local call should fail at once.
+  // Public RPCs rate-limit: batch concurrent reads into one request, retry transient failures, and back off when the
+  // endpoint says it is busy. Anvil needs none of that, and a failed local call should fail at once.
   const transport = dev
     ? http(net.rpcUrl, { retryCount: 0, timeout: 120_000 })
-    : http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } });
+    : patient(http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } }));
   const pub = createPublicClient({ chain, transport, pollingInterval: net.caps.pollMs, cacheTime: 0 });
   const test = dev ? createTestClient({ chain, transport, mode: "anvil" }) : null;
   const external =

@@ -4,7 +4,7 @@ import { defineConfig } from "vitest/config";
 //   npm run test:chain
 export default defineConfig({
   test: {
-    include: ["test/**/*.test.ts"],
+    include: ["test/chain.test.ts"],
     globalSetup: ["test/chain.setup.ts"],
     testTimeout: 600_000,
     hookTimeout: 600_000,

@@ -30,9 +30,6 @@ export const ANVIL_ARGS = (port: number) => [
   "--block-base-fee-per-gas", "0",
   "--gas-price", "0",
   "--disable-min-priority-fee",
-  // Old block states stay in memory only. By default Anvil also writes up to 3,600 of them to ~/.foundry/anvil/tmp and
-  // leaves the folder behind even after a clean exit; long sessions filled the disk that way.
-  "--max-persisted-states", "0",
 ];
 
 export interface LocalChainOptions {
@@ -56,14 +53,14 @@ export interface LocalChain {
   onExit?: (fn: (code: number | null, signal: NodeJS.Signals | null) => void) => void;
 }
 
-async function rpc<T>(url: string, method: string, params: unknown[] = []): Promise<T> {
+export async function rpc<T>(url: string, method: string, params: unknown[] = []): Promise<T> {
   const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }) });
   const body = (await res.json()) as { result?: T; error?: { message: string } };
   if (body.error) throw new Error(`${method}: ${body.error.message}`);
   return body.result as T;
 }
 
-async function alive(url: string): Promise<boolean> {
+export async function alive(url: string): Promise<boolean> {
   try {
     await rpc(url, "eth_chainId");
     return true;
@@ -72,7 +69,7 @@ async function alive(url: string): Promise<boolean> {
   }
 }
 
-async function waitFor(url: string, ms: number): Promise<void> {
+export async function waitFor(url: string, ms: number): Promise<void> {
   const until = Date.now() + ms;
   while (Date.now() < until) {
     if (await alive(url)) return;
@@ -81,7 +78,7 @@ async function waitFor(url: string, ms: number): Promise<void> {
   throw new Error(`Anvil did not answer on ${url} within ${ms / 1000}s`);
 }
 
-function run(cmd: string, args: string[], cwd: string, logFile: string, env: Record<string, string> = {}): Promise<void> {
+export function run(cmd: string, args: string[], cwd: string, logFile: string, env: Record<string, string> = {}): Promise<void> {
   return new Promise((ok, fail) => {
     const out = createWriteStream(logFile, { flags: "a" });
     const p = spawn(cmd, args, { cwd, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, ...env } });
@@ -95,6 +92,32 @@ function run(cmd: string, args: string[], cwd: string, logFile: string, env: Rec
     p.on("error", (e) => fail(new Error(`${cmd} could not start: ${e.message}`)));
     p.on("close", (code) => (code === 0 ? ok() : fail(new Error(`${cmd} ${args[0]} exited with ${code}\n${tail}`))));
   });
+}
+
+export interface AnvilProcess {
+  proc: ChildProcess;
+  /** SIGINT (Anvil's own clean shutdown), then SIGKILL if it is still running 5 s later. */
+  stop(): Promise<void>;
+}
+
+/** Start Anvil with `args`, its output going to `logFile`. Every Anvil this project starts goes through here. */
+export function startAnvil(args: string[], logFile: string): AnvilProcess {
+  const out = createWriteStream(logFile, { flags: "w" });
+  // --silent: Anvil logs every RPC request otherwise, and the app polls the chain every second.
+  // --max-persisted-states 0: old block states stay in memory. By default Anvil also writes up to 3,600 of them to
+  // ~/.foundry/anvil/tmp and leaves the folder behind even after a clean exit; long sessions filled the disk that way.
+  const proc: ChildProcess = spawn("anvil", [...args, "--max-persisted-states", "0", "--silent"], { stdio: ["ignore", "pipe", "pipe"] });
+  proc.stdout?.pipe(out);
+  proc.stderr?.pipe(out);
+  const stop = async () => {
+    if (proc.exitCode !== null || proc.signalCode !== null) return;
+    const exited = new Promise((r) => proc.once("exit", r));
+    proc.kill("SIGINT");
+    const force = setTimeout(() => proc.kill("SIGKILL"), 5000);
+    await exited;
+    clearTimeout(force);
+  };
+  return { proc, stop };
 }
 
 export function readNetwork(rpcUrl: string, name = DEV): Network {
@@ -150,20 +173,7 @@ export async function startLocalChain(opts: LocalChainOptions = {}): Promise<Loc
   }
 
   log(`starting anvil on ${rpcUrl} (log: ${logFile})`);
-  const anvilOut = createWriteStream(logFile, { flags: "w" });
-  // --silent: Anvil logs every RPC request otherwise, and the app polls the chain every second.
-  const anvil: ChildProcess = spawn("anvil", [...ANVIL_ARGS(port), "--silent"], { stdio: ["ignore", "pipe", "pipe"] });
-  anvil.stdout?.pipe(anvilOut);
-  anvil.stderr?.pipe(anvilOut);
-  // SIGINT is Anvil's own clean shutdown; SIGKILL only if it is still running 5 s later.
-  const stop = async () => {
-    if (anvil.exitCode !== null || anvil.signalCode !== null) return;
-    const exited = new Promise((r) => anvil.once("exit", r));
-    anvil.kill("SIGINT");
-    const force = setTimeout(() => anvil.kill("SIGKILL"), 5000);
-    await exited;
-    clearTimeout(force);
-  };
+  const { proc: anvil, stop } = startAnvil(ANVIL_ARGS(port), logFile);
   try {
     await waitFor(rpcUrl, 20_000);
     await rpc(rpcUrl, "anvil_setBlockTimestampInterval", [1]);

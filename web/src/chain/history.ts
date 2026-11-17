@@ -1,14 +1,26 @@
 // The vault's history, read back from the chain: every vault event and every swap in its pool, attributed to the
 // demo actor that sent the transaction. This keeps the activity feed after a reload and includes other tabs' actions.
 
-import { type Address, type Hex, type Log, decodeEventLog, formatEther } from "viem";
+import { type Address, type Hex, type Log, decodeEventLog, formatEther, getAddress, isAddressEqual } from "viem";
 import { covenantVaultAbi, poolManagerAbi } from "./abi.generated";
-import { type Who, actorOf } from "./accounts";
+import { type Who, actorOf, shortAddress } from "./accounts";
 import type { Beat } from "./beat";
 import type { ChainCtx } from "./client";
+import { launchRecord } from "./discover";
+import { scanLogs, scanOnce } from "./logs";
 import type { VaultView } from "./view";
 
 const MAX_LOGS = 300;
+/** How many blocks after its vault is created a launch's own story (adoption, the seed, the bounty) is read from. */
+const LAUNCH_SPAN = 600n;
+
+/** The block spans a vault's feed keeps for good: its launch's first blocks, and any its launch record lists. */
+function keptSpans(ctx: ChainCtx, vault: Address): [bigint, bigint][] {
+  const launch = launchRecord(ctx, vault);
+  if (!launch) return [];
+  const born = BigInt(launch.createdAtBlock);
+  return [[born, born + LAUNCH_SPAN], ...(launch.spans ?? []).map(([a, b]) => [BigInt(a), BigInt(b)] as [bigint, bigint])];
+}
 const blockTimes = new Map<Hex, number>();
 const senders = new Map<Hex, Address>();
 const n = (x: bigint) => Number(formatEther(x));
@@ -56,18 +68,28 @@ function describe(name: string, args: Record<string, unknown>, v: VaultView): { 
   }
 }
 
+const SWAP = poolManagerAbi.find((e) => e.type === "event" && e.name === "Swap") as Extract<(typeof poolManagerAbi)[number], { type: "event"; name: "Swap" }>;
+
 export async function readHistory(ctx: ChainCtx, v: VaultView): Promise<Beat[]> {
-  const [vaultLogs, swapLogs] = await Promise.all([
-    ctx.pub.getLogs({ address: v.address, fromBlock: 0n, toBlock: "latest" }),
-    ctx.pub.getLogs({
-      address: ctx.net.manifest.poolManager,
-      event: poolManagerAbi.find((e) => e.type === "event" && e.name === "Swap") as Extract<(typeof poolManagerAbi)[number], { type: "event"; name: "Swap" }>,
-      args: { id: v.poolId },
-      fromBlock: 0n,
-      toBlock: "latest",
-    }),
+  // On a public chain only the recent window is read on first load, then only new blocks (logs.ts). Kept spans (the
+  // launch's first blocks, the live proof's) are read once, so the vault's own story stays in the feed after that.
+  const floor = BigInt(ctx.net.manifest.deployedAtBlock ?? 0);
+  const readVault = (fromBlock: bigint, toBlock: bigint) => ctx.pub.getLogs({ address: v.address, fromBlock, toBlock });
+  const readSwaps = (fromBlock: bigint, toBlock: bigint) =>
+    ctx.pub.getLogs({ address: ctx.net.manifest.poolManager, event: SWAP, args: { id: v.poolId }, fromBlock, toBlock });
+  const kept = keptSpans(ctx, v.address);
+  const [keptVault, keptSwaps, vaultLogs, swapLogs] = await Promise.all([
+    Promise.all(kept.map(([a, b]) => scanOnce(ctx, `vault:${v.address}:${a}`, a, b, readVault))),
+    Promise.all(kept.map(([a, b]) => scanOnce(ctx, `swaps:${v.poolId}:${a}`, a, b, readSwaps))),
+    scanLogs(ctx, `vault:${v.address}`, floor, readVault),
+    scanLogs(ctx, `swaps:${v.poolId}`, floor, readSwaps),
   ]);
-  const logs = [...vaultLogs, ...swapLogs].sort((a, b) => Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)) || (a.logIndex ?? 0) - (b.logIndex ?? 0)).slice(-MAX_LOGS);
+  // Kept spans and the recent window can overlap: keep each log once.
+  const seen = new Set<string>();
+  const logs = [...keptVault.flat(), ...keptSwaps.flat(), ...vaultLogs, ...swapLogs]
+    .filter((l) => !seen.has(`${l.transactionHash}:${l.logIndex}`) && !!seen.add(`${l.transactionHash}:${l.logIndex}`))
+    .sort((a, b) => Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)) || (a.logIndex ?? 0) - (b.logIndex ?? 0))
+    .slice(-MAX_LOGS);
 
   // Block times and senders never change for a given block hash or transaction hash, so they are fetched once. (Block
   // numbers do repeat after a snapshot revert, which is why times are keyed by hash.)
@@ -84,8 +106,11 @@ export async function readHistory(ctx: ChainCtx, v: VaultView): Promise<Beat[]> 
 
   const out: Beat[] = [];
   for (const log of logs as Log[]) {
-    const from = actorOf(senders.get(log.transactionHash!)) ?? "anyone";
-    const base = { at: blockTimes.get(log.blockHash!) ?? 0, block: Number(log.blockNumber), hash: log.transactionHash!, ok: true, source: "chain" as const, id: `${log.transactionHash}:${log.logIndex}` };
+    const sender = senders.get(log.transactionHash!);
+    const from = actorOf(sender) ?? "anyone";
+    // On a public chain the senders are real accounts, not demo roles: name yours as yours and the rest by address.
+    const by = !ctx.net.caps.devChain && from === "anyone" && sender ? (ctx.signer && isAddressEqual(sender, ctx.signer) ? "You" : shortAddress(getAddress(sender))) : undefined;
+    const base = { at: blockTimes.get(log.blockHash!) ?? 0, block: Number(log.blockNumber), hash: log.transactionHash!, ok: true, source: "chain" as const, id: `${log.transactionHash}:${log.logIndex}`, ...(by ? { by } : {}) };
     if (log.address.toLowerCase() === v.address.toLowerCase()) {
       try {
         const d = decodeEventLog({ abi: covenantVaultAbi, data: log.data, topics: log.topics });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { Hex } from "viem";
+import { NETWORKS } from "@/chain/network";
 import { localChain, rpc, saveRuntime } from "@/server/deployments";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,6 @@ export async function POST() {
     );
   }
   const baselineSnapshot = await rpc<Hex>(rpcUrl, "evm_snapshot", [], 10_000);
-  await saveRuntime(local.network.chainId, { ...runtime, baselineSnapshot });
+  await saveRuntime(NETWORKS.local.records, { ...runtime, baselineSnapshot });
   return NextResponse.json({ ok: true, baselineSnapshot });
 }

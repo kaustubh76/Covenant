@@ -120,6 +120,8 @@ export default function DemoPage() {
   }, [forward, back]);
 
   if (status !== "ready") return <NeedsChain what="the guided demo" />;
+  // Every step runs from a snapshot and most move the clock (vesting, timelocks, the TWAP): local chain only.
+  if (net && !net.caps.devChain) return <NeedsLocalChain name={net.name} />;
 
   const finished = records.length === DEMO_STEPS.length && at === DEMO_STEPS.length - 1;
   const reverts = records.reduce((n, r) => n + r.beats.filter((b) => !b.ok).length, 0);
@@ -265,3 +267,28 @@ export default function DemoPage() {
     </div>
   );
 }
+
+/** On a public chain: the demo's ten steps need a chain whose clock can jump and whose state can be rewound. */
+function NeedsLocalChain({ name }: { name: string }) {
+  const setNetwork = useChain((s) => s.setNetwork);
+  return (
+    <div className="mx-auto max-w-2xl py-16">
+      <Panel eyebrow="Guided demo" title="The ten steps run on the local chain">
+        <p className="text-[14px] leading-relaxed text-muted">
+          The demo walks a launch from its auction to its release, which takes months of chain time: vesting, the curator timelock, a sell-off held for a whole
+          TWAP window. On the local chain the app moves the clock forward and can rewind every step. {name} keeps real time, so the demo cannot run here. The
+          vault, curate, keep, provide and govern pages all work on {name} with your wallet.
+        </p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button variant="primary" onClick={() => void setNetwork("local")}>
+            Switch to the local chain
+          </Button>
+          <Link href="/vault">
+            <Button>Open the vault on {name}</Button>
+          </Link>
+        </div>
+      </Panel>
+    </div>
+  );
+}
+

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { AUCTION_FLOOR, auctionPrice, defaultLaunchSpec, poolIdOf } from "./launch";
+import { AUCTION_FLOOR, AUCTION_TICK, DEFAULT_BIDS, auctionPrice, defaultLaunchSpec, poolIdOf, testnetBids, testnetLaunchSpec } from "./launch";
 import { PRESETS } from "./terms";
 
 describe("launch helpers", () => {
@@ -27,4 +27,29 @@ describe("launch helpers", () => {
     expect(s.lpRateMps).toBe(1_000_000);
     expect(1e7 % s.durationBlocks).toBe(0);
   });
+
+  it("sizes a testnet launch as the suite's auction with every price and bid divided by 2^13", () => {
+    const s = testnetLaunchSpec(PRESETS.standard);
+    // The CCA's own rules (TickStorage, StepStorage): floor above 2^32 and on the tick grid, spacing at least 2,
+    // and the steps split 1e7 mps evenly over two halves.
+    expect(s.floorPrice).toBe(2n ** 83n);
+    expect(s.auctionTick).toBe(2n ** 77n);
+    expect(s.floorPrice > 2n ** 32n).toBe(true);
+    expect(s.floorPrice % s.auctionTick).toBe(0n);
+    expect(1e7 % s.durationBlocks).toBe(0);
+    expect(s.durationBlocks % 2).toBe(0);
+    expect(s.token).toBe("fixed");
+    // Same supply and pool reserve as the suite, so the auction plays out the same way at 1/8192 of the price.
+    expect(s.auctionSupply).toBe(defaultLaunchSpec(PRESETS.standard).auctionSupply);
+    expect(Number(auctionPrice(19, s)) / Number(auctionPrice(19))).toBeCloseTo(1 / 8192, 12);
+    expect(AUCTION_TICK / s.auctionTick).toBe(8192n);
+  });
+
+  it("scales the bids with the prices: 0.0366, 0.0366 and 0.1709 ETH", () => {
+    const bids = testnetBids();
+    expect(bids.map((b) => b.steps)).toEqual(DEFAULT_BIDS.map((b) => b.steps));
+    expect(bids.map((b) => b.amount)).toEqual([36621093750000000n, 36621093750000000n, 170898437500000000n]);
+    expect(testnetBids(14)[2].amount * 2n).toBe(bids[2].amount);
+  });
 });
+

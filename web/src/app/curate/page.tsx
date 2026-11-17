@@ -3,20 +3,21 @@
 import { Minus, MoveHorizontal, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { covenantVaultAbi } from "@/chain/abi.generated";
+import { shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { NEVER } from "@/chain/launch";
 import { type Leg, SINK, askFloor, askLeg, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
 import { type Preflight, preflight, vaultEvents } from "@/chain/preflight";
 import { ceilTo, floorTo, holdingsAtPrice, priceAt } from "@/chain/price";
-import { send } from "@/chain/tx";
+import { isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { type ShapeSource, ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/ShapeChart";
 import { ReshapeVerdict } from "@/components/covenant/Verdict";
 import { Button, PageHeader, Panel, Tag } from "@/components/ui";
-import { amt, pct } from "@/lib/format";
+import { amt, axisPrice, pct } from "@/lib/format";
 import { describeRange } from "@/lib/ranges";
-import { actorFor, useChain } from "@/store/chain";
+import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 
 interface Draft {
   id: string;
@@ -164,6 +165,8 @@ export default function CuratePage() {
   const setRole = useChain((s) => s.setRole);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
+  const net = useChain((s) => s.net);
+  const wallet = useChain((s) => s.wallet);
   const [ed, setEd] = useState<Editor | null>(null);
   const [preset, setPreset] = useState("tighten");
   const [domain, setDomain] = useState<[number, number] | null>(null);
@@ -190,6 +193,10 @@ export default function CuratePage() {
   const legs = useMemo(() => (v && ed ? toLegs(v, ed.drafts) : []), [v, ed]);
   const cuts = useMemo(() => (ed ? [...ed.rm].sort((a, b) => a - b).map((i) => cut(i)) : []), [ed]);
   const actor = actorFor(role, v);
+  // Who the reshape is simulated and sent as: on a public chain, the vault's real curator (see partyFor).
+  const party = partyFor(role, v, net);
+  const publicChain = !!net && !net.caps.devChain;
+  const mayAct = canSendAs(party, net, wallet);
 
   // Pre-flight the exact transaction whenever the plan changes.
   useEffect(() => {
@@ -197,14 +204,14 @@ export default function CuratePage() {
     const id = ++req.current;
     setChecking(true);
     const t = setTimeout(async () => {
-      const r = await preflight(ctx, actor, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(() => null);
+      const r = await preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(() => null);
       if (id === req.current) {
         setPre(r);
         setChecking(false);
       }
     }, 150);
     return () => clearTimeout(t);
-  }, [ctx, v, ed, cuts, legs, actor]);
+  }, [ctx, v, ed, cuts, legs, party]);
 
   if (!v || !ed) return <NeedsChain what="the curator's desk" />;
 
@@ -248,7 +255,7 @@ export default function CuratePage() {
 
   const submit = () =>
     run("Reshape", async (c, rec) => {
-      const o = await send(c, actor, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, { force: true, describe: { now: v.time + 1, tokenSymbol: v.tokenSymbol } });
+      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, { force: true, describe: { now: v.time + 1, tokenSymbol: v.tokenSymbol } });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Reshaped");
       rec.record(
         beatOf(o, actor, "Reshape", () => (ev ? `Moved ${pct(Number(ev.args.movedFraction as bigint) / 1e5)} of the vault's value. Support ${pct(Number(ev.args.supportBps as bigint))}` : undefined)),
@@ -375,7 +382,7 @@ export default function CuratePage() {
                           <span className={`h-2 w-2 rounded-[2px] ${x.asset === "quote" ? "bg-support" : "bg-ask"}`} />
                           {x.asset === "quote" ? `${v.quoteSymbol} bids` : `${sym} asks`}
                           <span className="num text-xs text-faint">
-                            {priceAt(x.lower).toFixed(3)} – {priceAt(x.upper).toFixed(3)}
+                            {axisPrice(priceAt(x.lower))} – {axisPrice(priceAt(x.upper))}
                           </span>
                         </span>
                         <button
@@ -442,11 +449,30 @@ export default function CuratePage() {
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel eyebrow="Pre-flight" title="What the contract will say">
             <ReshapeVerdict before={v} pre={pre} moved={movedNow} loading={checking} />
-            <Button variant={pre && !pre.ok ? "danger" : "primary"} className="mt-4 w-full" onClick={submit} disabled={!!busy}>
-              {pre && !pre.ok ? "Submit anyway" : "Submit reshape"}
+            <Button
+              variant={pre && !pre.ok ? "danger" : "primary"}
+              className="mt-4 w-full"
+              onClick={submit}
+              disabled={!!busy || (publicChain && (!mayAct || (!!pre && !pre.ok)))}
+            >
+              {publicChain && !wallet
+                ? "Connect a wallet to submit"
+                : publicChain && !mayAct
+                  ? "Only the curator's wallet can submit"
+                  : pre && !pre.ok
+                    ? publicChain
+                      ? "The contract refuses this"
+                      : "Submit anyway"
+                    : "Submit reshape"}
             </Button>
             <p className="mt-2 text-center text-xs text-faint">
-              {pre && !pre.ok ? "It will be mined and revert. Nothing will change." : "One transaction. Liquidity never leaves the pool."}
+              {publicChain && !mayAct && isAddressParty(party)
+                ? `Simulated as the curator, ${shortAddress(party)}. Only that wallet can send it.`
+                : pre && !pre.ok
+                  ? publicChain
+                    ? "Nothing is sent: on a public chain a refused transaction would only cost gas."
+                    : "It will be mined and revert. Nothing will change."
+                  : "One transaction. Liquidity never leaves the pool."}
             </p>
           </Panel>
         </div>

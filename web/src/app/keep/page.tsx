@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { formatEther } from "viem";
+import { type Abi, formatEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
 import { beatOf, note } from "@/chain/beat";
+import { type CrashSim, findCrash } from "@/chain/crashsim";
+import { NEVER } from "@/chain/launch";
+import { deepenReserve } from "@/chain/plans";
 import { type Preflight, vaultEvents } from "@/chain/preflight";
 import { LN_BASE } from "@/chain/price";
 import { crash, findLapsingCrash, planRestore, restoreCall } from "@/chain/scenarios/restore";
@@ -16,9 +19,11 @@ import { Button, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
 import { describeRange } from "@/lib/ranges";
 import { useBalances } from "@/lib/useBalances";
-import { actorFor, useChain } from "@/store/chain";
+import { actorFor, partyFor, useChain } from "@/store/chain";
 
 const fallPct = (ticks: number) => `${((1 - Math.exp(-ticks * LN_BASE)) * 100).toFixed(0)}%`;
+/** Who restores in a simulation when no wallet is connected: any address will do, nothing is sent. */
+const ANYONE = "0x000000000000000000000000000000000000dEaD";
 const eth = (x: unknown) => Number(formatEther((x as bigint) ?? 0n));
 
 export default function KeepPage() {
@@ -27,20 +32,26 @@ export default function KeepPage() {
   const role = useChain((s) => s.role);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
+  const net = useChain((s) => s.net);
+  const wallet = useChain((s) => s.wallet);
   const actor = actorFor(role, v);
+  // Restore and poke are open to anyone: on a public chain that is the connected wallet (see partyFor).
+  const party = partyFor(role, v, net);
+  const publicChain = !!net && !net.caps.devChain;
   const bal = useBalances(actor);
   const [plan, setPlan] = useState<{ indices: number[]; pre: Preflight } | null>(null);
+  const [sim, setSim] = useState<"running" | { result: CrashSim | null; deepened: boolean } | null>(null);
 
   useEffect(() => {
     if (!ctx || !v) return;
     let live = true;
-    planRestore(ctx, v, actor)
+    planRestore(ctx, v, party)
       .then((p) => live && setPlan(p))
       .catch(() => live && setPlan(null));
     return () => {
       live = false;
     };
-  }, [ctx, v, actor]);
+  }, [ctx, v, party]);
 
   if (!v) return <NeedsChain what="the keeper's desk" />;
   const s = v.support;
@@ -55,9 +66,9 @@ export default function KeepPage() {
     run("Restore support", async (c, rec) => {
       // plan again against the latest state: the price or the vault may have moved since the page rendered
       const latest = await readVaultView(c, v.address);
-      const p = await planRestore(c, latest, actor);
+      const p = await planRestore(c, latest, party);
       const indices = [...(p?.indices ?? [])].sort((a, b) => a - b);
-      const o = await send(c, actor, restoreCall(latest, indices), { force: true, describe });
+      const o = await send(c, party, restoreCall(latest, indices), { force: true, describe });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Restored");
       rec.record(
         beatOf(o, actor, "Restore support", () =>
@@ -97,9 +108,31 @@ export default function KeepPage() {
       { quiet: true },
     );
 
+  // A public chain has no snapshots to try crashes in, so the crash is simulated instead (crashsim.ts): the sale in the
+  // next block, the vault read back a TWAP window later. Tokens to sell come from the issuer's balance. If the layout as
+  // it is has no crash that strands support, the curator's deeper reserve is simulated first: the layout restore is for.
+  const simulateCrash = async () => {
+    if (!ctx || !v) return;
+    setSim("running");
+    const keeper = wallet?.address ?? ANYONE;
+    try {
+      let result = await findCrash(ctx, v, v.people.issuer, keeper);
+      let deepened = false;
+      if (!result) {
+        const d = deepenReserve(v);
+        const prelude = [{ account: v.people.curator, to: v.address, abi: covenantVaultAbi as Abi, functionName: "reshape", args: [d.cuts, d.legs, NEVER] }];
+        result = await findCrash(ctx, v, v.people.issuer, keeper, prelude);
+        deepened = !!result;
+      }
+      setSim({ result, deepened });
+    } catch {
+      setSim({ result: null, deepened: false });
+    }
+  };
+
   const poke = () =>
     run("Sync the Anchor", async (c, rec) => {
-      const o = await send(c, actor, { address: v.address, abi: covenantVaultAbi, functionName: "poke", args: [] });
+      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "poke", args: [] });
       rec.record(beatOf(o, actor, "Anchor synced (poke)", () => "Anyone can call it. It only ever moves the Anchor by the rule"), { toast: true });
     });
 
@@ -147,13 +180,15 @@ export default function KeepPage() {
 
             <div className="mt-5">
               {plan?.pre.ok && <Row label="Ranges to move">{plan.indices.map((i) => describeRange(v, i).label).join(", ")}</Row>}
-              <Row label="Bounty for the caller">{amt(bounty)} ETH</Row>
+              {/* The exact bounty comes from the restore's pre-flight; until one passes, only its cap is known. A bounty is also
+                  capped at a share of the quote the restore moves, so it can be far smaller. */}
+              <Row label={restored ? "Bounty for the caller" : "Bounty, at most"}>{amt(bounty)} ETH</Row>
               <Row label="Bounty pool">{amt(v.fees.bountyPool)} ETH</Row>
-              <Row label="Your balance">{bal ? `${amt(bal.quote)} ETH` : "…"}</Row>
+              <Row label="Your balance">{bal ? `${amt(bal.quote)} ETH` : publicChain && !wallet ? "Connect a wallet" : "…"}</Row>
             </div>
 
-            <Button variant={plan?.pre.ok ? "primary" : "secondary"} className="mt-5 w-full" onClick={restore} disabled={!!busy}>
-              {plan?.pre.ok ? "Call restore" : "Call restore anyway"}
+            <Button variant={plan?.pre.ok ? "primary" : "secondary"} className="mt-5 w-full" onClick={restore} disabled={!!busy || (publicChain && !plan?.pre.ok)}>
+              {plan?.pre.ok ? (publicChain && !wallet ? "Connect a wallet to restore" : "Call restore") : publicChain ? "Nothing to restore" : "Call restore anyway"}
             </Button>
             <p className="mt-2 text-center text-xs text-faint">
               {!g.ok
@@ -164,7 +199,33 @@ export default function KeepPage() {
             </p>
           </Panel>
 
-          {!lapsed && (
+          {!lapsed && publicChain && (
+            <Panel eyebrow="Simulate" title="What a crash would do">
+              <p className="text-[13px] leading-relaxed text-muted">
+                Support lapses only under a sell-off that holds for a full TWAP window. This finds the smallest one that would strand support and runs it on a
+                simulated chain: the sale in the next block, the vault read back {duration(v.terms.twapWindow)} later. Nothing is sent.
+              </p>
+              <Button className="mt-4 w-full" onClick={simulateCrash} disabled={sim === "running"}>
+                {sim === "running" ? "Simulating…" : "Simulate a crash"}
+              </Button>
+              {sim && sim !== "running" && sim.result?.restore?.ok && (
+                <div className="mt-4">
+                  {sim.deepened && (
+                    <p className="mb-2 text-xs text-faint">After the curator spreads half the reserve four bands deep, the layout restore exists for:</p>
+                  )}
+                  <Row label="The market sells">{`${amt(eth(sim.result.sold))} ${v.tokenSymbol}, ${fallPct(sim.result.depth)} down`}</Row>
+                  <Row label={`Support ${duration(v.terms.twapWindow)} later`}>{`${pct(sim.result.after.support.have)} (needs ${pct(sim.result.after.support.need)})`}</Row>
+                  <Row label="A stranger's restore">{`${pct(sim.result.after.support.have)} → ${pct(sim.result.restore.supportAfter ?? 0)}`}</Row>
+                </div>
+              )}
+              {sim && sim !== "running" && !sim.result?.restore?.ok && (
+                <p className="mt-3 text-xs text-faint">
+                  No sell-off of the issuer&apos;s tokens strands support here, even with the reserve spread deeper: every bid stays within reach of the price.
+                </p>
+              )}
+            </Panel>
+          )}
+          {!lapsed && !publicChain && (
             <Panel eyebrow="Simulate" title="Make support lapse">
               <p className="text-[13px] leading-relaxed text-muted">
                 Have the market sell the token down until the vault&apos;s reserve sits under the band, then hold the price there until the time-weighted

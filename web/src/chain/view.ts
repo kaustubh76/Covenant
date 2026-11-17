@@ -145,6 +145,15 @@ async function symbolOf(ctx: ChainCtx, token: Address): Promise<string> {
 /** Accounts whose shares and fees the app shows. */
 const HOLDERS: Actor[] = ["lp", "holder", "keeper", "curator", "issuer", "attacker", "market"];
 
+/**
+ * Whose shares to read. On the dev chain, every demo actor's. On a public chain every role is the connected wallet,
+ * so its shares are read once and stand for each role; with no wallet connected there is no one to read.
+ */
+function holderAccounts(ctx: ChainCtx): Address[] {
+  if (ctx.net.caps.devChain) return HOLDERS.map((a) => ctx.address(a));
+  return ctx.signer ? [ctx.signer] : [];
+}
+
 export async function readVaultView(ctx: ChainCtx, vault: Address): Promise<VaultView> {
   const { lens } = ctx.net.manifest;
   const read = <T>(functionName: string, args: readonly unknown[] = []) =>
@@ -164,8 +173,14 @@ export async function readVaultView(ctx: ChainCtx, vault: Address): Promise<Vaul
     read<readonly [bigint, bigint]>("feesOwed", [zeroAddress]),
     read<Address>("treasury"),
     read<Address>("pendingIssuer"),
-    ...HOLDERS.flatMap((a) => [read<bigint>("sharesOf", [ctx.address(a)]), read<readonly [bigint, bigint]>("feesOwed", [ctx.address(a)])]),
+    ...holderAccounts(ctx).flatMap((who) => [read<bigint>("sharesOf", [who]), read<readonly [bigint, bigint]>("feesOwed", [who])]),
   ]);
+  const holderAt = (i: number) => ({ shares: perHolder[2 * i] as bigint, owed: perHolder[2 * i + 1] as readonly [bigint, bigint] });
+  const holders = ctx.net.caps.devChain
+    ? HOLDERS.map((actor, i) => ({ actor, ...holderAt(i) }))
+    : ctx.signer
+      ? HOLDERS.map((actor) => ({ actor, ...holderAt(0) }))
+      : [];
   return buildView(s, {
     address: vault,
     chainId: ctx.net.chainId,
@@ -175,7 +190,7 @@ export async function readVaultView(ctx: ChainCtx, vault: Address): Promise<Vaul
     symbol: symbol as string,
     curatorFees: [c0 as bigint, c1 as bigint],
     principalOwed: principalOwed as readonly [bigint, bigint],
-    holders: HOLDERS.map((actor, i) => ({ actor, shares: perHolder[2 * i] as bigint, owed: perHolder[2 * i + 1] as readonly [bigint, bigint] })),
+    holders,
     treasury: treasury as Address,
     pendingIssuer: pendingIssuer as Address,
   });

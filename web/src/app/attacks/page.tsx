@@ -7,13 +7,23 @@ import { ATTACKS, type AttackRun, runAttacks } from "@/chain/scenarios/attacks";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { BeatList } from "@/components/covenant/Verdict";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
+import { recorded } from "@/fixtures";
 import { useChain } from "@/store/chain";
+
+/** The suite's attacks as `npm run record` captured them from the contracts on the local chain. */
+const RECORDED = recorded.attacks as unknown as Record<string, AttackRun>;
 
 export default function AttacksPage() {
   const status = useChain((s) => s.status);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
-  const [results, setResults] = useState<Record<string, AttackRun>>({});
+  // Attacks run in snapshots and move the clock, which only the local chain allows. A public chain shows the runs
+  // recorded from the same contracts instead.
+  const live = useChain((s) => s.net?.caps.devChain ?? true);
+  const netName = useChain((s) => s.net?.name);
+  const setNetwork = useChain((s) => s.setNetwork);
+  const [ownResults, setResults] = useState<Record<string, AttackRun>>({});
+  const results = live ? ownResults : RECORDED;
   // how many times each card's result has landed, so the card can react every time
   const [arrivals, setArrivals] = useState<Record<string, number>>({});
   const ran = Object.keys(results).length;
@@ -42,7 +52,11 @@ export default function AttacksPage() {
       <PageHeader
         eyebrow="Attack lab"
         title={`${ATTACKS.length} ways to take the liquidity. Run them.`}
-        lead="Each card replays an attack from the contracts' adversarial test suite as real transactions, against a fresh vault on the local chain, inside a snapshot that is rolled back afterwards. Nothing on this page is pre-written: every outcome is what the contracts returned."
+        lead={
+          live
+            ? "Each card replays an attack from the contracts' adversarial test suite as real transactions, against a fresh vault on the local chain, inside a snapshot that is rolled back afterwards. Nothing on this page is pre-written: every outcome is what the contracts returned."
+            : `Each card is an attack from the contracts' adversarial test suite, as it ran against the same contracts on the local chain (recorded by npm run record). Replaying them needs snapshots and a clock that can jump, which ${netName ?? "a public chain"} does not have: switch to the local chain to run them live.`
+        }
         aside={
           <div className="flex items-center gap-4">
             {ran > 0 && (
@@ -54,9 +68,15 @@ export default function AttacksPage() {
                 <div className="eyebrow mt-1">blocked</div>
               </div>
             )}
-            <Button variant="primary" disabled={!!busy} onClick={() => attempt(ATTACKS.map((a) => a.id))}>
-              Run all {ATTACKS.length}
-            </Button>
+            {live ? (
+              <Button variant="primary" disabled={!!busy} onClick={() => attempt(ATTACKS.map((a) => a.id))}>
+                Run all {ATTACKS.length}
+              </Button>
+            ) : (
+              <Button variant="primary" onClick={() => void setNetwork("local")}>
+                Run them on the local chain
+              </Button>
+            )}
           </div>
         }
       />
@@ -84,9 +104,13 @@ export default function AttacksPage() {
                 <span className="num truncate text-xs text-faint" title={a.test}>
                   {a.test}
                 </span>
-                <Button size="sm" variant={r ? "ghost" : "danger"} disabled={!!busy} onClick={() => attempt([a.id])}>
-                  {r ? "Run again" : a.slow ? "Attempt (slow)" : "Attempt"}
-                </Button>
+                {live ? (
+                  <Button size="sm" variant={r ? "ghost" : "danger"} disabled={!!busy} onClick={() => attempt([a.id])}>
+                    {r ? "Run again" : a.slow ? "Attempt (slow)" : "Attempt"}
+                  </Button>
+                ) : (
+                  <Tag>Recorded</Tag>
+                )}
               </div>
             </article>
           );
@@ -97,7 +121,7 @@ export default function AttacksPage() {
         <div className="mt-8 flex items-center gap-4 rounded-lg border border-pass/40 bg-pass/5 p-5">
           <ShieldCheck className="shrink-0 text-pass" size={28} strokeWidth={1.5} />
           <div>
-            <div className="text-[15px] font-medium text-ink">All {ran} attacks were blocked by the deployed contracts.</div>
+            <div className="text-[15px] font-medium text-ink">All {ran} attacks were blocked by the deployed contracts{live ? "" : " (recorded on the local chain)"}.</div>
             <div className="text-[13.5px] text-muted">
               The successful steps inside a card are what an attacker is allowed to do, such as trading or proposing a curator. The step that would have taken value is the one the contract refused, or the
               one that turned out to take nothing. Every run happened in a snapshot: the chain is exactly as it was.

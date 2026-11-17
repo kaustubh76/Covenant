@@ -13,6 +13,11 @@ export function useBalances(actor: Actor) {
   const [bal, setBal] = useState<{ quote: number; token: number } | null>(null);
   useEffect(() => {
     if (!ctx || !view) return;
+    // On a public chain every role is the connected wallet; with none connected there is no balance to show.
+    if (!ctx.net.caps.devChain && !ctx.signer) {
+      setBal(null);
+      return;
+    }
     let live = true;
     const who = ctx.address(actor);
     Promise.all([ctx.pub.getBalance({ address: who }), ctx.pub.readContract({ address: view.token, abi: testTokenAbi, functionName: "balanceOf", args: [who] })])

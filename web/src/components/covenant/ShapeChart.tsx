@@ -4,7 +4,7 @@ import { motion } from "framer-motion";
 import { useMemo, useRef, useState } from "react";
 import { holdingsAtPrice, priceAt } from "@/chain/price";
 import type { VaultView } from "@/chain/view";
-import { amt, price } from "@/lib/format";
+import { amt, axisPrice, price } from "@/lib/format";
 import { useWidth } from "@/lib/useSize";
 
 /** What the chart needs from a vault: its ranges in price ticks and the prices the rules are measured against. */
@@ -280,7 +280,7 @@ export function ShapeChart({
         {/* axis */}
         {axis.map((t) => (
           <text key={t} x={x(t)} y={base + 18} fontSize={10.5} fill="var(--faint)" textAnchor="middle" className="num">
-            {priceAt(t).toFixed(3)}
+            {axisPrice(priceAt(t))}
           </text>
         ))}
 
@@ -320,14 +320,14 @@ export function ShapeChart({
                   <span className="num text-support">
                     {amt(hoveredAmt.quote)} {world.quoteSymbol}
                   </span>{" "}
-                  bidding from {priceAt(hovered.to).toFixed(3)} down to {priceAt(hovered.from).toFixed(3)}
+                  bidding from {axisPrice(priceAt(hovered.to))} down to {axisPrice(priceAt(hovered.from))}
                 </>
               ) : (
                 <>
                   <span className="num text-ask">
                     {amt(hoveredAmt.token)} {world.tokenSymbol}
                   </span>{" "}
-                  offered from {priceAt(hovered.from).toFixed(3)} to {priceAt(hovered.to).toFixed(3)}
+                  offered from {axisPrice(priceAt(hovered.from))} to {axisPrice(priceAt(hovered.to))}
                 </>
               )
             ) : (

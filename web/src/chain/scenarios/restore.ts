@@ -10,6 +10,7 @@ import { NEVER } from "../launch";
 import { pushTo } from "../market";
 import { type Preflight, preflight } from "../preflight";
 import { advance, sandbox } from "../time";
+import type { Party } from "../tx";
 import { type VaultView, readVaultView } from "../view";
 
 /** Ranges worth restoring: every range holding quote with any part below the band, most quote first. */
@@ -25,7 +26,7 @@ export function restoreCall(v: VaultView, indices: number[]) {
 }
 
 /** The restore a keeper would submit now: all candidates, or failing that the single best one. */
-export async function planRestore(ctx: ChainCtx, v: VaultView, keeper: Actor): Promise<{ indices: number[]; pre: Preflight } | null> {
+export async function planRestore(ctx: ChainCtx, v: VaultView, keeper: Party): Promise<{ indices: number[]; pre: Preflight } | null> {
   const all = restoreCandidates(v);
   const options = all.length ? [all, ...all.map((i) => [i])] : [v.ranges.map((r) => r.index)];
   let first: { indices: number[]; pre: Preflight } | null = null;
@@ -33,6 +34,9 @@ export async function planRestore(ctx: ChainCtx, v: VaultView, keeper: Actor): P
     const pre = await preflight(ctx, keeper, restoreCall(v, [...indices].sort((a, b) => a - b)), v);
     first ??= { indices, pre };
     if (pre.ok) return { indices, pre };
+    // Holding support has nothing to restore, whichever ranges are tried: the first refusal already says so, and a
+    // public RPC is not asked for the rest every block.
+    if (v.support.have >= v.support.need) break;
   }
   return first;
 }

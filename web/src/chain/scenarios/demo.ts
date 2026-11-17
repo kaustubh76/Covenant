@@ -7,8 +7,8 @@ import { shortAddress } from "../accounts";
 import { note } from "../beat";
 import { type Launch, NEVER, adopt, auctionPrice, bid, closeAuction, defaultLaunchSpec, migrate, registerLaunch, seed } from "../launch";
 import { pushTo, spotOf, swap } from "../market";
-import { type Plan, SINK, bidLeg, bidTop, cut } from "../plans";
-import { ceilTo, floorTo, priceAt, q96ToNumber } from "../price";
+import { SINK, bidLeg, cut, deepenReserve } from "../plans";
+import { priceAt, q96ToNumber } from "../price";
 import { PRESETS } from "../terms";
 import { advance, mineTo, sandbox } from "../time";
 import { type VaultView } from "../view";
@@ -78,15 +78,6 @@ async function impactOfDump(k: Kit, v: VaultView, tokens: number): Promise<numbe
 
 const rangeWithMostQuote = (v: VaultView) => [...v.ranges].sort((a, b) => b.quote - a.quote)[0]?.index ?? 0;
 
-/** Half of the quote-only reserve into the band, the rest spread four bands deeper: what restore exists for. */
-function deepenReserve(v: VaultView): Plan {
-  const s = v.tickSpacing;
-  const B = v.terms.supportBandTicks;
-  const reserve = v.ranges.filter((r) => r.token < 1e-12 && r.quote > 0).map((r) => r.index);
-  const top = Math.min(bidTop(v), floorTo(v.twap, s));
-  const bandFloor = ceilTo(v.twap - B, s) + s;
-  return { cuts: reserve.map((i) => cut(i)), legs: [bidLeg(v, bandFloor, top, 5000), bidLeg(v, v.twap - 5 * B, bandFloor, SINK)] };
-}
 
 export const DEMO_STEPS: DemoStep[] = [
   {

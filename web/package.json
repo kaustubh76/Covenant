@@ -11,8 +11,12 @@
     "abi": "tsx scripts/gen-abi.ts",
     "chain": "tsx scripts/chain.ts",
     "test:chain": "vitest run --config vitest.chain.config.ts",
+    "test:fork": "vitest run --config vitest.fork.config.ts",
     "record": "tsx scripts/record.ts",
-    "demo": "tsx scripts/demo.ts"
+    "demo": "tsx scripts/demo.ts",
+    "fork": "tsx scripts/fork.ts",
+    "launch": "tsx scripts/launch-public.ts",
+    "proof": "tsx scripts/proof-public.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

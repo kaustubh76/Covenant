@@ -1,6 +1,7 @@
 "use client";
 
 import { useWidth } from "@/lib/useSize";
+import { amt, axisPrice, price } from "@/lib/format";
 
 export interface CurveBid {
   id: string;
@@ -43,10 +44,10 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
               <rect x={x(l.price) - bw / 2} y={base - h} width={bw} height={h} fill={color} opacity={lost ? 0.28 : 0.16} />
               <rect x={x(l.price) - bw / 2} y={base - h} width={bw} height={1.5} fill={color} />
               <text x={x(l.price)} y={base - h - 7} textAnchor="middle" fontSize={11} fill="var(--ink)" className="num">
-                {l.amount} ETH
+                {Number.isInteger(l.amount) ? l.amount : amt(l.amount)} ETH
               </text>
               <text x={x(l.price)} y={base + 17} textAnchor="middle" fontSize={10.5} fill="var(--faint)" className="num">
-                {l.price.toFixed(3)}
+                {axisPrice(l.price)}
               </text>
             </g>
           );
@@ -55,7 +56,7 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
           <>
             <line x1={x(cp)} x2={x(cp)} y1={12} y2={base} stroke="var(--accent)" strokeDasharray="4 3" />
             <text x={x(cp) - 6} y={14} textAnchor="end" fontSize={11} fill="var(--accent)" className="num">
-              Clears at {cp.toFixed(4)}
+              Clears at {price(cp)}
             </text>
           </>
         )}

@@ -3,22 +3,38 @@
 import clsx from "clsx";
 import { Check, X } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatEther, parseEther } from "viem";
 import { ccaAbi, covenantLensAbi, covenantVaultAbi, seedPlannerAbi } from "@/chain/abi.generated";
 import { shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
-import { AUCTION_FLOOR, AUCTION_TICK, type Launch, adopt, bid, closeAuction, defaultLaunchSpec, migrate, registerLaunch, seed, seedParamsFor } from "@/chain/launch";
+import {
+  AUCTION_FLOOR,
+  AUCTION_TICK,
+  type AuctionGrid,
+  type Launch,
+  type OnWait,
+  TESTNET_PRICE_SHIFT,
+  adopt,
+  bid,
+  closeAuction,
+  defaultLaunchSpec,
+  migrate,
+  registerLaunch,
+  seed,
+  seedParamsFor,
+  testnetLaunchSpec,
+} from "@/chain/launch";
 import { priceAt, q96ToNumber, snapToAuctionTick, ticksToPct } from "@/chain/price";
 import { PRESETS, PRESET_INFO, type PresetKey, type Terms, termsProblems } from "@/chain/terms";
-import { mineTo } from "@/chain/time";
+import { reach } from "@/chain/time";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { DemandCurve } from "@/components/covenant/DemandCurve";
 import { RuleRail } from "@/components/covenant/RuleRail";
 import { ShapeChart, ShapeLegend } from "@/components/covenant/ShapeChart";
 import { TermsCard } from "@/components/covenant/TermsCard";
 import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
-import { amt, duration, pct } from "@/lib/format";
+import { amt, duration, pct, price as priceText } from "@/lib/format";
 import { useChain } from "@/store/chain";
 
 const DAY = 86_400;
@@ -30,12 +46,16 @@ interface DraftBid {
   price: number;
   amount: number;
 }
-const DEFAULT_BIDS: DraftBid[] = [
-  { id: "b1", bidder: "bob", price: 1 + 1 / 64, amount: 300 },
-  { id: "b2", bidder: "bob", price: 1 + 3 / 64, amount: 300 },
-  { id: "b3", bidder: "alice", price: 1 + 19 / 64, amount: 1400 },
+/** The suite's bids at a launch's scale: prices from its floor, amounts times `scale` (1 locally, 1/8192 on a testnet). */
+const draftBids = (floorEth: number, scale: number): DraftBid[] => [
+  { id: "b1", bidder: "bob", price: floorEth * (1 + 1 / 64), amount: 300 * scale },
+  { id: "b2", bidder: "bob", price: floorEth * (1 + 3 / 64), amount: 300 * scale },
+  { id: "b3", bidder: "alice", price: floorEth * (1 + 19 / 64), amount: 1400 * scale },
 ];
-const snap = (price: number) => q96ToNumber(snapToAuctionTick(price, AUCTION_FLOOR, AUCTION_TICK));
+const LOCAL_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR, auctionTick: AUCTION_TICK };
+/** A public chain's launch (testnetLaunchSpec): every price and bid divided by 2^13, so faucet ETH is enough. */
+const TESTNET_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR >> BigInt(TESTNET_PRICE_SHIFT), auctionTick: AUCTION_TICK >> BigInt(TESTNET_PRICE_SHIFT) };
+const wei = (eth: number) => parseEther(eth.toFixed(18));
 
 type Check = { ok: boolean; isCovenantVault: boolean; hookIsCovenant: boolean; poolMatchesVault: boolean; lpGoesToVault: boolean; vaultIsFresh: boolean; tokensReservedForLp: bigint };
 type Phase = "terms" | "bidding" | "bid" | "closed" | "migrated" | "seeded";
@@ -77,16 +97,29 @@ export default function LaunchPage() {
   const busy = useChain((s) => s.busy);
   const selectVault = useChain((s) => s.selectVault);
   const setRole = useChain((s) => s.setRole);
+  const net = useChain((s) => s.net);
+  const wallet = useChain((s) => s.wallet);
+  // A public chain runs the same launch in real time, at testnet scale, signed by the connected wallet.
+  const isPublic = !!net && !net.caps.devChain;
+  const grid = isPublic ? TESTNET_GRID : LOCAL_GRID;
+  const floorEth = q96ToNumber(grid.floorPrice);
+  const scale = isPublic ? 2 ** -TESTNET_PRICE_SHIFT : 1;
+  const snap = (p: number) => q96ToNumber(snapToAuctionTick(p, grid.floorPrice, grid.auctionTick));
+  const who = (b: DraftBid) => (isPublic ? "You" : b.bidder === "bob" ? "Bob" : "Alice");
 
   const [presetKey, setPresetKey] = useState<PresetKey | "">("standard");
   const [draft, setDraft] = useState<Terms>(PRESETS.standard);
   const [symbol, setSymbol] = useState("TOKEN");
-  const [bids, setBids] = useState<DraftBid[]>(DEFAULT_BIDS);
+  const [bids, setBids] = useState<DraftBid[]>(() => draftBids(1, 1));
   const [phase, setPhase] = useState<Phase>("terms");
   const [launch, setLaunch] = useState<Launch | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
   const [result, setResult] = useState<{ clearing: number; raised: number; outbid: number } | null>(null);
   const [supportBefore, setSupportBefore] = useState<number | null>(null);
+  // the bids follow the network's scale until they are placed
+  useEffect(() => {
+    if (phase === "terms") setBids(draftBids(floorEth, scale));
+  }, [floorEth, scale, phase]);
 
   if (status !== "ready") return <NeedsChain what="the launch desk" />;
 
@@ -103,7 +136,8 @@ export default function LaunchPage() {
 
   const commit = () =>
     run("Creating the vault and registering the launch", async (ctx, rec) => {
-      const l = await registerLaunch(ctx, defaultLaunchSpec(draft, { name: `${symbol} Launch`, symbol }));
+      const named = { name: `${symbol} Launch`, symbol };
+      const l = await registerLaunch(ctx, isPublic ? testnetLaunchSpec(draft, named) : defaultLaunchSpec(draft, named));
       const m = ctx.net.manifest;
       const c = await ctx.pub.readContract({ address: m.lens, abi: covenantLensAbi, functionName: "verifyLaunch", args: [m.factory, m.lbpStrategy, l.auction] });
       rec.record(
@@ -121,11 +155,11 @@ export default function LaunchPage() {
   const placeBids = () =>
     run("Placing bids", async (ctx, rec) => {
       if (!launch) return;
-      await mineTo(ctx, launch.startBlock - 1n);
+      await reach(ctx, launch.startBlock, (now, target) => rec.progress(`The auction opens in ${target - now} blocks`));
       for (const b of bids) {
         if (b.amount <= 0) continue;
-        const o = await bid(ctx, launch, b.bidder, snapToAuctionTick(b.price, AUCTION_FLOOR, AUCTION_TICK), parseEther(String(b.amount)));
-        rec.record(beatOf(o, b.bidder, `${b.bidder === "bob" ? "Bob" : "Alice"} bids ${b.amount} ETH up to ${snap(b.price).toFixed(4)}`), { toast: !o.ok });
+        const o = await bid(ctx, launch, b.bidder, snapToAuctionTick(b.price, launch.floorPrice, launch.auctionTick), wei(b.amount));
+        rec.record(beatOf(o, b.bidder, `${who(b)} ${isPublic ? "bid" : "bids"} ${amt(b.amount)} ETH up to ${priceText(snap(b.price))}`), { toast: !o.ok });
       }
       setPhase("bid");
     });
@@ -133,7 +167,8 @@ export default function LaunchPage() {
   const close = () =>
     run("Closing the auction", async (ctx, rec) => {
       if (!launch) return;
-      await closeAuction(ctx, launch);
+      const counting: OnWait = (now, target) => rec.progress(`The auction ends in ${target - now} blocks (about ${duration((Number(target - now) * ctx.net.caps.blockTimeMs) / 1000)})`);
+      await closeAuction(ctx, launch, "deployer", counting);
       const [clearing, raised, levels] = await Promise.all([
         ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "clearingPrice" }),
         ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "currencyRaised" }),
@@ -141,14 +176,14 @@ export default function LaunchPage() {
       ]);
       const r = { clearing: q96ToNumber(clearing), raised: Number(formatEther(raised)), outbid: levels.reduce((s, l) => s + Number(l.demand) / 2 ** 96 / 1e18, 0) };
       setResult(r);
-      rec.record(note("anyone", `Auction clears at ${r.clearing.toFixed(4)} ETH`, `${amt(r.raised)} ETH raised. ${amt(r.outbid)} ETH of outbid demand stays on-chain`), { toast: true });
+      rec.record(note("anyone", `Auction clears at ${priceText(r.clearing)} ETH`, `${amt(r.raised)} ETH raised. ${amt(r.outbid)} ETH of outbid demand stays on-chain`), { toast: true });
       setPhase("closed");
     });
 
   const migrateAndAdopt = async () => {
     const vaultAddr = await run("Migrating into the pool", async (ctx, rec) => {
       if (!launch) return null;
-      const ids = await migrate(ctx, launch);
+      const ids = await migrate(ctx, launch, "deployer", (now, target) => rec.progress(`Migration opens in ${target - now} blocks`));
       rec.record(note("anyone", "Pool created at the clearing price, through the Covenant hook", `LP position #${ids[0]} minted to the vault`));
       const o = await adopt(ctx, launch);
       const [have] = await ctx.pub.readContract({ address: launch.vault, abi: covenantVaultAbi, functionName: "support" });
@@ -235,9 +270,15 @@ export default function LaunchPage() {
                   Token symbol
                   <input value={symbol} maxLength={8} onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} className="num h-9 w-28 rounded-md border border-line-strong bg-transparent px-2 text-ink outline-none" />
                 </label>
-                <Button variant="primary" size="lg" className="mt-4 w-full" disabled={!!busy || problems.length > 0 || !symbol} onClick={() => void commit()}>
-                  Create the vault and open the auction
+                <Button variant="primary" size="lg" className="mt-4 w-full" disabled={!!busy || problems.length > 0 || !symbol || (isPublic && !wallet)} onClick={() => void commit()}>
+                  {isPublic && !wallet ? "Connect a wallet to launch" : "Create the vault and open the auction"}
                 </Button>
+                {isPublic && (
+                  <p className="mt-2 text-center text-xs text-faint">
+                    On {net?.name}: a fixed-supply token, prices at 1/8192 of the local launch and a 128-block auction, about {duration((128 * (net?.caps.blockTimeMs ?? 2000)) / 1000)}.
+                    Your wallet signs each step.
+                  </p>
+                )}
                 <p className="mt-2 text-center text-xs text-faint">The factory checks the same bounds on-chain and refuses anything else.</p>
               </>
             )}
@@ -251,8 +292,8 @@ export default function LaunchPage() {
         {opened && launch && (
           <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
             <div className="space-y-6">
-              <Panel eyebrow={`1,000 tokens · floor 1.00 ETH · auction ${shortAddress(launch.auction)}`} title="Bids by maximum price">
-                <DemandCurve bids={curveBids} result={result ? { clearingPrice: result.clearing, floorPrice: 1 } : null} />
+              <Panel eyebrow={`1,000 tokens · floor ${priceText(floorEth)} ETH · auction ${shortAddress(launch.auction)}`} title="Bids by maximum price">
+                <DemandCurve bids={curveBids} result={result ? { clearingPrice: result.clearing, floorPrice: floorEth } : null} />
               </Panel>
               {check && (
                 <Panel eyebrow="Before bidding" title={check.ok ? "Bidders can verify the covenant on-chain" : "This launch does not verify"}>
@@ -271,17 +312,17 @@ export default function LaunchPage() {
               <ul className="space-y-3">
                 {bids.map((b) => (
                   <li key={b.id} className="grid grid-cols-[48px_1.2fr_1fr] items-center gap-3 text-sm">
-                    <span className="text-ink">{b.bidder === "bob" ? "Bob" : "Alice"}</span>
+                    <span className="text-ink">{who(b)}</span>
                     <label className="flex items-center gap-2 rounded-md border border-line-strong px-2.5 py-1.5">
                       <span className="whitespace-nowrap text-xs text-faint">up to</span>
                       <input
                         disabled={placed}
                         type="number"
-                        step={1 / 64}
-                        min={1}
-                        value={Number(b.price.toFixed(4))}
-                        onChange={(e) => editBid(b.id, "price", Number(e.target.value) || 1)}
-                        onBlur={() => editBid(b.id, "price", Math.max(1 + 1 / 64, snap(b.price)))}
+                        step={floorEth / 64}
+                        min={floorEth}
+                        value={Number(b.price.toPrecision(5))}
+                        onChange={(e) => editBid(b.id, "price", Number(e.target.value) || floorEth)}
+                        onBlur={() => editBid(b.id, "price", Math.max(floorEth * (1 + 1 / 64), snap(b.price)))}
                         className="num w-full bg-transparent text-right text-ink outline-none"
                         aria-label={`${b.bidder} max price`}
                       />
@@ -291,9 +332,9 @@ export default function LaunchPage() {
                       <input
                         disabled={placed}
                         type="number"
-                        step={50}
+                        step={50 * scale}
                         min={0}
-                        value={b.amount}
+                        value={Number(b.amount.toPrecision(6))}
                         onChange={(e) => editBid(b.id, "amount", Math.max(0, Number(e.target.value) || 0))}
                         className="num w-full bg-transparent text-right text-ink outline-none"
                         aria-label={`${b.bidder} amount`}
@@ -302,10 +343,10 @@ export default function LaunchPage() {
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-faint">Prices snap to the auction&apos;s 1/64 ETH grid. Bids must be above the 1.00 floor.</p>
+              <p className="mt-3 text-xs text-faint">Prices snap to the auction&apos;s grid of 1/64 of the floor. Bids must be above the {priceText(floorEth)} ETH floor.</p>
               {result && (
                 <div className="mt-5">
-                  <Row label="Clearing price">{result.clearing.toFixed(4)} ETH</Row>
+                  <Row label="Clearing price">{priceText(result.clearing)} ETH</Row>
                   <Row label="Raised">{amt(result.raised)} ETH</Row>
                   <Row label="To the pool (10% of the raise)">{amt(result.raised * 0.1)} ETH + 100 tokens</Row>
                   <Row label="Outbid demand left on-chain">{amt(result.outbid)} ETH</Row>
@@ -356,7 +397,7 @@ export default function LaunchPage() {
               </div>
             </Panel>
             <RuleRail world={ours} />
-            <p className="text-xs text-faint">Price at launch: {priceAt(ours.spot).toFixed(4)} ETH. The vault is now the app&apos;s current vault: every other page shows it.</p>
+            <p className="text-xs text-faint">Price at launch: {priceText(priceAt(ours.spot))} ETH. The vault is now the app&apos;s current vault: every other page shows it.</p>
           </div>
         )}
       </section>

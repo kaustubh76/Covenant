@@ -27,7 +27,8 @@ export async function reach(ctx: ChainCtx, blockNumber: bigint, onWait?: (latest
     const now = await ctx.pub.getBlockNumber({ cacheTime: 0 });
     if (now + 1n >= blockNumber) return;
     onWait?.(now, blockNumber);
-    await new Promise((r) => setTimeout(r, ctx.net.caps.blockTimeMs));
+    // Once a block, but no more than once a second: Base Sepolia makes a block every 200 ms.
+    await new Promise((r) => setTimeout(r, Math.max(ctx.net.caps.blockTimeMs, 1000)));
   }
 }
 

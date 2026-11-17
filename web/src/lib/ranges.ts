@@ -1,5 +1,6 @@
 import { priceAt } from "@/chain/price";
 import type { RangeKind, VaultView } from "@/chain/view";
+import { axisPrice } from "./format";
 
 export type { RangeKind };
 
@@ -11,7 +12,7 @@ export function describeRange(v: VaultView, i: number) {
     kind: r.kind,
     quote: r.quote,
     token: r.token,
-    label: full ? "All prices" : `${priceAt(r.priceLower).toFixed(3)} – ${priceAt(r.priceUpper).toFixed(3)}`,
+    label: full ? "All prices" : `${axisPrice(priceAt(r.priceLower))} – ${axisPrice(priceAt(r.priceUpper))}`,
   };
 }
 

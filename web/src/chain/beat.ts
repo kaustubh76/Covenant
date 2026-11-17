@@ -10,6 +10,8 @@ export interface Beat {
   at: number;
   block?: number;
   actor: Who;
+  /** Who acted, when that is a real account rather than a demo role: "You", or a short address (public chains). */
+  by?: string;
   title: string;
   detail?: string;
   ok: boolean;

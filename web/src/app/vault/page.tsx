@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { Address } from "viem";
 import { ACTOR_LABEL, shortAddress } from "@/chain/accounts";
+import { explorerAddress } from "@/chain/network";
 import { priceAt } from "@/chain/price";
 import { whoIs } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
@@ -44,6 +45,19 @@ const person = (a: Address | null) => {
   const w = whoIs(a);
   return w ? `${ACTOR_LABEL[w]} · ${shortAddress(a)}` : shortAddress(a);
 };
+
+/** An address, linked to the network's explorer when it has one. */
+function AddressLink({ address }: { address: Address }) {
+  const net = useChain((s) => s.net);
+  const href = net ? explorerAddress(net, address) : undefined;
+  return href ? (
+    <a href={href} target="_blank" rel="noreferrer" className="text-muted underline-offset-2 hover:text-ink hover:underline">
+      {shortAddress(address)} ↗
+    </a>
+  ) : (
+    <span className="text-muted">{shortAddress(address)}</span>
+  );
+}
 
 export default function VaultPage() {
   const v = useChain((s) => s.view);
@@ -167,10 +181,10 @@ export default function VaultPage() {
             <TermsCard terms={v.terms} symbol={sym} quote={q} />
             <Panel eyebrow="On-chain" title="Contracts">
               <Row label="Vault">
-                <span className="text-muted">{shortAddress(v.address)}</span>
+                <AddressLink address={v.address} />
               </Row>
               <Row label="Token">
-                <span className="text-muted">{shortAddress(v.token)}</span>
+                <AddressLink address={v.token} />
               </Row>
               <Row label="Pool id">
                 <span className="text-muted">{shortAddress(v.poolId)}</span>

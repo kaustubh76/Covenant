@@ -4,10 +4,9 @@
 
 import { type Abi, type Address, type Hex, decodeEventLog } from "viem";
 import { covenantLensAbi, covenantVaultAbi } from "./abi.generated";
-import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import { type DecodedError, decodeRevert } from "./errors";
-import { simulate } from "./tx";
+import { type Party, partyAddress, simulate } from "./tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "./view";
 
 export interface VaultEvent {
@@ -47,17 +46,20 @@ export function vaultEvents(logs: readonly { address: Address; data: Hex; topics
   return out;
 }
 
-export async function preflight(ctx: ChainCtx, actor: Actor, call: ActionCall, base: VaultView): Promise<Preflight> {
+export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, base: VaultView): Promise<Preflight> {
   const describe = { now: base.time + 1, quoteSymbol: base.quoteSymbol, tokenSymbol: base.tokenSymbol };
   const latest = await ctx.pub.getBlock({ blockTag: "latest" });
   try {
     const [block] = await ctx.pub.simulateBlocks({
+      // On top of the block just read. Unpinned, the simulation builds on the RPC's head at the time of this call, and
+      // on a public chain that has often moved on a block, so the overrides below fall behind it and are rejected.
+      blockNumber: latest.number,
       blocks: [
         {
           // the block the transaction would land in: next number, next second
           blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n },
           calls: [
-            { account: ctx.address(actor), to: call.address, abi: call.abi, functionName: call.functionName, args: call.args, value: call.value },
+            { account: partyAddress(ctx, party), to: call.address, abi: call.abi, functionName: call.functionName, args: call.args, value: call.value },
             { to: ctx.net.manifest.lens, abi: covenantLensAbi, functionName: "snapshot", args: [base.address] },
           ],
         },
@@ -73,7 +75,7 @@ export async function preflight(ctx: ChainCtx, actor: Actor, call: ActionCall, b
     };
   } catch {
     // No eth_simulateV1 on this RPC: fall back to a plain call, which still gives the verdict.
-    const o = await simulate(ctx, actor, call as never, describe);
+    const o = await simulate(ctx, party, call as never, describe);
     return { ok: o.ok, error: o.error, value: o.value, events: [] };
   }
 }

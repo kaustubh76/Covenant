@@ -94,3 +94,17 @@ export function fragment(v: V): Plan {
 
 /** The whole vault in one transaction (13.2.06): fine in the setup epoch, over Pace after it. */
 export const moveEverything = (v: V): Plan => ({ cuts: cutAll(v), legs: honestLegs(v) });
+
+/**
+ * Half of the quote-only reserve into the band and the rest spread four bands deeper: the layout restore exists for. A
+ * sell-off that holds drags the band down past the deep half and strands it there (the guided demo's step 7, and the
+ * live proof on Base Sepolia).
+ */
+export function deepenReserve(v: V & Pick<VaultView, "twap">): Plan {
+  const s = v.tickSpacing;
+  const B = v.terms.supportBandTicks;
+  const reserve = v.ranges.filter((r) => r.token < 1e-12 && r.quote > 0).map((r) => r.index);
+  const top = Math.min(bidTop(v), floorTo(v.twap, s));
+  const bandFloor = ceilTo(v.twap - B, s) + s;
+  return { cuts: reserve.map((i) => cut(i)), legs: [bidLeg(v, bandFloor, top, 5000), bidLeg(v, v.twap - 5 * B, bandFloor, SINK)] };
+}

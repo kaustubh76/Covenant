@@ -1,7 +1,47 @@
-import type { Abi, Address, ContractFunctionArgs, ContractFunctionName, ContractFunctionReturnType, Hex, TransactionReceipt } from "viem";
-import type { Actor } from "./accounts";
+import {
+  type Abi,
+  type Account,
+  type Address,
+  type Chain,
+  type ContractFunctionArgs,
+  type ContractFunctionName,
+  type ContractFunctionReturnType,
+  type Hex,
+  type TransactionReceipt,
+  type Transport,
+  type WalletClient,
+  zeroAddress,
+} from "viem";
+import { type Actor, actorOf, shortAddress } from "./accounts";
 import type { ChainCtx } from "./client";
 import { type DecodedError, type DescribeContext, decodeRevert } from "./errors";
+
+/**
+ * Who an action is from: a demo role, or a specific address. Passing the vault's curator by address lets a page show
+ * what the curator's action would do on a public chain, where nobody but the curator's own wallet can send it.
+ */
+export type Party = Actor | Address;
+export const isAddressParty = (p: Party): p is Address => p.startsWith("0x");
+
+/** The address `party` acts from. On a public chain with no wallet connected, a role is previewed from address zero. */
+export function partyAddress(ctx: ChainCtx, party: Party): Address {
+  if (isAddressParty(party)) return party;
+  if (!ctx.net.caps.devChain && !ctx.signer) return zeroAddress;
+  return ctx.address(party);
+}
+
+/** The wallet that sends for `party` here, or why nobody can. */
+export function signerFor(ctx: ChainCtx, party: Party): { wallet: WalletClient<Transport, Chain, Account> } | { refusal: string } {
+  if (ctx.net.caps.devChain) {
+    const actor = isAddressParty(party) ? actorOf(party) : party;
+    return actor ? { wallet: ctx.wallet(actor) } : { refusal: `There is no dev key for ${shortAddress(party)} on the local chain.` };
+  }
+  if (!ctx.signer) return { refusal: `Connect a wallet to send this on ${ctx.net.name}.` };
+  if (isAddressParty(party) && party.toLowerCase() !== ctx.signer.toLowerCase()) {
+    return { refusal: `Only ${shortAddress(party)} can send this. The connected wallet is ${shortAddress(ctx.signer)}.` };
+  }
+  return { wallet: ctx.wallet("holder") };
+}
 
 type Mutability = "nonpayable" | "payable";
 
@@ -20,10 +60,12 @@ export interface Outcome<T = unknown> {
   hash?: Hex;
   receipt?: TransactionReceipt;
   error?: DecodedError;
+  /** The pre-flight passed but nobody here can sign for the sender: who could, and who is connected. */
+  refused?: string;
 }
 
 export interface SendOptions {
-  /** Send even if the pre-flight reverts, so the failure is mined with a hash. */
+  /** Local chain only: send even if the pre-flight reverts, so the failure is mined with a hash. */
   force?: boolean;
   gas?: bigint;
   describe?: DescribeContext;
@@ -31,17 +73,17 @@ export interface SendOptions {
 
 const FORCED_GAS = 10_000_000n;
 
-/** Pre-flight only: what the contract would return or why it would revert, from `actor`, in the next block. */
+/** Pre-flight only: what the contract would return or why it would revert, from `party`, in the next block. */
 export async function simulate<const abi extends Abi, fn extends ContractFunctionName<abi, Mutability>>(
   ctx: ChainCtx,
-  actor: Actor,
+  party: Party,
   call: Call<abi, fn>,
   describe?: DescribeContext,
 ): Promise<Outcome<ContractFunctionReturnType<abi, Mutability, fn>>> {
   try {
     // "pending" executes in the block the transaction would land in (next number, next timestamp), so time- and
     // block-gated checks (auction start, timelocks, the setup epoch, the TWAP) match what the transaction will see.
-    const { result } = await ctx.pub.simulateContract({ ...(call as object), account: ctx.address(actor), blockTag: "pending" } as never);
+    const { result } = await ctx.pub.simulateContract({ ...(call as object), account: partyAddress(ctx, party), blockTag: "pending" } as never);
     return { ok: true, value: result as ContractFunctionReturnType<abi, Mutability, fn> };
   } catch (e) {
     return { ok: false, error: decodeRevert(e, describe) };
@@ -49,18 +91,23 @@ export async function simulate<const abi extends Abi, fn extends ContractFunctio
 }
 
 /**
- * Simulate, then send from `actor` and wait for the receipt. A call that would revert is not sent unless `force` is
- * set; then it is mined as a failed transaction, and the pre-flight says why.
+ * Simulate, then send from `party` and wait for the receipt. A call that would revert is not sent. On the local chain
+ * `force` sends it anyway, so the failure is mined with a hash and the pre-flight says why; a public chain never does,
+ * since the wallet's owner would pay gas for a refusal the pre-flight already decoded.
  */
 export async function send<const abi extends Abi, fn extends ContractFunctionName<abi, Mutability>>(
   ctx: ChainCtx,
-  actor: Actor,
+  party: Party,
   call: Call<abi, fn>,
   opts: SendOptions = {},
 ): Promise<Outcome<ContractFunctionReturnType<abi, Mutability, fn>>> {
-  const pre = await simulate(ctx, actor, call, opts.describe);
-  if (!pre.ok && !opts.force) return pre;
-  const wallet = ctx.wallet(actor);
+  const pre = await simulate(ctx, party, call, opts.describe);
+  if (!pre.ok && !(opts.force && ctx.net.caps.devChain)) return pre;
+  const who = signerFor(ctx, party);
+  if ("refusal" in who) {
+    return { ok: false, value: pre.value, refused: who.refusal, error: { name: "NotSent", args: [], signature: "Not sent", rule: "Other", reason: who.refusal } };
+  }
+  const wallet = who.wallet;
   const hash = await wallet.writeContract({
     ...(call as object),
     account: wallet.account,
@@ -73,7 +120,7 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
   if (pre.error) return { ok: false, hash, receipt, error: pre.error };
   // Passed the pre-flight but failed when mined: something changed in between. Replay it at its parent block.
   try {
-    await ctx.pub.simulateContract({ ...(call as object), account: ctx.address(actor), blockNumber: receipt.blockNumber - 1n } as never);
+    await ctx.pub.simulateContract({ ...(call as object), account: partyAddress(ctx, party), blockNumber: receipt.blockNumber - 1n } as never);
   } catch (e) {
     return { ok: false, hash, receipt, error: decodeRevert(e, opts.describe) };
   }

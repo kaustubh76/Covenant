@@ -33,6 +33,11 @@ export interface LaunchRecord {
   createdAtBlock: number;
   /** The launcher's liquidity has been adopted: the pool exists and the vault is live. */
   adopted?: boolean;
+  /**
+   * Block spans whose activity the feed keeps after they fall behind its recent window, such as the live proof's
+   * (scripts/lib/proof.ts). The launch's own first blocks are kept without being listed.
+   */
+  spans?: [number, number][];
 }
 
 /** Launches a bring-up or launch script left behind: `deployments/<records>.runtime.json`. */
@@ -71,7 +76,7 @@ export interface NetworkInfo {
   caps: Capabilities;
 }
 
-const PUBLIC: Omit<Capabilities, "explorer"> = { devChain: false, logRange: 200, pollMs: 2000, blockTimeMs: 2000 };
+const PUBLIC: Omit<Capabilities, "explorer" | "blockTimeMs"> = { devChain: false, logRange: 200, pollMs: 2000 };
 
 export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
   local: {
@@ -88,7 +93,8 @@ export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
     name: "Base Sepolia",
     records: String(BASE_SEPOLIA_CHAIN_ID),
     defaultRpc: "https://sepolia.base.org",
-    caps: { ...PUBLIC, explorer: "https://sepolia.basescan.org" },
+    // A block every 200 ms (measured on 2026-11-17: 542 blocks in 109 seconds), so 200 blocks of logs are 40 seconds.
+    caps: { ...PUBLIC, blockTimeMs: 200, explorer: "https://sepolia.basescan.org" },
   },
   // A local Anvil fork of Base Sepolia, for rehearsing the public-chain path against Uniswap's live contracts. It is
   // treated exactly like the public chain (no dev keys, no time travel); it just has no explorer.
@@ -98,7 +104,7 @@ export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
     name: "Base Sepolia fork",
     records: `${BASE_SEPOLIA_CHAIN_ID}-fork`,
     defaultRpc: "http://127.0.0.1:8548",
-    caps: { ...PUBLIC },
+    caps: { ...PUBLIC, blockTimeMs: 2000 }, // Anvil's interval mining: make fork's 2-second default
   },
 };
 

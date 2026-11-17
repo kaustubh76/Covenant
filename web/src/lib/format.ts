@@ -5,7 +5,11 @@ const nf = (min: number, max: number) => new Intl.NumberFormat("en-US", { minimu
 export const num = (v: number, dp = 2) => nf(dp, dp).format(Math.abs(v) < 5 * 10 ** -(dp + 1) ? 0 : v);
 export const amt = (v: number) => (Math.abs(v) >= 1000 ? nf(0, 0).format(v) : Math.abs(v) >= 1 ? nf(2, 2).format(v) : nf(0, 4).format(v));
 export const pct = (bps: number, dp = 1) => `${nf(dp, dp).format(bps / 100)}%`;
-export const price = (ethPerToken: number) => nf(4, 4).format(ethPerToken);
+/** Quote per token: four decimals from 1 up, four significant digits below (a testnet launch trades near 0.0002). */
+export const price = (ethPerToken: number) =>
+  Math.abs(ethPerToken) >= 1 || ethPerToken === 0 ? nf(4, 4).format(ethPerToken) : ethPerToken.toPrecision(4);
+/** A chart's axis label: three decimals from 1 up, three significant digits below. */
+export const axisPrice = (ethPerToken: number) => (Math.abs(ethPerToken) >= 1 || ethPerToken === 0 ? ethPerToken.toFixed(3) : ethPerToken.toPrecision(3));
 /** Quote per token at a price tick. */
 export const tickPrice = (priceTick: number) => price(priceAt(priceTick));
 export const signedPct = (ratio: number, dp = 1) => `${ratio >= 0 ? "+" : "−"}${nf(dp, dp).format(Math.abs(ratio) * 100)}%`;

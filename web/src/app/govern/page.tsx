@@ -1,17 +1,17 @@
 "use client";
 
 import { Check, Minus } from "lucide-react";
-import { formatEther, parseEther } from "viem";
+import { formatEther, isAddressEqual, parseEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
-import { ACTOR_LABEL, shortAddress } from "@/chain/accounts";
+import { ACTOR_LABEL, type Who, shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { vaultEvents } from "@/chain/preflight";
-import { send } from "@/chain/tx";
+import { type Party, send } from "@/chain/tx";
 import { whoIs } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { Button, Meter, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration } from "@/lib/format";
-import { actorFor, useChain } from "@/store/chain";
+import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 
 const POWERS: [string, boolean[]][] = [
   ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
@@ -35,26 +35,50 @@ export default function GovernPage() {
   const setRole = useChain((s) => s.setRole);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
+  const net = useChain((s) => s.net);
+  const wallet = useChain((s) => s.wallet);
   if (!v) return <NeedsChain what="governance" />;
 
   const actor = actorFor(role, v);
+  // On a public chain the issuer's powers are simulated as the vault's real issuer and only their wallet can send
+  // them; with another role the action runs from the connected wallet and the contract's own refusal shows.
+  const party = partyFor(role, v, net);
+  const publicChain = !!net && !net.caps.devChain;
+  const mine = (p: Party) => canSendAs(p, net, wallet);
   const current = whoIs(v.people.curator);
   const candidate = current === "newCurator" ? "curator" : "newCurator";
   const pending = v.people.pendingCurator;
   const left = v.people.curatorReadyAt - v.time;
   const t = v.terms;
-  const who = (a: `0x${string}` | null) => (a ? `${whoIs(a) ? ACTOR_LABEL[whoIs(a)!] : "Unknown"} · ${shortAddress(a)}` : "None");
+  const who = (a: `0x${string}` | null) => {
+    if (!a) return "None";
+    const known = whoIs(a);
+    if (known) return `${ACTOR_LABEL[known]} · ${shortAddress(a)}`;
+    return wallet && isAddressEqual(wallet.address, a) ? `Your wallet · ${shortAddress(a)}` : shortAddress(a);
+  };
   const sym = v.tokenSymbol;
   const describe = { now: v.time + 1, tokenSymbol: sym };
-  const call = (title: string, functionName: "proposeCurator" | "cancelCuratorProposal" | "acceptCurator" | "transferIssuer" | "acceptIssuer" | "collectFees" | "claimCuratorFees", args: readonly unknown[], detail: () => string, as = actor) =>
+  const call = (
+    title: string,
+    functionName: "proposeCurator" | "cancelCuratorProposal" | "acceptCurator" | "transferIssuer" | "acceptIssuer" | "collectFees" | "claimCuratorFees",
+    args: readonly unknown[],
+    detail: () => string,
+    as: Party = party,
+    label: Who = actor,
+  ) =>
     run(title, async (c, rec) => {
       const o = await send(c, as, { address: v.address, abi: covenantVaultAbi, functionName, args } as never, { force: true, describe });
-      rec.record(beatOf(o, as, title, detail), { toast: true });
+      rec.record(beatOf(o, label, title, detail), { toast: true });
     });
+  // Who a public chain's curator change would name: the connected wallet. Locally, the other demo curator.
+  const proposed = publicChain ? wallet?.address : useChain.getState().ctx?.address(candidate);
+  const bounty = publicChain ? "0.005" : "0.05";
+  const curatorParty: Party = publicChain ? v.people.curator : (whoIs(v.people.curator) ?? "curator");
+  const pendingIssuerParty: Party = publicChain ? (v.people.pendingIssuer ?? v.people.issuer) : (whoIs(v.people.pendingIssuer) ?? "holder");
 
   const collect = () =>
     run("Collect fees", async (c, rec) => {
-      const o = await send(c, actor, { address: v.address, abi: covenantVaultAbi, functionName: "collectFees", args: [] }, { force: true });
+      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "collectFees", args: [] }, { force: true });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "FeesCollected");
       rec.record(
         beatOf(o, actor, "Collect fees", () =>
@@ -65,9 +89,9 @@ export default function GovernPage() {
     });
   const fund = () =>
     run("Fund the bounty pool", async (c, rec) => {
-      const amount = parseEther("0.05");
-      const o = await send(c, actor, { address: v.address, abi: covenantVaultAbi, functionName: "fundBounty", args: [amount], value: amount });
-      rec.record(beatOf(o, actor, "Fund the bounty pool", () => "0.05 ETH added"), { toast: true });
+      const amount = parseEther(bounty);
+      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "fundBounty", args: [amount], value: amount });
+      rec.record(beatOf(o, actor, "Fund the bounty pool", () => `${bounty} ETH added`), { toast: true });
     });
 
   return (
@@ -107,15 +131,21 @@ export default function GovernPage() {
                 Cancel change
               </Button>
             ) : (
-              <Button disabled={!!busy} onClick={() => call("Propose a new curator", "proposeCurator", [useChain.getState().ctx!.address(candidate)], () => `${ACTOR_LABEL[candidate]} can take over in ${duration(t.curatorTimelock)}`)}>
-                {candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
+              <Button
+                disabled={!!busy || !proposed}
+                onClick={() => call("Propose a new curator", "proposeCurator", [proposed], () => `${publicChain ? "Your wallet" : ACTOR_LABEL[candidate]} can take over in ${duration(t.curatorTimelock)}`)}
+              >
+                {publicChain ? (wallet ? "Propose your wallet as curator" : "Connect a wallet to propose") : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
               </Button>
             )}
             <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules")}>
               Accept change
             </Button>
           </div>
-          <p className="mt-3 text-xs leading-relaxed text-faint">Only the issuer can propose or cancel. Anyone can accept once the timelock has run. Move time forward in the bar below.</p>
+          <p className="mt-3 text-xs leading-relaxed text-faint">
+            Only the issuer can propose or cancel. Anyone can accept once the timelock has run.{" "}
+            {publicChain ? (mine(v.people.issuer) ? "Your wallet is the issuer." : `On ${net?.name} that is ${shortAddress(v.people.issuer)}'s wallet; the timelock runs in real time.`) : "Move time forward in the bar below."}
+          </p>
         </Panel>
 
         <Panel eyebrow="Income" title="Fees are income, never principal">
@@ -135,9 +165,9 @@ export default function GovernPage() {
               Collect fees
             </Button>
             <Button disabled={!!busy} onClick={fund}>
-              Fund 0.05
+              Fund {bounty}
             </Button>
-            <Button disabled={!!busy} onClick={() => call("Claim curator fees", "claimCuratorFees", [], () => "Paid to the curator in office when they were earned", whoIs(v.people.curator) ?? "curator")}>
+            <Button disabled={!!busy} onClick={() => call("Claim curator fees", "claimCuratorFees", [], () => "Paid to the curator in office when they were earned", curatorParty, "curator")}>
               Curator claims
             </Button>
           </div>
@@ -149,10 +179,15 @@ export default function GovernPage() {
         <Row label="Issuer">{who(v.people.issuer)}</Row>
         <Row label="Pending">{who(v.people.pendingIssuer)}</Row>
         <div className="mt-4 flex flex-wrap gap-3">
-          <Button disabled={!!busy} onClick={() => call("Start an issuer transfer", "transferIssuer", [useChain.getState().ctx!.address("holder")], () => "The holder account can now accept the issuer role")}>
-            Transfer to the holder account
-          </Button>
-          <Button disabled={!!busy || !v.people.pendingIssuer} onClick={() => call("Accept the issuer role", "acceptIssuer", [], () => "The issuer role has moved", whoIs(v.people.pendingIssuer) ?? "holder")}>
+          {!publicChain && (
+            <Button disabled={!!busy} onClick={() => call("Start an issuer transfer", "transferIssuer", [useChain.getState().ctx!.address("holder")], () => "The holder account can now accept the issuer role")}>
+              Transfer to the holder account
+            </Button>
+          )}
+          <Button
+            disabled={!!busy || !v.people.pendingIssuer || (publicChain && !mine(pendingIssuerParty))}
+            onClick={() => call("Accept the issuer role", "acceptIssuer", [], () => "The issuer role has moved", pendingIssuerParty, "holder")}
+          >
             Accept as the pending issuer
           </Button>
         </div>
