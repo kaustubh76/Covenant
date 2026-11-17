@@ -14,6 +14,31 @@ A named curator reshapes freely inside those rules. If price drift breaks Suppor
 
 The full product spec is in [`docs/SPEC.md`](docs/SPEC.md) and the execution flow in [`docs/Covenant_Flow.excalidraw`](docs/Covenant_Flow.excalidraw).
 
+## See it
+
+**The app, live on Base Sepolia: https://covenant-uhi11.vercel.app.** Nothing to install, and no wallet needed to look around. Every reshape drawn on Curate is simulated against the live vault, so the verdict shown is the contract's own. Keep simulates the smallest sell-off that would strand support. Connect a wallet to act.
+
+![The live CVNT vault on Base Sepolia](docs/img/vault.jpg)
+
+**The live proof.** On 2026-11-17, Covenant's rules were exercised as real transactions against the launched CVNT vault (`make proof-sepolia`; the record is [`deployments/84532.proof.json`](deployments/84532.proof.json)). The runner simulated the whole plan before sending anything, the crash included.
+
+| Step | Transaction | What the chain recorded |
+|---|---|---|
+| The curator tries a soft rug | [`0x23ab6466…ccc4`](https://sepolia.basescan.org/tx/0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4) ([decoded](https://base-sepolia.blockscout.com/tx/0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4)) | **Reverted**: `SupportBroken(277, 4000)`. Support would have been 2.8%; the covenant needs 40% |
+| The curator reshapes honestly: half the reserve four bands deep | [`0xdcf89d98…b58a`](https://sepolia.basescan.org/tx/0xdcf89d9801c7c4bc07e6a579fb3d52ab8ab9c8b9fffec50492c61284a28db58a) | Settled. Support 52.8% → 52.2%, within Pace |
+| The issuer's address, standing in for the market, sells the price down | [`0xeaf892b5…fc25`](https://sepolia.basescan.org/tx/0xeaf892b56b3de475728de3958204222edca89c67b90a6ae387b75a7ba157fc25) | 54.84 CVNT sold, price 13.9% lower. After 26 minutes with nobody trading, the 30-minute TWAP had followed the price to within the guard's 300 ticks, and support had lapsed to 32.6% |
+| A second address with no role in the vault restores support | [`0x76baab6f…95c1`](https://sepolia.basescan.org/tx/0x76baab6f8cc6aa702eda2636de00e74e4b19da6572974ba2f0ba2d23f6e695c1) | Support 32.6% → 100%. A 0.000074 ETH bounty paid to the caller |
+| Anyone collects the fees | [`0x753e022a…30c7`](https://sepolia.basescan.org/tx/0x753e022a51ba51fdc0ef480d6b354b695a6d6d40bae332b86c06556d779730c7) | The sell-off's swap fees, 0.148 CVNT, to the treasury |
+| The issuer tops the bounty pool back up | [`0x57784c77…1890`](https://sepolia.basescan.org/tx/0x57784c77ce5682e47cd72bdf117e3296a0c01254ba531b2e6b7a25e5ece11890) | By the 0.000074 ETH the keeper was paid |
+
+The restorer's key is derived from the issuer's, to keep the demo self-contained; its gas money is [`0x521364ec…7428`](https://sepolia.basescan.org/tx/0x521364ec89da0da0670a721cc28ba93532bc766b15a5e984afef0dee87da7428). Restore is open to any address. Its bounty is capped at a share of the quote it moves, which is why this one is small: restore cannot be farmed.
+
+<img src="docs/img/curate-refused.jpg" alt="Curate refusing the soft rug against the live vault: SupportBroken(0, 4000)" width="720" />
+
+<img src="docs/img/proof-feed.png" alt="The live vault's activity feed: the launch, then the proof's reshape, sell-off, restore, fees and top-up" width="560" />
+
+**The contracts** sit beside Uniswap's own launch stack on Base Sepolia and are verified on Sourcify; Blockscout shows the source and decodes every call and revert ([Deployment](#deployment)). **On your machine**, `make demo` runs everything on a local chain, including the attack lab's 20 attacks and the spec's 10-step demo as real transactions ([Demo app](#demo-app)).
+
 ---
 
 ## Results
@@ -145,6 +170,8 @@ make sizes                           # EIP-170 gate for src/
 BASE_SEPOLIA_RPC_URL=https://sepolia.base.org make test-fork   # against Uniswap's deployed contracts
 ```
 
+CI (`.github/workflows/ci.yml`) runs the formatting check, the size gate and `forge test`, then the app's unit tests, its chain tests on Anvil, lint, types and the production build, on every push to `main` and every pull request. It also fails if the committed ABIs drift from the contracts.
+
 ## Demo app
 
 `web/` is a Next.js app that runs on these contracts. One command starts everything:
@@ -170,8 +197,11 @@ It needs Foundry (`forge`, `anvil`) and Node 20 or newer. The bring-up takes a f
 
 Roles sign with Anvil's well-known dev keys, which the app refuses on any other chain. A dock at the bottom of the app moves chain time, trades against the pool and resets the chain. With no chain running, the landing page still works: its figures were recorded from the contracts (`make record`), and every other page shows how to start the chain.
 
+The same app runs on Base Sepolia, where Covenant is live (see [Deployment](#deployment)), or on a local fork of it (`make fork`), with a browser wallet: pick the network at the top. There, every write is signed by your wallet, a call the pre-flight shows will revert is never sent, and an action your wallet cannot take (a reshape when you are not the curator) is simulated as the vault's real curator so the verdict is still exact. The attack lab and the guided demo need a clock that can jump, so on a public chain they show the recorded runs and offer the local chain. Keep's crash finder works there too: it simulates the sell-off and reads the vault back a TWAP window later, sending nothing.
+
 ```bash
 make web-test    # unit tests, then the demo and attack lab against a dedicated chain
+cd web && npm run test:fork   # the public-chain code path against a fresh fork of Base Sepolia (needs network)
 ```
 
 ### Repository
@@ -187,8 +217,8 @@ test/invariant  eight invariants under random trading, time, curator, keepers, L
 test/integration  the spec's demo end to end; restore after a crash; demand-curve gas; the lens
 test/fork       the same launch against Uniswap's deployed Base Sepolia contracts
 test/prototype  the original prototype, kept unmodified (imports only) as the baseline for the proof of concept
-script/         Deploy.s.sol (Base Sepolia), LocalStack.s.sol (local Anvil), base/CovenantDeployer.sol, config/84532.json
-web/            the demo app (its own git repository): src/chain is the contract layer, src/app the pages
+script/         Deploy.s.sol (Base Sepolia), LocalStack.s.sol (local Anvil), base/CovenantDeployer.sol, tokens/LaunchToken.sol, config/84532.json
+web/            the demo app: src/chain is the contract layer, src/app the pages, scripts/ the chain bring-ups and launch runner
 docs/           SPEC.md (the product spec), ARCHITECTURE.md, SECURITY.md, flow diagram, prototype archive
 ```
 
@@ -196,15 +226,43 @@ docs/           SPEC.md (the product spec), ARCHITECTURE.md, SECURITY.md, flow d
 
 ## Deployment
 
-Target: **Base Sepolia**. Uniswap's LBPStrategy v3.3.0, CCA factory v2.1.0, LiquidityLauncher, PoolManager and PositionManager are all live there. Unichain Sepolia, the spec's original target, has only the CCA factory.
+Target: **Base Sepolia**. Uniswap's LBPStrategy v3.3.0, CCA factory v2.1.0, LiquidityLauncher, PoolManager, PositionManager and its `PoolSwapTest` router are all live there. Unichain Sepolia, the spec's original target, has only the CCA factory.
 
 ```bash
-forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL                                   # simulate
-forge script script/Deploy.s.sol --rpc-url $BASE_SEPOLIA_RPC_URL --private-key $PRIVATE_KEY \
-    --broadcast --verify --etherscan-api-key $BASESCAN_API_KEY                                      # deploy
+make fork             # rehearsal: fork Base Sepolia locally, deploy with the real script, launch in 2-second blocks
+make deploy-sepolia   # deploy Covenant with the funded PRIVATE_KEY in .env: simulates, asks, then broadcasts
+make launch-sepolia   # a launch through the live LBPStrategy and CCA, about a minute; resumes if it stops
+make verify-sepolia   # publish the source on Sourcify, no API key needed (forge 1.1's own verifier uses a retired API)
+make proof-sepolia    # the live proof below, about half an hour; simulated first (cd web && npm run proof -- --check)
 ```
 
-The simulation passes against the live chain: about 21.4M gas, roughly 0.0002 ETH at current Base Sepolia prices. The hook goes to a CREATE2 address mined for its three permission flags, and the script checks its flags, its initializer and the factory wiring before finishing. Addresses land in `deployments/84532.json` after a broadcast. **Not broadcast yet.**
+- **The rehearsal.** `make fork` runs the whole path against Uniswap's deployed contracts without sending anything to the live chain. On the fork, support goes from 722 to 5,276 bps (4,000 needed), and all three bids are refunded or claimed. The app's public-chain mode is tested against it with `npm run test:fork` in `web/` (9 tests).
+- **The deploy.** Broadcast on 2026-11-17 from `0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1`: six transactions in blocks 59,849,420 to 59,849,448, 21.5M gas, about 0.00008 ETH. The hook goes to a CREATE2 address mined for its three permission flags, and the script checks its flags, its initializer and the factory wiring before finishing. `deployments/84532.json` holds the full manifest the app reads.
+- **The testnet launch.** It is the suite's launch with every price and bid divided by 2^13. It sells a fixed-supply `LaunchToken` (`script/tokens/`), so nobody can mint tokens and drain the vault's bids. It sends about 0.24 ETH of bids, and the outbid ETH comes back at the end. On Base Sepolia it took 71 seconds, from the token to the last claim: blocks come every 200 ms there, so the 128-block auction lasted 26 seconds. Support went from 722 to 5,276 bps (4,000 needed) across 5 ranges, all three bids were exited and claimed, and the signer ended 0.0206 ETH lighter, deploy included: 0.0155 ETH is the vault's ETH in the pool (issuer principal, locked for 90 days), 0.005 ETH funds the keepers' bounty pool, and gas came to about 0.0001 ETH. Any signer account that has code is refused: on Base Sepolia, Anvil's well-known dev accounts carry EIP-7702 delegations to sweepers.
+
+### Live on Base Sepolia
+
+| Contract | Address |
+|---|---|
+| CovenantFactory | [`0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE`](https://sepolia.basescan.org/address/0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE) |
+| CovenantHook | [`0x1ae2FdAED268851B72268E9369651e901ee4B040`](https://sepolia.basescan.org/address/0x1ae2FdAED268851B72268E9369651e901ee4B040) |
+| VaultOps | [`0x671bE60CE78071a647f30E5B45c6917ADA585F4B`](https://sepolia.basescan.org/address/0x671bE60CE78071a647f30E5B45c6917ADA585F4B) |
+| Vault implementation | [`0x7E4F27641392eE95BC02481F422aFC02B085D890`](https://sepolia.basescan.org/address/0x7E4F27641392eE95BC02481F422aFC02B085D890) |
+| SeedPlanner | [`0x8BEf38167F47b57b6177DAfB8039798653018Fda`](https://sepolia.basescan.org/address/0x8BEf38167F47b57b6177DAfB8039798653018Fda) |
+| CovenantLens | [`0x2f572fab2f0802B4Ef6Ce325EEf7a4B494d754Da`](https://sepolia.basescan.org/address/0x2f572fab2f0802B4Ef6Ce325EEf7a4B494d754Da) |
+
+The first launch on it, made by `make launch-sepolia`. The deployer is its issuer, curator and treasury:
+
+| | |
+|---|---|
+| Vault (CVNT/ETH, 0.30% pool) | [`0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc`](https://sepolia.basescan.org/address/0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc) |
+| Token (CVNT, fixed supply) | [`0xBd539bdf1864d951Eda75Ec5760d04BA554FC989`](https://sepolia.basescan.org/address/0xBd539bdf1864d951Eda75Ec5760d04BA554FC989) |
+| CCA auction | [`0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97`](https://sepolia.basescan.org/address/0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97) |
+| Pool id | `0x2b98cfd9f5acea3e2bcbec77cc1bd6a29d319ca7c6d9ab58d644424feb9e2ad5` |
+
+Every contract above is verified on [Sourcify](https://repo.sourcify.dev/84532/0x1ae2FdAED268851B72268E9369651e901ee4B040) (`make verify-sepolia`), including the linked `CovenantLogic` library at `0x36284778f92404a633febdad6423d7e4a4e83570` and the CVNT token. [Blockscout](https://base-sepolia.blockscout.com/address/0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc) reads the source from there and decodes every call and revert; Basescan does not import Sourcify, so it shows bytecode only.
+
+The app reads all of this with no wallet, at **https://covenant-uhi11.vercel.app** or locally (`cd web && npm run dev`, then http://localhost:3000/vault?net=base-sepolia). Connect a wallet to act.
 
 ## Status
 

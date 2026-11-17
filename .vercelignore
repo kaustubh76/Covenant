@@ -1,0 +1,14 @@
+# What `vercel deploy` uploads from this repository: web/ and Base Sepolia's public deployment records, nothing else.
+# Never .env, lib/, out/, broadcast/ or any other network's records.
+/*
+!/web
+!/deployments
+/deployments/*
+!/deployments/84532.json
+!/deployments/84532.runtime.json
+!/deployments/84532.proof.json
+/web/node_modules
+/web/.next
+/web/.chain
+/web/.env*
+/web/*.tsbuildinfo

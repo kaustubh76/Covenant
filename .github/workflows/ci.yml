@@ -1,0 +1,58 @@
+# The contracts and the app, on every push to main and every pull request. The same Make targets as a local checkout.
+# Left out: the fork tests (make test-fork, npm run test:fork), which need Base Sepolia's RPC, and the live proof.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    name: Contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Not recursive: the Liquidity Launcher's own submodules include the optimism monorepo (see the README).
+          submodules: true
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.1.0
+      - name: Formatting
+        run: make fmt-check
+      - name: Build, and the EIP-170 size gate for src/
+        run: make sizes
+      - name: Tests (the fork test skips without an RPC URL)
+        run: forge test
+
+  app:
+    name: App (web/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.1.0
+      - uses: actions/setup-node@v4
+        with:
+          # The README's minimum.
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Unit tests, then the guided demo and the attack lab on a local chain
+        run: make web-test
+      - name: The committed ABIs match the contracts
+        run: git diff --exit-code -- web/src/chain/abi.generated.ts
+      - name: Lint, types and the production build
+        working-directory: web
+        run: |
+          npm run lint
+          npx tsc --noEmit
+          npm run build
