@@ -39,7 +39,8 @@ export type ChainStatus = { state: "ready"; network: Network } | { state: "offli
 
 /**
  * The networks this server offers: every one the app knows, or only those COVENANT_NETWORKS lists (comma-separated).
- * A hosted copy lists base-sepolia alone, since nothing it runs on can reach a local chain or fork.
+ * A hosted copy lists base-sepolia and playground, since nothing it runs on can reach a local chain or fork; the
+ * Playground's chains run on Covenant's backend (COVENANT_BACKEND_URL).
  */
 export function servedNetworks(): NetworkKey[] {
   const raw = (process.env.COVENANT_NETWORKS ?? "").trim();
@@ -52,7 +53,9 @@ export function servedNetworks(): NetworkKey[] {
     warnedNetworks = true;
     console.warn(`COVENANT_NETWORKS="${raw}" names no network the app knows (${NETWORK_KEYS.join(", ")}); offering all of them.`);
   }
-  return listed.length ? NETWORK_KEYS.filter((k) => listed.includes(k)) : [...NETWORK_KEYS];
+  if (listed.length) return NETWORK_KEYS.filter((k) => listed.includes(k));
+  // Unlisted, every network the app knows; the Playground only once a backend is set for it.
+  return NETWORK_KEYS.filter((k) => k !== "playground" || backendUrl() !== null);
 }
 let warnedNetworks = false;
 
@@ -61,7 +64,37 @@ const HOW: Record<NetworkKey, string> = {
   local: "Start the local chain with make demo (or npm run chain in web/).",
   "base-sepolia": "Deploy with make deploy-sepolia, then launch with make launch-sepolia.",
   "base-sepolia-fork": "Start the rehearsal fork with make fork.",
+  playground: "Run Covenant's backend (backend/: npm run dev, or the Render service) and set COVENANT_BACKEND_URL to it.",
 };
+
+/** Covenant's backend (backend/), which runs the Playground's chains. Unset, the Playground is not offered. */
+export function backendUrl(): string | null {
+  const raw = (process.env.COVENANT_BACKEND_URL ?? "").trim().replace(/\/+$/, "");
+  return /^https?:\/\/[^\s]+$/.test(raw) ? raw : null;
+}
+
+/**
+ * The Playground, if this server knows a backend for it. Its chain is the visitor's own, opened by the browser on the
+ * backend (chain/playground.ts), so there is nothing to check here beyond the records: the backend may well be asleep
+ * (Render's free plan), and the browser waits for it with a message instead of this request waiting a minute.
+ */
+async function playgroundStatus(): Promise<ChainStatus> {
+  const info = NETWORKS.playground;
+  const backend = backendUrl();
+  if (!backend) return { state: "offline", reason: `The Playground needs Covenant's backend. ${HOW.playground}` };
+  const raw = await readJson<unknown>(manifestFile(info.records));
+  const runtime = await readJson<Runtime>(runtimeFile(info.records));
+  if (!raw || !runtime) return { state: "offline", reason: "The Playground's records are missing (deployments/playground.json). Run npm run playground:seed in web/." };
+  let manifest;
+  try {
+    manifest = parseManifest(raw);
+  } catch (e) {
+    return { state: "offline", reason: `deployments/playground.json is unreadable: ${(e as Error).message}` };
+  }
+  // A nudge, not a check: any request wakes a sleeping backend, so it is warmer by the time the browser opens a chain.
+  void fetch(`${backend}/healthz`, { cache: "no-store", signal: AbortSignal.timeout(60_000) }).catch(() => undefined);
+  return { state: "ready", network: { ...networkOf("playground", `${backend}/rpc/play/`, manifest, runtime), backend } };
+}
 
 /**
  * The RPC the browser should use. For Base Sepolia that is the public endpoint unless NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL
@@ -75,6 +108,7 @@ function browserRpc(key: NetworkKey, runtime: Runtime | null): string {
 
 /** A network, if its deployment is recorded and its chain answers with that deployment on it; otherwise why not. */
 export async function chainStatus(key: NetworkKey): Promise<ChainStatus> {
+  if (key === "playground") return playgroundStatus();
   const info = NETWORKS[key];
   const raw = await readJson<unknown>(manifestFile(info.records));
   if (!raw) return { state: "offline", reason: `No ${info.name} deployment yet. ${HOW[key]}` };

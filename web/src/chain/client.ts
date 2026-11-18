@@ -123,9 +123,15 @@ export function createChainCtx(net: Network, signer?: ExternalSigner): ChainCtx 
   const dev = net.caps.devChain;
   // Public RPCs rate-limit: batch concurrent reads into one request, retry transient failures, and back off when the
   // endpoint says it is busy. Anvil needs none of that, and a failed local call should fail at once.
-  const transport = dev
-    ? http(net.rpcUrl, { retryCount: 0, timeout: 120_000 })
-    : patient(http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } }));
+  // The local chain answers at once: no retries. The Playground's chain is the same kind of chain behind an HTTPS hop to
+  // the backend, so its calls are batched (one round trip for the many reads of a refresh) and retried on a dropped
+  // connection or a 429. A public RPC gets its own pacing (patient).
+  const transport =
+    net.key === "playground"
+      ? http(net.rpcUrl, { retryCount: 3, retryDelay: 400, timeout: 120_000, batch: { batchSize: 50, wait: 8 } })
+      : dev
+        ? http(net.rpcUrl, { retryCount: 0, timeout: 120_000 })
+        : patient(http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } }));
   const pub = createPublicClient({ chain, transport, pollingInterval: net.caps.pollMs, cacheTime: 0 });
   const test = dev ? createTestClient({ chain, transport, mode: "anvil" }) : null;
   const external =

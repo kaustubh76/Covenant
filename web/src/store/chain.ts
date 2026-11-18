@@ -3,12 +3,13 @@
 import { type Address, BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, custom } from "viem";
 import { create } from "zustand";
 import { type Actor, actorOf } from "@/chain/accounts";
-import type { Beat, BeatInput } from "@/chain/beat";
+import { type Beat, type BeatInput, note } from "@/chain/beat";
 import { type ChainCtx, createChainCtx } from "@/chain/client";
 import { discoverLaunches } from "@/chain/discover";
 import { readHistory } from "@/chain/history";
 import { forgetScans } from "@/chain/logs";
 import { type LaunchRecord, type Network, type NetworkKey, firstChoice, isNetworkKey } from "@/chain/network";
+import { openPlayground, resetPlayground } from "@/chain/playground";
 import { sanitizeLaunches } from "@/chain/remembered";
 import { type Party, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
@@ -195,6 +196,13 @@ function ctxFor(net: Network, wallet: WalletState | null, wallets: DiscoveredWal
   return provider ? createChainCtx(net, { account: wallet.address, transport: custom(provider) }) : createChainCtx(net);
 }
 
+/**
+ * The chain with a movable clock this copy of the app offers, for what needs one (the guided demo, the attack lab run
+ * for real): the local chain, else the visitor's own Playground on the backend. Null when neither is offered.
+ */
+export const offeredDevNetwork = (s: Pick<ChainState, "networks">): NetworkKey | null =>
+  s.networks.some((n) => n.key === "local") ? "local" : s.networks.some((n) => n.key === "playground" && n.state === "ready") ? "playground" : null;
+
 export const useChain = create<ChainState>((set, get) => ({
   status: "connecting",
   reason: null,
@@ -251,7 +259,21 @@ export const useChain = create<ChainState>((set, get) => ({
       retry = setTimeout(() => void get().connect(), 3000);
       return;
     }
-    const net = res.network;
+    let net = res.network;
+    let fresh = false;
+    if (net.key === "playground") {
+      // The visitor's own chain on the backend: the one this browser had, if it is still running, else a new one.
+      set({ status: "connecting", reason: "Opening your Playground chain…" });
+      const opened = await openPlayground(net, (why) => void (!stale() && set({ reason: why })), stale);
+      if (stale()) return;
+      if (!opened.ok) {
+        set({ status: "offline", reason: opened.reason, net: null, ctx: null, view: null });
+        retry = setTimeout(() => void get().connect(), opened.retryMs);
+        return;
+      }
+      net = opened.net;
+      fresh = opened.session.expired;
+    }
     // Discovery only reads, so it gets a context of its own; the one the app keeps is built last, from the wallet as it
     // is then (one connected while this was loading included).
     const found = await discoverLaunches(ctxFor(net, null, get().wallets), rememberedLaunches(net)).catch(() => null);
@@ -262,6 +284,7 @@ export const useChain = create<ChainState>((set, get) => ({
     const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? (saved as Address) : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
     const ctx = ctxFor(net, get().wallet, get().wallets);
     set({ net, ctx, launches, vault, status: "ready", reason: null });
+    if (fresh) get().record(note("anyone", "A fresh Playground chain", "Your last one had stopped after sitting idle, so this one starts from the seed again."), { toast: true });
     await get().refresh();
     if (stale()) return;
     unwatch?.();
@@ -431,6 +454,13 @@ export const useChain = create<ChainState>((set, get) => ({
     // Only the local chain can be rewound; a public chain's history is final.
     if (!get().net?.caps.devChain) return false;
     const done = await get().run("Resetting the chain", async () => {
+      const playground = get().net;
+      if (playground?.key === "playground") {
+        // The visitor's own chain on the backend goes back to the seed there.
+        const baselineSnapshot = await resetPlayground(playground);
+        if (playground.runtime) set({ net: { ...playground, runtime: { ...playground.runtime, baselineSnapshot } } });
+        return true;
+      }
       const r = await fetch("/api/chain/reset", { method: "POST" }).then((x) => x.json() as Promise<{ ok: boolean; reason?: string }>);
       if (!r.ok) throw new Error(r.reason ?? "reset failed");
       return true;

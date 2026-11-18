@@ -18,6 +18,10 @@ const START: Record<NetworkKey, { where: string; how: string }> = {
     where: "on a local fork of Base Sepolia, beside Uniswap's deployed contracts",
     how: "make fork          # forks Base Sepolia, deploys Covenant and runs a launch in real blocks",
   },
+  playground: {
+    where: "on your own Playground chain, which Covenant's backend runs from the same seed as the local demo",
+    how: "cd backend && npm run dev            # the backend, on :8080\nCOVENANT_BACKEND_URL=http://localhost:8080 npm run dev   # this app, in web/",
+  },
 };
 
 export function NeedsChain({ what = "this page" }: { what?: string }) {
@@ -30,6 +34,21 @@ export function NeedsChain({ what = "this page" }: { what?: string }) {
   // answer, which retries on its own. Deploy commands would only be noise to a visitor.
   const hosted = served.length > 0 && !served.some((n) => n.key === "local");
   const rpcTrouble = netKey !== "local" && !!reason && /not answering|is chain|429|rate/i.test(reason);
+  // The Playground's backend sleeps when idle and wakes in about a minute; busy and waking both retry on their own.
+  if (netKey === "playground" && status !== "ready" && (status === "connecting" || /busy|in use|not answering|Waking|stopped|redeploy/i.test(reason ?? ""))) {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <Panel eyebrow={status === "connecting" ? "Opening the Playground" : "Playground"} title={`${what[0].toUpperCase()}${what.slice(1)}, on a chain of your own`}>
+          <p className="text-[14px] leading-relaxed text-muted">
+            The Playground is a private chain on Covenant&apos;s backend, loaded from the same seed as the local demo: every button sends a real transaction there,
+            and you can act as anyone, move the clock and reset it whenever you like. Nothing touches Base Sepolia.
+          </p>
+          <p className="mt-3 text-[13px] text-ink">{reason ?? "Opening your Playground chain…"}</p>
+          {status === "offline" && <p className="mt-1 text-xs text-faint">Retrying on its own.</p>}
+        </Panel>
+      </div>
+    );
+  }
   if ((hosted || rpcTrouble) && status === "offline") {
     return (
       <div className="mx-auto max-w-2xl py-16">

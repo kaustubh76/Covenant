@@ -11,7 +11,7 @@ import { shortHash } from "@/components/landing/Live";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
 import { recorded } from "@/fixtures";
 import type { LiveDeployment, LiveStory } from "@/server/live";
-import { useChain } from "@/store/chain";
+import { offeredDevNetwork, useChain } from "@/store/chain";
 
 /** The suite's attacks as `npm run record` captured them from the contracts on the local chain. */
 const RECORDED = recorded.attacks as unknown as Record<string, AttackRun>;
@@ -41,7 +41,8 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const live = useChain((s) => s.net?.caps.devChain ?? true);
   const netName = useChain((s) => s.net?.name);
   const setNetwork = useChain((s) => s.setNetwork);
-  const offersLocal = useChain((s) => s.networks.some((n) => n.key === "local"));
+  // Where the attacks can run for real: the local chain, or on a hosted copy the visitor's own Playground.
+  const devNet = useChain(offeredDevNetwork);
   const ctx = useChain((s) => s.ctx);
   const view = useChain((s) => s.view);
   const [ownResults, setResults] = useState<Record<string, AttackRun>>({});
@@ -131,9 +132,9 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                 <Button variant="primary" disabled={checking || !view} onClick={() => setCheckedAt(Date.now())}>
                   {checking ? "Checking the live vault…" : "Check again, live"}
                 </Button>
-                {offersLocal && (
-                  <Button variant="ghost" onClick={() => void setNetwork("local")}>
-                    Run all on the local chain
+                {devNet && (
+                  <Button variant="ghost" onClick={() => void setNetwork(devNet)}>
+                    {devNet === "local" ? "Run all on the local chain" : "Run all on the Playground"}
                   </Button>
                 )}
               </div>

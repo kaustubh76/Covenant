@@ -1,4 +1,5 @@
-# What `vercel deploy` uploads from this repository: web/ and Base Sepolia's public deployment records, nothing else.
+# What `vercel deploy` uploads from this repository: web/, Base Sepolia's public deployment records and the Playground's
+# (its chains run on the backend, backend/), nothing else.
 # Never .env, lib/, out/, broadcast/ or any other network's records.
 /*
 !/web
@@ -9,6 +10,8 @@
 !/deployments/84532.proof.json
 !/deployments/84532-lp.proof.json
 !/deployments/84532-manage.proof.json
+!/deployments/playground.json
+!/deployments/playground.runtime.json
 /web/node_modules
 /web/.next
 /web/.chain

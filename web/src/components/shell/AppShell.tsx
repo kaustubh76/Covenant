@@ -16,6 +16,7 @@ import { advance } from "@/chain/time";
 import { Button, Dot, Tag } from "@/components/ui";
 import { duration, price } from "@/lib/format";
 import { ROLES, type Role, useChain } from "@/store/chain";
+import { PlaygroundBar } from "./PlaygroundBar";
 
 const NAV = [
   { href: "/vault", label: "Vault" },
@@ -410,6 +411,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <MotionConfig reducedMotion="user">
       <TopBar />
+      {path !== "/" && <PlaygroundBar />}
       {path === "/" ? <main>{children}</main> : <main className={clsx("mx-auto max-w-[1320px] px-4 md:px-8", showDock ? "pb-28" : "pb-20")}>{children}</main>}
       {showDock && <LiveDock />}
       <Toast />

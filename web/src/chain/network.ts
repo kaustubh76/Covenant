@@ -63,7 +63,7 @@ export interface Capabilities {
   explorer?: string;
 }
 
-export type NetworkKey = "local" | "base-sepolia" | "base-sepolia-fork";
+export type NetworkKey = "local" | "base-sepolia" | "base-sepolia-fork" | "playground";
 
 /** A chain the app knows how to reach, before anything is read from it. */
 export interface NetworkInfo {
@@ -106,6 +106,17 @@ export const NETWORKS: Record<NetworkKey, NetworkInfo> = {
     defaultRpc: "http://127.0.0.1:8548",
     caps: { ...PUBLIC, blockTimeMs: 2000 }, // Anvil's interval mining: make fork's 2-second default
   },
+  // A private chain on Covenant's backend (backend/, on Render): Anvil loaded from the same seed as `make demo`, one per
+  // visitor, with every dev control. Its RPC address is the visitor's own session on the backend (chain/playground.ts).
+  playground: {
+    key: "playground",
+    chainId: LOCAL_CHAIN_ID,
+    name: "Playground",
+    records: "playground",
+    defaultRpc: "",
+    // A remote chain: polled less often than the local one, so a free-tier backend serves several visitors.
+    caps: { devChain: true, pollMs: 1500, blockTimeMs: 1000 },
+  },
 };
 
 export const NETWORK_KEYS = Object.keys(NETWORKS) as NetworkKey[];
@@ -129,6 +140,8 @@ export interface Network {
   chainId: number;
   name: string;
   rpcUrl: string;
+  /** Covenant's backend (backend/), which runs the Playground's chains. Set for the Playground only. */
+  backend?: string;
   manifest: Manifest;
   runtime: Runtime | null;
   caps: Capabilities;

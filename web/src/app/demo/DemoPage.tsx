@@ -22,7 +22,7 @@ import { Backdrop } from "@/components/landing/FluidField";
 import { LiveWalkthrough } from "@/components/demo/LiveWalkthrough";
 import { Button, Panel } from "@/components/ui";
 import type { LiveDeployment } from "@/server/live";
-import { useChain } from "@/store/chain";
+import { offeredDevNetwork, useChain } from "@/store/chain";
 
 interface StepRecord {
   beats: BeatInput[];
@@ -125,7 +125,15 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   if (status !== "ready") return <NeedsChain what="the guided demo" />;
   // Every step runs from a snapshot and most move the clock (vesting, timelocks, the TWAP): local chain only.
   // A public chain cannot jump the clock or rewind: there the demo is the live proof, as real transactions.
-  if (net && !net.caps.devChain) return live && live.steps.length ? <LiveWalkthrough live={live} /> : <NeedsLocalChain name={net.name} />;
+  if (net && !net.caps.devChain) {
+    if (!live || !live.steps.length) return <NeedsLocalChain name={net.name} />;
+    return (
+      <>
+        <RunItYourself name={net.name} />
+        <LiveWalkthrough live={live} />
+      </>
+    );
+  }
 
   const finished = records.length === DEMO_STEPS.length && at === DEMO_STEPS.length - 1;
   const reverts = records.reduce((n, r) => n + r.beats.filter((b) => !b.ok).length, 0);
@@ -272,10 +280,28 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   );
 }
 
+/** Above the live proofs: where the ten steps themselves can run, when this copy of the app offers such a chain. */
+function RunItYourself({ name }: { name: string }) {
+  const setNetwork = useChain((s) => s.setNetwork);
+  const devNet = useChain(offeredDevNetwork);
+  if (!devNet) return null;
+  return (
+    <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-surface px-5 py-3.5">
+      <p className="text-[13.5px] leading-relaxed text-muted">
+        These are the proofs, as real transactions on {name}. The guided demo&apos;s ten steps need a clock that can jump months:
+        {devNet === "playground" ? " run them yourself on a Playground chain, with no wallet." : " run them on the local chain."}
+      </p>
+      <Button variant="primary" size="sm" onClick={() => void setNetwork(devNet)}>
+        {devNet === "playground" ? "Run the ten steps on the Playground" : "Switch to the local chain"}
+      </Button>
+    </div>
+  );
+}
+
 /** On a public chain: the demo's ten steps need a chain whose clock can jump and whose state can be rewound. */
 function NeedsLocalChain({ name }: { name: string }) {
   const setNetwork = useChain((s) => s.setNetwork);
-  const offersLocal = useChain((s) => s.networks.some((n) => n.key === "local"));
+  const devNet = useChain(offeredDevNetwork);
   return (
     <div className="mx-auto max-w-2xl py-16">
       <Panel eyebrow="Guided demo" title="The ten steps run on the local chain">
@@ -285,9 +311,9 @@ function NeedsLocalChain({ name }: { name: string }) {
           vault, curate, keep, provide and govern pages all work on {name} with your wallet.
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
-          {offersLocal && (
-            <Button variant="primary" onClick={() => void setNetwork("local")}>
-              Switch to the local chain
+          {devNet && (
+            <Button variant="primary" onClick={() => void setNetwork(devNet)}>
+              {devNet === "playground" ? "Open the Playground" : "Switch to the local chain"}
             </Button>
           )}
           <Link href="/vault">
