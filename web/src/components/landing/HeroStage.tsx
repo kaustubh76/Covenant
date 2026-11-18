@@ -8,6 +8,7 @@ import { RevertCard } from "@/components/covenant/Verdict";
 import { Button, Tag } from "@/components/ui";
 import { recorded } from "@/fixtures";
 import { amt, pct } from "@/lib/format";
+import { useChain } from "@/store/chain";
 
 /** The landing page's vault: reshape it, then try to take it. Every outcome was recorded from the deployed contracts. */
 export function HeroStage({ live = false }: { live?: boolean }) {
@@ -17,6 +18,8 @@ export function HeroStage({ live = false }: { live?: boolean }) {
   const [nonce, setNonce] = useState(0);
   const [tried, setTried] = useState<string[]>([]);
   const domain = useMemo(() => chartDomain([migrated, shaped]), [migrated, shaped]);
+  // the store reads ?net= when the app loads, not on an in-app link: the live link switches it
+  const setNetwork = useChain((s) => s.setNetwork);
   const world = isShaped ? shaped : migrated;
   const s = world.support;
   const lastTry = tries.find((t) => t.key === last);
@@ -102,7 +105,7 @@ export function HeroStage({ live = false }: { live?: boolean }) {
         {live ? (
           <>
             Recorded from the same contracts on a local chain. They are live on Base Sepolia:{" "}
-            <Link href="/vault?net=base-sepolia" className="text-muted underline-offset-2 hover:text-ink hover:underline">
+            <Link href="/vault?net=base-sepolia" onClick={() => void setNetwork("base-sepolia")} className="text-muted underline-offset-2 hover:text-ink hover:underline">
               open the vault →
             </Link>
           </>

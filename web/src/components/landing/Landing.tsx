@@ -1,7 +1,7 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { ArrowDown, ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowRight, FlaskConical } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ImpactCompare } from "@/components/covenant/ImpactCompare";
@@ -13,6 +13,7 @@ import { Container, CountUp, Reveal, SectionHead } from "@/components/landing/mo
 import { Button } from "@/components/ui";
 import { recorded } from "@/fixtures";
 import type { LiveDeployment } from "@/server/live";
+import { useChain } from "@/store/chain";
 
 const LINES: { text: string; accent?: boolean }[][] = [
   [{ text: "Locked" }, { text: "for" }, { text: "holders." }],
@@ -26,6 +27,12 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
   const proof = { from: recorded.proof.supportFrom / 100, to: recorded.proof.supportTo / 100, ratio: recorded.proof.ratio, blocked: recorded.proof.blocked, total: recorded.proof.total };
   const [size, setSize] = useState(5);
   const impact = recorded.impact.find((r) => r.size === size) ?? recorded.impact[0];
+  // A Playground chain, when this copy's backend offers one right now (the top bar loads the list): the page is static,
+  // so the offer appears once the list says it is ready, and never links to a chain that is not there.
+  const playground = useChain((s) => s.networks.some((n) => n.key === "playground" && n.state === "ready"));
+  // The store reads ?net= when the app loads; an in-app link does not reload it, so the links below switch it too.
+  const setNetwork = useChain((s) => s.setNetwork);
+  const toPlayground = () => void setNetwork("playground");
   let word = 0;
 
   return (
@@ -78,7 +85,7 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
                   Watch it in ten steps <ArrowRight size={16} />
                 </Button>
               </Link>
-              <Link href={live ? "/vault?net=base-sepolia" : "/vault"}>
+              <Link href={live ? "/vault?net=base-sepolia" : "/vault"} onClick={live ? () => void setNetwork("base-sepolia") : undefined}>
                 <Button size="lg" className="glass">
                   {live ? "Open the live vault" : "Open the vault"}
                 </Button>
@@ -171,6 +178,27 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
           <div className="mt-12">
             <Seats />
           </div>
+          {playground && (
+            <Reveal className="mt-4">
+              <div className="flex flex-col gap-5 rounded-xl border border-accent/40 bg-raised p-5 sm:flex-row sm:items-center sm:justify-between md:p-6">
+                <div className="flex items-start gap-3.5">
+                  <FlaskConical size={20} strokeWidth={1.6} className="mt-0.5 shrink-0 text-accent" />
+                  <div>
+                    <div className="text-[16px] font-medium text-ink">Take every seat for real, on a chain of your own.</div>
+                    <p className="mt-1.5 max-w-2xl text-[13.5px] leading-relaxed text-muted">
+                      A Playground is a private chain with the same contracts and a seeded launch. Every button sends a real transaction with no wallet: switch roles, trade, move the clock, reset when you
+                      like. Nothing touches {live?.network ?? "the public chain"}.
+                    </p>
+                  </div>
+                </div>
+                <Link href="/vault?net=playground" onClick={toPlayground} className="shrink-0 self-start sm:self-auto">
+                  <Button variant="primary">
+                    Open a Playground <ArrowRight size={15} />
+                  </Button>
+                </Link>
+              </div>
+            </Reveal>
+          )}
         </section>
       </Container>
 
@@ -193,6 +221,13 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
                   Try to break it
                 </Button>
               </Link>
+              {playground && (
+                <Link href="/vault?net=playground" onClick={toPlayground}>
+                  <Button size="lg" className="glass">
+                    <FlaskConical size={16} strokeWidth={1.6} /> Open a Playground
+                  </Button>
+                </Link>
+              )}
             </div>
           </Reveal>
         </Container>

@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { shortAddress } from "@/chain/accounts";
 import { Button, Tag } from "@/components/ui";
 import type { LiveDeployment, LiveStep } from "@/server/live";
+import { useChain } from "@/store/chain";
 import { Container, Reveal, SectionHead } from "./motion";
 
 const nf = new Intl.NumberFormat("en-US");
@@ -67,6 +68,8 @@ function Proof({ steps, explorer }: { steps: LiveStep[]; explorer: string }) {
 }
 
 function Contracts({ live }: { live: LiveDeployment }) {
+  // the store reads ?net= when the app loads, not on an in-app link: switch it here, e.g. coming back from a Playground
+  const setNetwork = useChain((s) => s.setNetwork);
   return (
     <div className="rounded-2xl border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3.5">
@@ -89,7 +92,7 @@ function Contracts({ live }: { live: LiveDeployment }) {
         ))}
       </ul>
       <div className="flex flex-wrap gap-2.5 border-t border-line p-5">
-        <Link href="/vault?net=base-sepolia">
+        <Link href="/vault?net=base-sepolia" onClick={() => void setNetwork("base-sepolia")}>
           <Button variant="primary">
             Open the live vault <ArrowRight size={15} />
           </Button>
