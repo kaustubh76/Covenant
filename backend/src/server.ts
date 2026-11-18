@@ -8,6 +8,7 @@ import { CHAIN_ID, startChain } from "./playground/anvil";
 import { Playground, SESSION_ID, type Session } from "./playground/pool";
 import { readRecords } from "./playground/records";
 import { proxy } from "./playground/rpc";
+import { BaseSepoliaReader } from "./readcache/proxy";
 
 export function createBackend(config = loadConfig(), log = (line: string) => console.log(`${new Date().toISOString()} ${line}`)) {
   const records = readRecords(config.records);
@@ -23,6 +24,9 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
   // their own chain, and the attack lab legitimately sends thousands of calls in a run.
   const opens = new Buckets(6 / 60, 6);
   const calls = new Buckets(2_000, 6_000);
+  // The shared Base Sepolia reader, and how fast one address may call it (a browser paces itself at 12 a second).
+  const reader = new BaseSepoliaReader({ upstream: config.baseSepoliaRpc, rate: config.readRate, maxWaitMs: config.readMaxWaitMs });
+  const reads = new Buckets(40, 160);
   const started = Date.now();
 
   const describe = (s: Session, resumed: boolean, expired: boolean) => ({
@@ -47,7 +51,7 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     const ip = clientIp(req);
 
     if (req.method === "GET" && path === "/healthz") {
-      return json(res, 200, { ok: true, uptimeS: Math.round((Date.now() - started) / 1000), playground: playground.stats() });
+      return json(res, 200, { ok: true, uptimeS: Math.round((Date.now() - started) / 1000), playground: playground.stats(), reader: reader.stats });
     }
     if (req.method === "GET" && path === "/v1/info") {
       return json(res, 200, {
@@ -79,6 +83,12 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
       await playground.close(s[1], "closed by its visitor");
       return json(res, 200, { ok: true });
     }
+    if (req.method === "POST" && path === "/rpc/base-sepolia") {
+      if (!reads.take(ip)) throw new HttpError(429, "Too many reads from this address; call the network directly.", { "retry-after": "1" });
+      const body = await readBody(req, 200_000);
+      const { reply, cache } = await reader.handle(body);
+      return json(res, 200, reply, { "x-cache": cache });
+    }
     const r = path.match(/^\/rpc\/play\/([0-9a-f]{32})$/);
     if (r && req.method === "POST") {
       const session = playground.get(r[1]);
@@ -103,6 +113,7 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     void playground.reap();
     opens.prune();
     calls.prune();
+    reads.prune();
   }, 30_000);
   timer.unref();
 

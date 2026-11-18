@@ -1,6 +1,6 @@
 # Covenant backend
 
-The service behind the app's **Playground**. Each visitor gets a private chain: an Anvil loaded from the same seeded
+The service behind the app's **Playground**, and a shared reader for Base Sepolia's history. Each visitor gets a private chain: an Anvil loaded from the same seeded
 launch as `make demo`. Every button in the app sends real transactions to it. A visitor can act as any role, trade, move
 the clock, run the attack lab and reset, all without a wallet and without touching Base Sepolia.
 
@@ -16,6 +16,22 @@ It runs on Render from the repository's `Dockerfile` (see `render.yaml`); the we
 | `POST /v1/playground/sessions/:id/reset` | Put the chain back to the seed |
 | `DELETE /v1/playground/sessions/:id` | Stop the chain |
 | `POST /rpc/play/:id` | JSON-RPC to that chain, single or batched, through an allowlist |
+| `POST /rpc/base-sepolia` | The shared Base Sepolia reader: read-only JSON-RPC, cached and paced (below) |
+
+## The Base Sepolia reader
+
+Every visitor's feed scans the same history: the vaults' logs over the proof blocks, their receipts and blocks. The
+reader fetches each of those once and serves it to everyone from a cache. The app sends only these reads through it
+(`sharedRead` in `web/src/chain/client.ts`). Reads of the chain's head stay direct from each browser: every visitor
+has their own rate budget at the public endpoint, and pooling them behind one address would only share one budget.
+
+- **Cache:** results that cannot change are kept, such as a mined receipt, code, or logs and blocks 20 or more blocks
+  behind the head. Reads of the head are shared for 1.5 s, and identical calls in flight are merged.
+- **Pacing:** upstream calls are paced at `READ_RATE` (15/s) for all visitors together. A request that would queue
+  longer than `READ_MAX_WAIT_MS` gets 429, and the app then reads directly.
+- **Writes are refused,** including `eth_sendRawTransaction`: wallets send through their own RPC.
+- **The upstream** is `BASE_SEPOLIA_RPC_URL`, the public endpoint by default. A keyed provider can go there as a Render
+  secret; it is never logged or returned.
 
 ## Safety
 
@@ -56,3 +72,6 @@ one second per block, as the local chain runs; otherwise the TWAP oracle would s
 | `CHAINS_PER_IP` | 2 | |
 | `CHAIN_IDLE_MS` | 600000 | |
 | `ANVIL_BIN` | `anvil` | |
+| `BASE_SEPOLIA_RPC_URL` | `https://sepolia.base.org` | the reader's upstream; may carry a key |
+| `READ_RATE` | 15 | upstream calls a second, all visitors together |
+| `READ_MAX_WAIT_MS` | 4000 | longer than this, the caller is told to read directly |

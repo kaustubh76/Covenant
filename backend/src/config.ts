@@ -31,6 +31,12 @@ export interface Config {
   evictAfterMs: number;
   startTimeoutMs: number;
   maxBodyBytes: number;
+  /** Base Sepolia's RPC for the shared reader. May carry an API key: never logged, never sent to a browser. */
+  baseSepoliaRpc: string;
+  /** Upstream calls a second the reader makes, for every visitor together. */
+  readRate: number;
+  /** How long a read may queue for its turn before the caller is told to go direct. */
+  readMaxWaitMs: number;
 }
 
 export function loadConfig(): Config {
@@ -47,5 +53,8 @@ export function loadConfig(): Config {
     evictAfterMs: int("CHAIN_EVICT_AFTER_MS", 2 * 60_000),
     startTimeoutMs: int("CHAIN_START_TIMEOUT_MS", 90_000),
     maxBodyBytes: int("MAX_BODY_BYTES", 2_000_000),
+    baseSepoliaRpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
+    readRate: int("READ_RATE", 15),
+    readMaxWaitMs: int("READ_MAX_WAIT_MS", 4_000),
   };
 }
