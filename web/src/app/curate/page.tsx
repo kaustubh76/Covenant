@@ -82,6 +82,21 @@ const PRESETS: { key: string; name: string; hint: string; hostile?: boolean; whe
     },
   },
   {
+    key: "everything",
+    name: "Move everything at once",
+    hint: "Faster than Pace allows",
+    hostile: true,
+    make: (v) => {
+      // The honest layout, but every range lifted whatever the epoch. During setup Pace is off and this settles; after
+      // it, Pace refuses moving more than its allowance in one go (PaceExceeded), however good the new shape is.
+      const { B, bidMax, askMin, bidBottom } = bounds(v);
+      const rm = v.ranges.map((_, i) => i);
+      const drafts = [d("quote", bidBottom, bidMax, 0.7), d("quote", bidBottom - 4 * B, bidBottom, 0.3)];
+      if (freedBy(v, rm).token > 1e-9) drafts.push(d("token", askMin, askMin + 2 * B, 1));
+      return { rm, drafts };
+    },
+  },
+  {
     key: "softrug",
     name: "Park support far away",
     hint: "The soft rug",
