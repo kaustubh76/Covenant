@@ -85,6 +85,59 @@ export function patient(inner: Transport, tries = 6, baseMs = 200, perSecond = 1
   };
 }
 
+/** Reads whose answers do not change once the chain has moved past them: logs, receipts, transactions, code, past blocks. */
+const SHARED = new Set(["eth_getLogs", "eth_getTransactionReceipt", "eth_getTransactionByHash", "eth_getCode", "eth_chainId", "eth_getBlockByHash"]);
+export function sharedRead(args: unknown): boolean {
+  const { method, params } = args as { method?: string; params?: unknown };
+  if (!method) return false;
+  if (SHARED.has(method)) return true;
+  return method === "eth_getBlockByNumber" && Array.isArray(params) && typeof params[0] === "string" && /^0x[0-9a-f]+$/i.test(params[0]);
+}
+
+/**
+ * Base Sepolia's history through Covenant's backend, its shared cache (backend/src/readcache); everything else, and
+ * whatever the backend cannot answer, from the public endpoint directly.
+ *
+ * Only reads that do not change go through the backend (sharedRead): the logs, receipts and blocks a page's feed scans,
+ * which every visitor asks for alike, so after the first one they come from the cache at once. Reads of the head (calls,
+ * balances, simulations, the block number) stay direct: each visitor's browser has its own rate budget at the public
+ * endpoint, and pooling them all behind the backend's one address would only share a single budget and add a hop.
+ *
+ * A backend that gives no answer (asleep on Render's free plan, busy, restarting, not serving the method) is left alone
+ * for `downMs`, so a sleeping one costs one slow call, not one per call. Only a failure to get an answer falls back; the
+ * chain's own answer, a revert included, is the answer.
+ */
+export function preferBackend(backend: Transport, direct: Transport, downMs = 30_000, now: () => number = () => performance.now()): Transport {
+  return (opts) => {
+    const b = backend(opts);
+    const d = direct(opts);
+    let downUntil = -Infinity;
+    const request = async (args: unknown, options?: unknown): Promise<unknown> => {
+      if (sharedRead(args) && now() >= downUntil) {
+        try {
+          return await b.request(args as never, options as never);
+        } catch (e) {
+          if (!noAnswer(e)) throw e;
+          downUntil = now() + downMs;
+        }
+      }
+      return d.request(args as never, options as never);
+    };
+    return { ...d, request: request as unknown as typeof d.request };
+  };
+}
+
+/** Whether `e` means no answer came: the request failed, timed out, was refused, or asked for something not served. */
+function noAnswer(e: unknown): boolean {
+  if (rateLimited(e)) return true;
+  for (let x = e as { name?: unknown; code?: unknown; status?: unknown; cause?: unknown } | undefined, depth = 0; x && depth < 4; x = x.cause as typeof x, depth++) {
+    if (x.name === "HttpRequestError" || x.name === "TimeoutError" || x.name === "AbortError" || x.name === "TypeError") return true;
+    if (typeof x.status === "number" && x.status >= 400) return true;
+    if (x.code === -32601) return true;
+  }
+  return false;
+}
+
 /** A token bucket: `burst` turns at once, then `perSecond` a second; the rest wait their turn, in order. */
 export function pacer(perSecond: number, burst = perSecond): () => Promise<void> {
   let tokens = burst;
@@ -126,12 +179,16 @@ export function createChainCtx(net: Network, signer?: ExternalSigner): ChainCtx 
   // The local chain answers at once: no retries. The Playground's chain is the same kind of chain behind an HTTPS hop to
   // the backend, so its calls are batched (one round trip for the many reads of a refresh) and retried on a dropped
   // connection or a 429. A public RPC gets its own pacing (patient).
+  const direct = () => patient(http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } }));
   const transport =
     net.key === "playground"
       ? http(net.rpcUrl, { retryCount: 3, retryDelay: 400, timeout: 120_000, batch: { batchSize: 50, wait: 8 } })
       : dev
         ? http(net.rpcUrl, { retryCount: 0, timeout: 120_000 })
-        : patient(http(net.rpcUrl, { retryCount: 3, timeout: 60_000, batch: { batchSize: 50, wait: 16 } }));
+        : net.backend
+          ? // History through the backend's shared cache when it answers; the rest, and any fallback, direct and paced.
+            preferBackend(http(`${net.backend}/rpc/${net.key}`, { retryCount: 0, timeout: 8_000, batch: { batchSize: 50, wait: 16 } }), direct())
+          : direct();
   const pub = createPublicClient({ chain, transport, pollingInterval: net.caps.pollMs, cacheTime: 0 });
   const test = dev ? createTestClient({ chain, transport, mode: "anvil" }) : null;
   const external =
