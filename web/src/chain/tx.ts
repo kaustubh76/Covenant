@@ -15,6 +15,7 @@ import {
 import { type Actor, actorOf, shortAddress } from "./accounts";
 import type { ChainCtx } from "./client";
 import { type DecodedError, type DescribeContext, decodeRevert } from "./errors";
+import { classify } from "./failure";
 
 /**
  * Who an action is from: a demo role, or a specific address. Passing the vault's curator by address lets a page show
@@ -102,7 +103,8 @@ export async function simulate<const abi extends Abi, fn extends ContractFunctio
     const { result } = await ctx.pub.simulateContract({ ...(call as object), account: partyAddress(ctx, party), blockTag: "pending" } as never);
     return { ok: true, value: result as ContractFunctionReturnType<abi, Mutability, fn> };
   } catch (e) {
-    return { ok: false, error: decodeRevert(e, describe) };
+    // A node that did not answer is not a refusal: say so, instead of decoding it as a revert.
+    return { ok: false, error: classify(e) ?? decodeRevert(e, describe) };
   }
 }
 
@@ -124,15 +126,32 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
     return { ok: false, value: pre.value, refused: who.refusal, error: { name: "NotSent", args: [], signature: "Not sent", rule: "Other", reason: who.refusal } };
   }
   const wallet = who.wallet;
-  const hash = await wallet.writeContract({
-    ...(call as object),
-    account: wallet.account,
-    chain: ctx.chain,
-    gas: opts.gas ?? (pre.ok ? await gasFor(ctx, party, call as never) : FORCED_GAS),
-  } as never);
+  let hash: Hex;
+  try {
+    hash = await wallet.writeContract({
+      ...(call as object),
+      account: wallet.account,
+      chain: ctx.chain,
+      gas: opts.gas ?? (pre.ok ? await gasFor(ctx, party, call as never) : FORCED_GAS),
+    } as never);
+  } catch (e) {
+    // Declined in the wallet, the wallet on another network, not enough ETH, a node that did not answer: nothing was
+    // sent, and none of it is the contract's refusal.
+    const why = classify(e);
+    if (why) return { ok: false, value: pre.value, error: why };
+    throw e;
+  }
   opts.onHash?.(hash);
   // Anvil mines at once; a public chain is polled at its own pace, which its RPC's rate limits also prefer.
-  const receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
+  let receipt: TransactionReceipt;
+  try {
+    receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
+  } catch (e) {
+    // Sent but not seen mined in time: keep the hash, so the visitor can follow it, rather than losing it to an error.
+    const why = classify(e);
+    if (why) return { ok: false, hash, error: why };
+    throw e;
+  }
   if (receipt.status === "success") return { ok: true, value: pre.value, hash, receipt };
   if (pre.error) return { ok: false, hash, receipt, error: pre.error };
   // Passed the pre-flight but failed when mined: something changed in between. Replay it at its parent block.

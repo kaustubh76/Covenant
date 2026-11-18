@@ -7,7 +7,7 @@ import { beatOf, note } from "@/chain/beat";
 import { type CrashSim, findCrash } from "@/chain/crashsim";
 import { NEVER } from "@/chain/launch";
 import { deepenReserve } from "@/chain/plans";
-import { type Preflight, vaultEvents } from "@/chain/preflight";
+import { type Preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { LN_BASE } from "@/chain/price";
 import { crash, findLapsingCrash, planRestore, restoreCall } from "@/chain/scenarios/restore";
 import { send } from "@/chain/tx";
@@ -20,6 +20,8 @@ import { amt, duration, pct } from "@/lib/format";
 import { describeRange } from "@/lib/ranges";
 import { useBalances } from "@/lib/useBalances";
 import { actorFor, partyFor, useChain } from "@/store/chain";
+import { SendButton } from "@/components/controls/SendButton";
+import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 
 const fallPct = (ticks: number) => `${((1 - Math.exp(-ticks * LN_BASE)) * 100).toFixed(0)}%`;
 /** Who restores in a simulation when no wallet is connected: any address will do, nothing is sent. */
@@ -52,7 +54,8 @@ export default function KeepPage() {
     let live = true;
     planRestore(ctx, v, party)
       .then((p) => live && setPlanFor({ vault: v.address, plan: p }))
-      .catch(() => live && setPlanFor({ vault: v.address, plan: null }));
+      // A check that could not be made is not "nothing to restore": keep why, and the next block checks again.
+      .catch((e: unknown) => live && setPlanFor({ vault: v.address, plan: { indices: [], pre: failedPreflight(e) } }));
     return () => {
       live = false;
     };
@@ -192,9 +195,22 @@ export default function KeepPage() {
               <Row label="Your balance">{bal ? `${amt(bal.quote)} ETH` : publicChain && !wallet ? "Connect a wallet" : "…"}</Row>
             </div>
 
-            <Button variant={plan?.pre.ok ? "primary" : "secondary"} className="mt-5 w-full" onClick={restore} disabled={!!busy || (publicChain && !plan?.pre.ok)}>
-              {plan?.pre.ok ? (publicChain && !wallet ? "Connect a wallet to restore" : "Call restore") : publicChain ? "Nothing to restore" : "Call restore anyway"}
-            </Button>
+            <SendButton
+              verb="restore"
+              gate={!!plan?.pre.ok}
+              variant={plan?.pre.ok ? "primary" : "secondary"}
+              className="mt-5 w-full"
+              onClick={restore}
+              disabled={!!busy || (publicChain && !plan?.pre.ok)}
+            >
+              {plan?.pre.ok
+                ? "Call restore"
+                : plan && isFailureKind(plan.pre.error?.name)
+                  ? `${FAILURE_LABEL[plan.pre.error.name]}: checking again`
+                  : publicChain
+                    ? "Nothing to restore"
+                    : "Call restore anyway"}
+            </SendButton>
             <p className="mt-2 text-center text-xs text-faint">
               {!g.ok
                 ? "The guard is tripped: restore will revert until the price settles."

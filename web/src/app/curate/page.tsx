@@ -7,7 +7,7 @@ import { shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { NEVER } from "@/chain/launch";
 import { type Leg, SINK, askFloor, askLeg, bidCeiling, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
-import { type Preflight, preflight, vaultEvents } from "@/chain/preflight";
+import { type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { ceilTo, floorTo, holdingsAtPrice, priceAt } from "@/chain/price";
 import { isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
@@ -19,6 +19,7 @@ import { amt, axisPrice, pct } from "@/lib/format";
 import { layoutKey } from "@/lib/layout";
 import { describeRange } from "@/lib/ranges";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
+import { SendButton } from "@/components/controls/SendButton";
 
 interface Draft {
   id: string;
@@ -215,7 +216,8 @@ export default function CuratePage() {
     const id = ++req.current;
     setChecking(true);
     const t = setTimeout(async () => {
-      const r = await preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(() => null);
+      // Never left waiting: a check that could not be made says why, and the next block checks again.
+      const r = await preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(failedPreflight);
       if (id === req.current) {
         setPre(r);
         setChecking(false);
@@ -460,22 +462,15 @@ export default function CuratePage() {
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel eyebrow="Pre-flight" title="What the contract will say">
             <ReshapeVerdict before={v} pre={pre} moved={movedNow} loading={checking} />
-            <Button
+            <SendButton
+              verb="submit"
               variant={pre && !pre.ok ? "danger" : "primary"}
               className="mt-4 w-full"
               onClick={submit}
               disabled={!!busy || (publicChain && (!mayAct || (!!pre && !pre.ok)))}
             >
-              {publicChain && !wallet
-                ? "Connect a wallet to submit"
-                : publicChain && !mayAct
-                  ? "Only the curator's wallet can submit"
-                  : pre && !pre.ok
-                    ? publicChain
-                      ? "The contract refuses this"
-                      : "Submit anyway"
-                    : "Submit reshape"}
-            </Button>
+              {publicChain && !mayAct ? "Only the curator's wallet can submit" : pre && !pre.ok ? (publicChain ? "The contract refuses this" : "Submit anyway") : "Submit reshape"}
+            </SendButton>
             <p className="mt-2 text-center text-xs text-faint">
               {publicChain && !mayAct && isAddressParty(party)
                 ? `Simulated as the curator, ${shortAddress(party)}. Only that wallet can send it.`

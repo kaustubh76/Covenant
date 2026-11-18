@@ -4,6 +4,7 @@ import { type Address, BaseError, ContractFunctionRevertedError, ContractFunctio
 import { create } from "zustand";
 import { type Actor, actorOf } from "@/chain/accounts";
 import { type Beat, type BeatInput, note } from "@/chain/beat";
+import { classify } from "@/chain/failure";
 import { type ChainCtx, createChainCtx } from "@/chain/client";
 import { discoverLaunches } from "@/chain/discover";
 import { readHistory } from "@/chain/history";
@@ -131,6 +132,8 @@ let refreshSeq = 0;
 /** Bumped by every connect: one that finds itself superseded after an await stops, so it never commits another network. */
 let connectSeq = 0;
 let quiet = 0;
+/** Actions asked for and not yet finished, including the one running: busy stays set until the last one ends. */
+let queued = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let unwatch: (() => void) | null = null;
 let retry: ReturnType<typeof setTimeout> | null = null;
@@ -200,8 +203,13 @@ function ctxFor(net: Network, wallet: WalletState | null, wallets: DiscoveredWal
  * The chain with a movable clock this copy of the app offers, for what needs one (the guided demo, the attack lab run
  * for real): the local chain, else the visitor's own Playground on the backend. Null when neither is offered.
  */
-export const offeredDevNetwork = (s: Pick<ChainState, "networks">): NetworkKey | null =>
-  s.networks.some((n) => n.key === "local") ? "local" : s.networks.some((n) => n.key === "playground" && n.state === "ready") ? "playground" : null;
+export function offeredDevNetwork(s: Pick<ChainState, "networks">): NetworkKey | null {
+  const ready = (k: NetworkKey) => s.networks.some((n) => n.key === k && n.state === "ready");
+  if (ready("local")) return "local";
+  if (ready("playground")) return "playground";
+  // Listed but not running: still the one to point a developer at, since its offline page says how to start it.
+  return s.networks.some((n) => n.key === "local") ? "local" : null;
+}
 
 export const useChain = create<ChainState>((set, get) => ({
   status: "connecting",
@@ -419,21 +427,33 @@ export const useChain = create<ChainState>((set, get) => ({
   },
 
   run(label, job, opts = {}) {
+    // Busy from the moment the action is asked for, not only once its turn in the queue comes: the buttons that started
+    // it are disabled at once, so a second click cannot queue a duplicate.
+    queued++;
+    if (!get().busy) set({ busy: label });
     const next = queue.then(async () => {
       const { ctx } = get();
-      if (!ctx) return undefined;
-      if (opts.quiet) quiet++;
-      set({ busy: label });
-      const rec: Recorder = { record: (b, o) => get().record(b, o), progress: (l) => set({ busy: l }) };
       try {
-        return await job(ctx, rec);
-      } catch (e) {
-        get().record({ actor: "anyone", title: label, ok: false, error: { name: "Error", args: [], signature: message(e), rule: "Other", reason: message(e) } }, { toast: true });
-        return undefined;
+        if (!ctx) return undefined;
+        if (opts.quiet) quiet++;
+        set({ busy: label });
+        const rec: Recorder = { record: (b, o) => get().record(b, o), progress: (l) => set({ busy: l }) };
+        try {
+          return await job(ctx, rec);
+        } catch (e) {
+          // A declined wallet request, a wallet on another network or a node that did not answer is said as such; only
+          // what nobody here recognises is shown as the error's own message.
+          const error = classify(e) ?? { name: "Error", args: [], signature: message(e), rule: "Other" as const, reason: message(e) };
+          get().record({ actor: "anyone", title: label, ok: false, error }, { toast: true });
+          return undefined;
+        } finally {
+          if (opts.quiet) quiet--;
+          // Read the chain again before the buttons come back, so they never act on the numbers from before the action.
+          // Capped, so a slow node cannot leave the app busy.
+          await Promise.race([get().refresh(), new Promise((r) => setTimeout(r, 10_000))]);
+        }
       } finally {
-        if (opts.quiet) quiet--;
-        set({ busy: null });
-        await get().refresh();
+        if (--queued === 0) set({ busy: null });
       }
     });
     queue = next.catch(() => undefined);

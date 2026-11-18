@@ -12,6 +12,7 @@ import { NeedsChain } from "@/components/chain/NeedsChain";
 import { Button, Meter, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration } from "@/lib/format";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
+import { SendButton } from "@/components/controls/SendButton";
 
 const POWERS: [string, boolean[]][] = [
   ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
@@ -135,12 +136,13 @@ export default function GovernPage() {
                 Cancel change
               </Button>
             ) : (
-              <Button
+              <SendButton
+                verb="propose"
                 disabled={!!busy || !proposed}
                 onClick={() => call("Propose a new curator", "proposeCurator", [proposed], () => `${publicChain ? "Your wallet" : ACTOR_LABEL[candidate]} can take over in ${duration(t.curatorTimelock)}`)}
               >
-                {publicChain ? (wallet ? "Propose your wallet as curator" : "Connect a wallet to propose") : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
-              </Button>
+                {publicChain ? "Propose your wallet as curator" : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
+              </SendButton>
             )}
             <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules", open, openLabel)}>
               Accept change

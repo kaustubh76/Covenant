@@ -39,6 +39,7 @@ import { TermsCard } from "@/components/covenant/TermsCard";
 import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
 import { amt, duration, pct, price as priceText } from "@/lib/format";
 import { useChain } from "@/store/chain";
+import { SendButton } from "@/components/controls/SendButton";
 
 const DAY = 86_400;
 const HOUR = 3_600;
@@ -361,9 +362,9 @@ export default function LaunchPage() {
                   Token symbol
                   <input value={symbol} maxLength={8} onChange={(e) => setSymbol(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ""))} className="num h-9 w-28 rounded-md border border-line-strong bg-transparent px-2 text-ink outline-none" />
                 </label>
-                <Button variant="primary" size="lg" className="mt-4 w-full" disabled={!!busy || problems.length > 0 || !symbol || (isPublic && !wallet)} onClick={() => void commit()}>
-                  {isPublic && !wallet ? "Connect a wallet to launch" : "Create the vault and open the auction"}
-                </Button>
+                <SendButton verb="launch" variant="primary" size="lg" className="mt-4 w-full" disabled={!!busy || problems.length > 0 || !symbol} onClick={() => void commit()}>
+                  Create the vault and open the auction
+                </SendButton>
                 {isPublic && (
                   <p className="mt-2 text-center text-xs text-faint">
                     On {net?.name}: a fixed-supply token, prices at 1/8192 of the local launch and a {WALLET_AUCTION_BLOCKS.toLocaleString("en-US")}-block auction, about{" "}

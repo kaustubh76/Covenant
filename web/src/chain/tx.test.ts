@@ -1,4 +1,4 @@
-import { type Address, type Hex, zeroAddress } from "viem";
+import { type Address, type Hex, UserRejectedRequestError, WaitForTransactionReceiptTimeoutError, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import { covenantVaultAbi } from "./abi.generated";
 import type { ChainCtx } from "./client";
@@ -43,5 +43,31 @@ describe("send", () => {
     const sent: { gas?: bigint }[] = [];
     await send(chain(200_000n, sent), "holder", poke, { gas: 123_456n });
     expect(sent.map((t) => t.gas)).toEqual([123_456n]);
+  });
+});
+
+describe("send, when nothing is mined", () => {
+  it("reports a wallet's refusal as declined, not as a revert", async () => {
+    const ctx = chain(100_000n, []);
+    (ctx as unknown as { wallet: () => unknown }).wallet = () => ({
+      account: { address: ME },
+      writeContract: async () => {
+        throw new UserRejectedRequestError(new Error("User rejected the request."));
+      },
+    });
+    const o = await send(ctx, "holder", poke);
+    expect(o.ok).toBe(false);
+    expect(o.error?.name).toBe("Rejected");
+    expect(o.hash).toBeUndefined();
+  });
+
+  it("keeps the hash of a transaction that was sent but not mined in time", async () => {
+    const ctx = chain(100_000n, []);
+    (ctx.pub as unknown as { waitForTransactionReceipt: () => Promise<never> }).waitForTransactionReceipt = async () => {
+      throw new WaitForTransactionReceiptTimeoutError({ hash: HASH });
+    };
+    const o = await send(ctx, "holder", poke);
+    expect(o.error?.name).toBe("Pending");
+    expect(o.hash).toBe(HASH);
   });
 });

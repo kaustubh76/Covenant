@@ -7,7 +7,7 @@ import { poolSwapTestAbi, testTokenAbi } from "./abi.generated";
 import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import { sqrtAtTick, sqrtX96ToFloat, tickAtSqrt, toPool, toPrice } from "./price";
-import { type Outcome, type SendOptions, must, send } from "./tx";
+import { type Outcome, type SendOptions, must, send, simulate } from "./tx";
 import { readSqrtPrice } from "./view";
 import type { VaultView } from "./view";
 
@@ -39,8 +39,13 @@ async function fundTokens(ctx: ChainCtx, who: Actor, token: Address, amount: big
     }
     must(await send(ctx, who, { address: token, abi: testTokenAbi, functionName: "mint", args: [me, amount - bal] }), "mint");
   }
-  if (allowance < amount) must(await send(ctx, who, { address: token, abi: testTokenAbi, functionName: "approve", args: [router, maxUint256] }), "approve");
+  // A real wallet approves the router for this sale only; dev chains keep the open allowance their demos rely on.
+  const approval = ctx.net.caps.devChain ? maxUint256 : amount;
+  if (allowance < amount) must(await send(ctx, who, { address: token, abi: testTokenAbi, functionName: "approve", args: [router, approval] }), "approve");
 }
+
+/** What a swap's caller pays in currency0, from the router's BalanceDelta (amount0 in the high 128 bits; negative is owed). */
+export const paidIn0 = (delta: bigint): bigint => -BigInt.asIntN(128, delta >> 128n);
 
 /**
  * The router call for an exact-input swap, built but not sent: `swap` sends it, and a simulation can run it in a block
@@ -76,6 +81,13 @@ export async function swap(ctx: ChainCtx, pool: Pool, who: Actor, buy: boolean, 
     const spendable = balance > GAS_RESERVE ? balance - GAS_RESERVE : 0n;
     if (spendable === 0n) throw new Error("The wallet has no ETH to buy with.");
     if (amountIn > spendable) amountIn = spendable;
+    // Ask the pool what the swap really spends before its price limit stops it, and send that and a hair more: the
+    // wallet's confirmation then shows what the trade costs, not everything the wallet holds.
+    if (limitPriceTick !== undefined) {
+      const pre = await simulate(ctx, who, swapCall(ctx, pool, buy, amountIn, limitPriceTick));
+      const spent = pre.ok && typeof pre.value === "bigint" ? paidIn0(pre.value) : 0n;
+      if (spent > 0n && spent < amountIn) amountIn = spent + spent / 200n + 1n;
+    }
   }
   return send(ctx, who, swapCall(ctx, pool, buy, amountIn, limitPriceTick), opts);
 }

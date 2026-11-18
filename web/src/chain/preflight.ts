@@ -8,6 +8,7 @@ import type { ChainCtx } from "./client";
 import { type DecodedError, decodeRevert } from "./errors";
 import { type Party, partyAddress, simulate } from "./tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "./view";
+import { classify } from "./failure";
 
 export interface VaultEvent {
   name: string;
@@ -52,9 +53,9 @@ export function vaultEvents(logs: readonly { address: Address; data: Hex; topics
  */
 export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, base: VaultView, setup: ActionCall[] = []): Promise<Preflight> {
   const describe = { now: base.time + 1, quoteSymbol: base.quoteSymbol, tokenSymbol: base.tokenSymbol };
-  const latest = await ctx.pub.getBlock({ blockTag: "latest" });
   const account = partyAddress(ctx, party);
   try {
+    const latest = await ctx.pub.getBlock({ blockTag: "latest" });
     const [block] = await ctx.pub.simulateBlocks({
       // On top of the block just read. Unpinned, the simulation builds on the RPC's head at the time of this call, and
       // on a public chain that has often moved on a block, so the overrides below fall behind it and are rejected.
@@ -82,10 +83,20 @@ export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, b
       after: snapshot.status === "success" ? viewFromSnapshot(base, snapshot.result as LensState) : undefined,
       events: vaultEvents(action.logs, base.address),
     };
-  } catch {
+  } catch (e) {
+    // A node that did not answer (rate-limited, unreachable) is not a verdict: say so. Falling back to a plain call
+    // would drop the setup calls, and a deposit would then fail on its token transfer for no reason of its own.
+    const why = classify(e);
+    if (why) return { ok: false, error: why, events: [] };
     // No eth_simulateV1 on this RPC: fall back to a plain call, which still gives the verdict (without setup calls,
     // so a missing approval shows as the transfer's failure).
     const o = await simulate(ctx, party, call as never, describe);
     return { ok: o.ok, error: o.error, value: o.value, events: [] };
   }
+}
+
+/** A preview that could not be made, as a failed preflight that says why, for pages to show instead of waiting forever. */
+export function failedPreflight(e: unknown): Preflight {
+  const reason = e instanceof Error ? e.message.split("\n")[0] : String(e);
+  return { ok: false, error: classify(e) ?? { name: "Error", args: [], signature: "The check failed", rule: "Other", reason }, events: [] };
 }

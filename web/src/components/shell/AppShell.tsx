@@ -2,20 +2,22 @@
 
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ChevronDown, Loader2, Moon, RotateCcw, Sun, Wallet } from "lucide-react";
+import { ChevronDown, Loader2, Moon, RotateCcw, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { parseEther } from "viem";
 import { shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
-import { type NetworkKey, explorerTx } from "@/chain/network";
+import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
+import { NETWORKS, type NetworkKey, explorerTx, isNetworkKey } from "@/chain/network";
 import { pushTo, spotOf, swap } from "@/chain/market";
 import { priceAt, ticksToPct } from "@/chain/price";
 import { advance } from "@/chain/time";
 import { Button, Dot, Tag } from "@/components/ui";
 import { duration, price } from "@/lib/format";
 import { ROLES, type Role, useChain } from "@/store/chain";
+import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
 
 const NAV = [
@@ -72,6 +74,7 @@ function RoleSwitcher() {
   const net = useChain((s) => s.net);
   const view = useChain((s) => s.view);
   const wallet = useChain((s) => s.wallet);
+  const busy = useChain((s) => s.busy);
   const mine = (r: Role) => {
     if (!net || net.caps.devChain) return null;
     const holder = r === "issuer" ? view?.people.issuer : r === "curator" ? view?.people.curator : null;
@@ -79,11 +82,12 @@ function RoleSwitcher() {
     return wallet && holder.toLowerCase() === wallet.address.toLowerCase() ? "your wallet" : `${shortAddress(holder)} only`;
   };
   return (
-    <label className="relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted">
+    <label className={clsx("relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted", busy && "opacity-50")}>
       <span className="hidden text-faint sm:inline">Acting as</span>
       <span className="font-medium">{ROLES.find((r) => r.key === role)?.name}</span>
       <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-faint" />
-      <select aria-label="Acting as" value={role} onChange={(e) => setRole(e.target.value as Role)} className="absolute inset-0 cursor-pointer opacity-0">
+      {/* Not while an action runs: the action was asked for as the role chosen when it was clicked. */}
+      <select aria-label="Acting as" value={role} disabled={!!busy} onChange={(e) => setRole(e.target.value as Role)} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed">
         {ROLES.map((r) => (
           <option key={r.key} value={r.key}>
             {r.name} — {mine(r.key) ?? r.does}
@@ -100,12 +104,13 @@ function NetworkSwitcher() {
   const networks = useChain((s) => s.networks);
   const setNetwork = useChain((s) => s.setNetwork);
   const loadNetworks = useChain((s) => s.loadNetworks);
+  const busy = useChain((s) => s.busy);
   useEffect(() => {
     void loadNetworks();
   }, [loadNetworks]);
   const current = networks.find((n) => n.key === netKey);
   return (
-    <label className="relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted" title={current?.reason}>
+    <label className={clsx("relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted", busy && "opacity-50")} title={busy ? `Waiting for: ${busy}` : current?.reason}>
       <Dot tone={current?.state === "ready" ? "pass" : current ? "breach" : "neutral"} />
       {/* On a phone the dot says it: there is room for the wordmark and the wallet, not for the name too. */}
       <span className="hidden max-w-[130px] truncate font-medium sm:inline">{current?.name ?? "Network"}</span>
@@ -113,9 +118,11 @@ function NetworkSwitcher() {
       <select
         aria-label="Network"
         value={netKey ?? "local"}
+        // Not while an action runs: its result belongs to the network it was sent on.
+        disabled={!!busy}
         onFocus={() => void loadNetworks()}
         onChange={(e) => void setNetwork(e.target.value as NetworkKey)}
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed"
       >
         {networks.map((n) => (
           <option key={n.key} value={n.key}>
@@ -137,7 +144,8 @@ function WalletControl() {
   const connectWallet = useChain((s) => s.connectWallet);
   const disconnectWallet = useChain((s) => s.disconnectWallet);
   const switchWalletChain = useChain((s) => s.switchWalletChain);
-  if (!netKey || netKey === "local") return null;
+  // Dev chains (the local one, the Playground) sign with their own keys: there is no wallet to connect.
+  if (!netKey || NETWORKS[netKey].caps.devChain) return null;
   if (!wallet) {
     return (
       <Button size="sm" variant="secondary" onClick={() => void connectWallet(wallets[0]?.id)} title={walletError ?? (wallets.length ? `Connect ${wallets.map((w) => w.name).join(" or ")}` : "No browser wallet found")}>
@@ -359,8 +367,11 @@ function Toast() {
     const t = setTimeout(dismiss, toast.ok ? 3200 : 7000);
     return () => clearTimeout(t);
   }, [toast, dismiss]);
+  // Only the contract's own refusal is "Reverted". A declined wallet request, a wallet on another network, a node that
+  // did not answer or a transaction not mined yet each say what they are (chain/failure.ts).
+  const kind = toast?.error && isFailureKind(toast.error.name) ? toast.error.name : null;
   const item = toast
-    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash, notSent: toast.error?.name === "NotSent" }
+    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash, kind, unknown: toast.error?.name === "Error" }
     : null;
   return (
     <div className="pointer-events-none fixed bottom-16 right-4 z-50 w-[min(380px,calc(100vw-2rem))]" aria-live="polite">
@@ -376,14 +387,18 @@ function Toast() {
           >
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-ink">{item.title}</span>
-              {/* "Not sent": the pre-flight passed, but the connected wallet cannot sign for this role */}
-              <Tag tone={item.ok ? "pass" : item.notSent ? "warn" : "breach"}>{item.ok ? "Settled" : item.notSent ? "Not sent" : "Reverted"}</Tag>
+              <div className="flex shrink-0 items-center gap-1.5">
+                <Tag tone={item.ok ? "pass" : item.kind ? "warn" : "breach"}>{item.ok ? "Settled" : item.kind ? FAILURE_LABEL[item.kind] : item.unknown ? "Failed" : "Reverted"}</Tag>
+                <button onClick={dismiss} aria-label="Dismiss" className="-mr-1 rounded p-1 text-faint transition-colors hover:bg-bg hover:text-ink">
+                  <X size={14} strokeWidth={1.8} />
+                </button>
+              </div>
             </div>
             {item.ok ? (
               item.detail && <p className="mt-1.5 text-[13px] text-muted">{item.detail}</p>
             ) : (
               <>
-                {item.signature && !item.notSent && <p className="num mt-2 break-words text-[13px] text-breach">{item.signature}</p>}
+                {item.signature && !item.kind && <p className="num mt-2 break-words text-[13px] text-breach">{item.signature}</p>}
                 {item.reason && <p className="mt-1 text-[13px] leading-relaxed text-muted">{item.reason}</p>}
               </>
             )}
@@ -407,6 +422,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void useChain.getState().connect();
   }, []);
+  // A link within the app can carry ?net= (the landing's "Open a Playground", a shared /vault?net=… link followed
+  // in-app). The store reads it only on the first connect, so follow it here on every page change, as a fresh visit would.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("net");
+    const { netKey, setNetwork } = useChain.getState();
+    if (netKey && isNetworkKey(wanted) && wanted !== netKey) void setNetwork(wanted);
+  }, [path]);
   const showDock = path !== "/" && path !== "/demo" && path !== "/attacks" && path !== "/launch";
   return (
     <MotionConfig reducedMotion="user">
@@ -414,6 +436,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {path !== "/" && <PlaygroundBar />}
       {path === "/" ? <main>{children}</main> : <main className={clsx("mx-auto max-w-[1320px] px-4 md:px-8", showDock ? "pb-28" : "pb-20")}>{children}</main>}
       {showDock && <LiveDock />}
+      {/* the vault page shows the feed in place; the landing reads recorded data */}
+      {path !== "/" && path !== "/vault" && <ActivityDrawer raised={showDock} />}
       <Toast />
     </MotionConfig>
   );

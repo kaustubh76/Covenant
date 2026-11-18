@@ -6,7 +6,7 @@ import { covenantVaultAbi, testTokenAbi } from "@/chain/abi.generated";
 import { beatOf } from "@/chain/beat";
 import { NEVER } from "@/chain/launch";
 import { swap } from "@/chain/market";
-import { type ActionCall, type Preflight, preflight, vaultEvents } from "@/chain/preflight";
+import { type ActionCall, type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { priceAt } from "@/chain/price";
 import { depositCall, ensureAllowance, quoteBudget, withSlack } from "@/chain/provide";
 import { isAddressParty, send } from "@/chain/tx";
@@ -18,6 +18,7 @@ import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
 import { useBalances } from "@/lib/useBalances";
 import { ROLES, actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
+import { SendButton } from "@/components/controls/SendButton";
 
 const eth = (x: bigint) => Number(formatEther(x));
 /** On a public chain the deposit is simulated within the wallet's ETH, less what the market keeps back for gas. */
@@ -59,7 +60,9 @@ export default function ProvidePage() {
   useEffect(() => {
     if (!ctx || !v || newShares === 0n) return;
     let live = true;
-    preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v)).then((p) => live && setDep(p));
+    preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v))
+      .catch(failedPreflight)
+      .then((p) => live && setDep(p));
     return () => {
       live = false;
     };
@@ -70,7 +73,9 @@ export default function ProvidePage() {
       return;
     }
     let live = true;
-    preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v).then((p) => live && setOut(p));
+    preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v)
+      .catch(failedPreflight)
+      .then((p) => live && setOut(p));
     return () => {
       live = false;
     };
@@ -93,7 +98,8 @@ export default function ProvidePage() {
         return;
       }
       const [a0, a1] = p.value as readonly [bigint, bigint];
-      await ensureAllowance(c, party, v, withSlack(a1));
+      // A real wallet approves exactly what this deposit may take; dev chains keep the open allowance their demos rely on.
+      await ensureAllowance(c, party, v, withSlack(a1), !c.net.caps.devChain);
       const o = await send(c, party, { ...depositCall(v, newShares, withSlack(a0)), args: [newShares, withSlack(a0), withSlack(a1), NEVER] as const }, { force: true });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Deposited");
       rec.record(
@@ -192,9 +198,9 @@ export default function ProvidePage() {
               Buy {amt(tokenShort * 1.02)} {sym} from the pool first
             </Button>
           )}
-          <Button variant="primary" className={tokenShort > 0 && mayAct ? "mt-2.5 w-full" : "mt-5 w-full"} onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
-            {publicChain && !wallet ? "Connect a wallet to deposit" : "Deposit"}
-          </Button>
+          <SendButton verb="deposit" variant="primary" className={tokenShort > 0 && mayAct ? "mt-2.5 w-full" : "mt-5 w-full"} onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
+            Deposit
+          </SendButton>
           <p className="mt-2 text-center text-xs text-faint">
             {dep && !dep.ok && tokenShort > 0 && dep.error?.name !== "SetupEpoch"
               ? `The deposit takes ${sym} too, in proportion, and this wallet holds ${amt(bal?.token ?? 0)}: buy the difference, then deposit.`

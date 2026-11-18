@@ -26,9 +26,12 @@ export const quoteBudget = (v: Pick<VaultView, "principal" | "idle">, fraction: 
   return cap !== undefined && cap < budget ? (cap > 0n ? cap : 0n) : budget;
 };
 
-/** Approve the vault to pull `amount` of the token from `who`, if it may not already. */
-export async function ensureAllowance(ctx: ChainCtx, who: Party, v: Pick<VaultView, "address" | "token">, amount: bigint) {
+/**
+ * Approve the vault to pull `amount` of the token from `who`, if it may not already. `exact` approves just that amount,
+ * for a person's own wallet on a public chain, rather than leaving the vault an open-ended allowance.
+ */
+export async function ensureAllowance(ctx: ChainCtx, who: Party, v: Pick<VaultView, "address" | "token">, amount: bigint, exact = false) {
   const owner: Address = partyAddress(ctx, who);
   const allowance = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "allowance", args: [owner, v.address] });
-  if (allowance < amount) must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, maxUint256] }), "approve");
+  if (allowance < amount) must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, exact ? amount : maxUint256] }), "approve");
 }
