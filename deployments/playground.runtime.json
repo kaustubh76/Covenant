@@ -1,0 +1,15 @@
+{
+  "rpcUrl": "http://127.0.0.1:8552",
+  "baselineSnapshot": "0x0",
+  "defaultVault": "0xB6d2CE1143856b9d38C382A61aB88F988caF004c",
+  "launches": [
+    {
+      "vault": "0xB6d2CE1143856b9d38C382A61aB88F988caF004c",
+      "token": "0x8464135c8f25da09e49bc8782676a84730c318bc",
+      "symbol": "TOKEN",
+      "auction": "0x31DBD0CF2ab601363fd855625243245151f740F3",
+      "createdAtBlock": 16
+    }
+  ],
+  "seededAt": 1795018024781
+}

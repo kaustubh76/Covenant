@@ -24,3 +24,7 @@ deployments/*.launch.json
 
 # Vercel's local project link
 .vercel
+
+# The backend's installs and build output
+backend/node_modules/
+backend/dist/

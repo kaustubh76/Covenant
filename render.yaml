@@ -1,0 +1,23 @@
+# Covenant's backend on Render: Playground chains with real writes (backend/). The web app stays on Vercel.
+# The service was created with the Render CLI using these same settings; this Blueprint reproduces it.
+services:
+  - type: web
+    name: covenant-backend
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /healthz
+    autoDeploy: true
+    buildFilter:
+      paths:
+        - backend/**
+        - deployments/playground.json
+        - deployments/playground.runtime.json
+        - Dockerfile
+        - .dockerignore
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: https://covenant-uhi11.vercel.app,http://localhost:3000,http://127.0.0.1:3000
+      - key: MAX_CHAINS
+        value: "4"

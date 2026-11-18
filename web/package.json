@@ -13,6 +13,7 @@
     "test:chain": "vitest run --config vitest.chain.config.ts",
     "test:fork": "vitest run --config vitest.fork.config.ts",
     "record": "tsx scripts/record.ts",
+    "playground:seed": "tsx scripts/playground-seed.ts",
     "demo": "tsx scripts/demo.ts",
     "fork": "tsx scripts/fork.ts",
     "launch": "tsx scripts/launch-public.ts",

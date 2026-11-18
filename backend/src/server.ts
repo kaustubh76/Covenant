@@ -1,0 +1,129 @@
+// The Covenant backend. For now: Playground chains with real writes, one private Anvil per visitor, loaded from the
+// state web/scripts/playground-seed.ts saved. Run with `npm run dev`, or `npm run build && npm start`.
+
+import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
+import { loadConfig } from "./config";
+import { Buckets, HttpError, clientIp, cors, json, readBody } from "./http";
+import { CHAIN_ID, startChain } from "./playground/anvil";
+import { Playground, SESSION_ID, type Session } from "./playground/pool";
+import { readRecords } from "./playground/records";
+import { proxy } from "./playground/rpc";
+
+export function createBackend(config = loadConfig(), log = (line: string) => console.log(`${new Date().toISOString()} ${line}`)) {
+  const records = readRecords(config.records);
+  const playground = new Playground({
+    maxChains: config.maxChains,
+    chainsPerIp: config.chainsPerIp,
+    idleMs: config.idleMs,
+    evictAfterMs: config.evictAfterMs,
+    start: () => startChain({ bin: config.anvil, stateFile: config.stateFile, timeoutMs: config.startTimeoutMs }),
+    log,
+  });
+  // Six new chains a minute per address. Calls are limited per chain only against runaway loops: a visitor can only flood
+  // their own chain, and the attack lab legitimately sends thousands of calls in a run.
+  const opens = new Buckets(6 / 60, 6);
+  const calls = new Buckets(2_000, 6_000);
+  const started = Date.now();
+
+  const describe = (s: Session, resumed: boolean, expired: boolean) => ({
+    id: s.id,
+    resumed,
+    expired,
+    chainId: CHAIN_ID,
+    rpcPath: `/rpc/play/${s.id}`,
+    idleMs: config.idleMs,
+    manifest: records.manifest,
+    runtime: { ...records.runtime, rpcUrl: "", baselineSnapshot: s.chain.baseline },
+  });
+
+  async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (!cors(req, res, config.origins)) return json(res, 403, { error: "This origin may not call the backend." });
+    if (req.method === "OPTIONS") {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+    const path = new URL(req.url ?? "/", "http://backend").pathname;
+    const ip = clientIp(req);
+
+    if (req.method === "GET" && path === "/healthz") {
+      return json(res, 200, { ok: true, uptimeS: Math.round((Date.now() - started) / 1000), playground: playground.stats() });
+    }
+    if (req.method === "GET" && path === "/v1/info") {
+      return json(res, 200, {
+        service: "covenant-backend",
+        // the address the rate limits count this caller as, to check what Render's edge forwards
+        you: ip,
+        playground: { chainId: CHAIN_ID, ...playground.stats(), idleMinutes: config.idleMs / 60_000, defaultVault: records.runtime.defaultVault },
+      });
+    }
+    if (req.method === "POST" && path === "/v1/playground/sessions") {
+      if (!opens.take(ip)) throw new HttpError(429, "Too many new chains from this address. Wait a minute.", { "retry-after": "60" });
+      const body = await readBody(req, 10_000);
+      let resume: string | undefined;
+      try {
+        const id = body ? (JSON.parse(body) as { id?: unknown }).id : undefined;
+        resume = typeof id === "string" && SESSION_ID.test(id) ? id : undefined;
+      } catch {
+        throw new HttpError(400, "The body is not JSON.");
+      }
+      const { session, resumed, expired } = await playground.open(ip, resume);
+      return json(res, 200, describe(session, resumed, expired));
+    }
+    const s = path.match(/^\/v1\/playground\/sessions\/([0-9a-f]{32})(\/reset)?$/);
+    if (s && req.method === "POST" && s[2]) {
+      const session = await playground.reset(s[1]);
+      return json(res, 200, { ok: true, baselineSnapshot: session.chain.baseline });
+    }
+    if (s && req.method === "DELETE" && !s[2]) {
+      await playground.close(s[1], "closed by its visitor");
+      return json(res, 200, { ok: true });
+    }
+    const r = path.match(/^\/rpc\/play\/([0-9a-f]{32})$/);
+    if (r && req.method === "POST") {
+      const session = playground.get(r[1]);
+      if (!session) throw new HttpError(410, "This Playground chain has stopped: it sat idle, or the backend restarted. Open a new one.");
+      const body = await readBody(req, config.maxBodyBytes);
+      if (!calls.take(r[1])) throw new HttpError(429, "Too many calls to this chain at once.", { "retry-after": "1" });
+      return json(res, 200, await proxy(session.chain.url, body));
+    }
+    throw new HttpError(404, "Not found");
+  }
+
+  const server = createServer((req, res) => {
+    handle(req, res).catch((e: unknown) => {
+      const status = e instanceof HttpError ? e.status : ((e as { status?: number }).status ?? 500);
+      // Session ids are the keys to a chain: never write them to the log.
+      if (status >= 500) log(`${status} ${req.method} ${(req.url ?? "").replace(/[0-9a-f]{32}/g, "…")}: ${e instanceof Error ? e.message : String(e)}`);
+      if (!res.headersSent) json(res, status, { error: e instanceof Error ? e.message : "Something went wrong" }, e instanceof HttpError ? e.headers : {});
+    });
+  });
+
+  const timer = setInterval(() => {
+    void playground.reap();
+    opens.prune();
+    calls.prune();
+  }, 30_000);
+  timer.unref();
+
+  const close = async () => {
+    clearInterval(timer);
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await playground.stopAll();
+  };
+  return { server, playground, close, config };
+}
+
+// Run as a program (npm start / npm run dev), not when a test imports createBackend.
+if (process.argv[1] && /server\.(ts|js)$/.test(process.argv[1])) {
+  const backend = createBackend();
+  const { config } = backend;
+  backend.server.listen(config.port, config.host, () => {
+    console.log(`covenant-backend on ${config.host}:${config.port}; up to ${config.maxChains} Playground chains, idle ones stop after ${config.idleMs / 60_000} min`);
+  });
+  for (const sig of ["SIGTERM", "SIGINT"] as const) {
+    process.once(sig, () => {
+      void backend.close().finally(() => process.exit(0));
+    });
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "covenant-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Covenant's backend: Playground chains with real writes, a cached Base Sepolia reader and a relayer.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "esbuild": "0.28.2",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}
