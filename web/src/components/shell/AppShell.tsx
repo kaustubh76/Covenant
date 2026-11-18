@@ -2,21 +2,16 @@
 
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ChevronDown, Loader2, Moon, RotateCcw, Sun, Wallet, X } from "lucide-react";
+import { ChevronDown, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { parseEther } from "viem";
 import { shortAddress } from "@/chain/accounts";
-import { beatOf, note } from "@/chain/beat";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { NETWORKS, type NetworkKey, explorerTx, isNetworkKey } from "@/chain/network";
-import { pushTo, spotOf, swap } from "@/chain/market";
-import { priceAt, ticksToPct } from "@/chain/price";
-import { advance } from "@/chain/time";
 import { Button, Dot, Tag } from "@/components/ui";
-import { duration, price } from "@/lib/format";
 import { ROLES, type Role, useChain } from "@/store/chain";
+import { Dock } from "@/components/dock/Dock";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
 
@@ -255,109 +250,6 @@ function TopBar() {
   );
 }
 
-const moveDetail = (before: number, after: number) => {
-  const d = after - before;
-  return `Spot moves ${d >= 0 ? "+" : "−"}${Math.abs(Math.round(d))} ticks (${d >= 0 ? "+" : "−"}${Math.abs(ticksToPct(d)).toFixed(1)}%)`;
-};
-
-/** The rest of the world, on the real chain: move the clock, trade against the vault, or reset to the seeded launch. */
-function LiveDock() {
-  const view = useChain((s) => s.view);
-  const run = useChain((s) => s.run);
-  const reset = useChain((s) => s.reset);
-  const busy = useChain((s) => s.busy);
-  const dev = useChain((s) => s.net?.caps.devChain ?? true);
-  if (!view) return null;
-  const sym = view.tokenSymbol;
-  const toMidVest = view.lock.unlockStartsAt + (view.lock.fullyVestedAt - view.lock.unlockStartsAt) / 2 - view.time;
-
-  const wait = (label: string, seconds: number) =>
-    run(label, async (ctx, rec) => {
-      await advance(ctx, seconds);
-      rec.record(note("anyone", label, "Chain time moves forward; the TWAP follows the last price"));
-    });
-  const sell = (n: number) =>
-    run(`Market sells ${n} ${sym}`, async (ctx, rec) => {
-      const before = await spotOf(ctx, view);
-      const o = await swap(ctx, view, "market", false, parseEther(String(n)));
-      const after = await spotOf(ctx, view);
-      rec.record(beatOf(o, "market", `Market sells ${n} ${sym}`, () => moveDetail(before, after)), { toast: true });
-    });
-  const lift = (pctUp: number) =>
-    run(`Market buys ${sym} up ${pctUp}%`, async (ctx, rec) => {
-      const before = await spotOf(ctx, view);
-      const target = before + Math.log(1 + pctUp / 100) / Math.log(1.0001);
-      const o = await pushTo(ctx, view, "market", target, parseEther("5000"));
-      const after = await spotOf(ctx, view);
-      rec.record(beatOf(o, "market", `Market buys ${sym} up ${pctUp}%`, () => moveDetail(before, after)), { toast: true });
-    });
-
-  return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur">
-      <div className="scroll-x mx-auto flex h-12 max-w-[1320px] items-center gap-4 px-4 md:px-8">
-        <div className="flex shrink-0 items-baseline gap-2">
-          <span className="eyebrow">Chain</span>
-          <span className="num text-[13px] text-ink" title={`block ${view.block}`}>
-            T+{duration(Math.max(0, view.time - view.lock.adoptedAt))}
-          </span>
-          <span className="num text-[13px] text-muted">
-            {price(priceAt(view.spot))} {view.quoteSymbol}
-          </span>
-        </div>
-        <div className="h-5 w-px shrink-0 bg-line" />
-        {/* Only the local chain's clock can be moved; a public chain's runs on its own. */}
-        <div className={clsx("flex shrink-0 items-center gap-1.5", !dev && "hidden")}>
-          <span className="eyebrow mr-1">Clock</span>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("1 hour passes", 3600)}>
-            +1h
-          </Button>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("1 day passes", 86400)}>
-            +1d
-          </Button>
-          <Button size="sm" variant="ghost" disabled={!!busy || toMidVest <= 0} onClick={() => wait(`${duration(toMidVest)} pass`, toMidVest)}>
-            To mid-vest
-          </Button>
-        </div>
-        <div className={clsx("h-5 w-px shrink-0 bg-line", !dev && "hidden")} />
-        {dev ? (
-          <div className="flex shrink-0 items-center gap-1.5">
-            <span className="eyebrow mr-1">Market</span>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(5)}>
-              Sell 5
-            </Button>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(40)}>
-              Dump 40
-            </Button>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(10)}>
-              Buy +10%
-            </Button>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(25)}>
-              Buy +25%
-            </Button>
-          </div>
-        ) : (
-          // A public chain's vault is shared: a trade that moved spot past the guard would hold every curator's and
-          // depositor's action until the TWAP caught up. These stay well inside it.
-          <div className="flex shrink-0 items-center gap-1.5" title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}>
-            <span className="eyebrow mr-1">Market</span>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(1)}>
-              Sell 1
-            </Button>
-            <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => lift(1)}>
-              Buy +1%
-            </Button>
-          </div>
-        )}
-        <div className={clsx("ml-auto shrink-0", !dev && "hidden")}>
-          <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void reset()} title="Revert the chain to the freshly seeded launch">
-            <RotateCcw size={13} /> Reset
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function Toast() {
   const toast = useChain((s) => s.toast);
   const dismiss = useChain((s) => s.dismissToast);
@@ -429,13 +321,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const { netKey, setNetwork } = useChain.getState();
     if (netKey && isNetworkKey(wanted) && wanted !== netKey) void setNetwork(wanted);
   }, [path]);
-  const showDock = path !== "/" && path !== "/demo" && path !== "/attacks" && path !== "/launch";
+  // Not on the landing (recorded data), nor the guided demo and the attack lab, which keep their own snapshots.
+  const showDock = path !== "/" && path !== "/demo" && path !== "/attacks";
   return (
     <MotionConfig reducedMotion="user">
       <TopBar />
       {path !== "/" && <PlaygroundBar />}
       {path === "/" ? <main>{children}</main> : <main className={clsx("mx-auto max-w-[1320px] px-4 md:px-8", showDock ? "pb-28" : "pb-20")}>{children}</main>}
-      {showDock && <LiveDock />}
+      {showDock && <Dock />}
       {/* the vault page shows the feed in place; the landing reads recorded data */}
       {path !== "/" && path !== "/vault" && <ActivityDrawer raised={showDock} />}
       <Toast />

@@ -1,6 +1,6 @@
 "use client";
 
-import { type Address, BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, custom } from "viem";
+import { type Address, BaseError, ContractFunctionRevertedError, ContractFunctionZeroDataError, type Hex, custom } from "viem";
 import { create } from "zustand";
 import { type Actor, actorOf } from "@/chain/accounts";
 import { type Beat, type BeatInput, note } from "@/chain/beat";
@@ -15,6 +15,7 @@ import { sanitizeLaunches } from "@/chain/remembered";
 import { type Party, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
 import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
+import { revertTo, snapshot } from "@/chain/time";
 
 export type Role = "holder" | "issuer" | "curator" | "keeper" | "lp";
 
@@ -117,9 +118,14 @@ interface ChainState {
   record(beats: BeatInput | BeatInput[], opts?: { toast?: boolean }): void;
   dismissToast(): void;
   reset(): Promise<boolean>;
+  /** Save points on a dev chain, newest last: snapshots to come back to, clock and all. Session only. */
+  savePoints: { id: Hex; at: number }[];
+  savePoint(): Promise<void>;
+  backToSavePoint(): Promise<void>;
 }
 
 const NET_KEY = "covenant.net";
+const ROLE_KEY = "covenant.role";
 const WALLET_KEY = "covenant.wallet";
 // The local chain keeps the key it always had, so an existing selection survives.
 const vaultKey = (net: NetworkKey) => (net === "local" ? "covenant.vault" : `covenant.vault.${net}`);
@@ -229,9 +235,13 @@ export const useChain = create<ChainState>((set, get) => ({
   wallets: [],
   wallet: null,
   walletError: null,
+  savePoints: [],
 
   async connect() {
     if (retry) clearTimeout(retry);
+    // The role this browser last acted as (restored here, after mount, so the server's first render still matches).
+    const savedRole = load(ROLE_KEY);
+    if (savedRole && savedRole !== get().role && ROLES.some((r) => r.key === savedRole)) set({ role: savedRole as Role });
     const mine = ++connectSeq;
     if (!unwallets) {
       unwallets = discoverWallets((wallets) => {
@@ -323,7 +333,7 @@ export const useChain = create<ChainState>((set, get) => ({
     // back reads its recent window afresh (a restarted fork shares nothing with the one before).
     refreshSeq++;
     if (left && left !== key) forgetScans(left);
-    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], log: [], toast: null });
+    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], log: [], toast: null, savePoints: [] });
     // Keep ?net= in step, so a copied link opens the same network.
     try {
       const url = new URL(window.location.href);
@@ -417,7 +427,10 @@ export const useChain = create<ChainState>((set, get) => ({
     }
   },
 
-  setRole: (role) => set({ role }),
+  setRole: (role) => {
+    save(ROLE_KEY, role);
+    set({ role });
+  },
 
   async selectVault(vault) {
     const key = get().netKey;
@@ -487,10 +500,31 @@ export const useChain = create<ChainState>((set, get) => ({
     });
     if (done) {
       const net = get().net;
-      set({ log: [], history: [], toast: null });
+      set({ log: [], history: [], toast: null, savePoints: [] });
       if (net?.runtime) await get().selectVault(net.runtime.defaultVault);
     }
     return !!done;
+  },
+
+  async savePoint() {
+    if (!get().net?.caps.devChain) return;
+    await get().run("Taking a save point", async (ctx, rec) => {
+      const id = await snapshot(ctx);
+      set({ savePoints: [...get().savePoints, { id, at: get().view?.time ?? 0 }] });
+      rec.record(note("anyone", "Save point taken", "Back to it returns the chain exactly here, clock included"), { toast: true });
+    });
+  },
+
+  async backToSavePoint() {
+    const top = get().savePoints.at(-1);
+    if (!top || !get().net?.caps.devChain) return;
+    await get().run("Going back to the save point", async (ctx, rec) => {
+      await revertTo(ctx, top.id);
+      // Anvil consumes a snapshot when it reverts to it: take it again, so the same point can be returned to.
+      const id = await snapshot(ctx);
+      set({ savePoints: [...get().savePoints.slice(0, -1), { ...top, id }] });
+      rec.record(note("anyone", "Back at the save point", "The chain is as it was when the point was taken"), { toast: true });
+    });
   },
 }));
 
