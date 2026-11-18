@@ -2,20 +2,23 @@
 
 import { Minus, MoveHorizontal, Plus, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { parseEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
 import { shortAddress } from "@/chain/accounts";
-import { beatOf } from "@/chain/beat";
+import { beatOf, note } from "@/chain/beat";
+import { pushTo } from "@/chain/market";
 import { NEVER } from "@/chain/launch";
 import { type Leg, SINK, askFloor, askLeg, bidCeiling, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
 import { type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { ceilTo, floorTo, holdingsAtPrice, priceAt } from "@/chain/price";
+import { advance } from "@/chain/time";
 import { isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { type ShapeSource, ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/ShapeChart";
 import { ReshapeVerdict } from "@/components/covenant/Verdict";
 import { Button, PageHeader, Panel, Tag } from "@/components/ui";
-import { amt, axisPrice, pct } from "@/lib/format";
+import { amt, axisPrice, duration, pct } from "@/lib/format";
 import { layoutKey } from "@/lib/layout";
 import { describeRange } from "@/lib/ranges";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
@@ -171,6 +174,18 @@ export default function CuratePage() {
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
   const net = useChain((s) => s.net);
+  // On a dev chain, the live management proof's setup in one click, so "Bid above the Anchor" can be tried: the price
+  // runs past the Anchor's ceiling, then holds for a TWAP window. The TWAP follows, so the guard passes; the Anchor climbs
+  // at most a band a day, so the ceiling stays under the pumped price, and a chase is refused with BidAboveCeiling.
+  const pumpAndHold = (v: VaultView) =>
+    run("Market pumps past the Anchor ceiling and holds", async (ctx, rec) => {
+      const target = v.ceiling + Math.round(v.terms.supportBandTicks / 2) + 4 * v.tickSpacing;
+      const o = await pushTo(ctx, v, "market", target, parseEther("5000"));
+      rec.record(beatOf(o, "market", "Market pumps past the Anchor ceiling", () => `Spot runs to ${priceAt(target).toPrecision(4)} ${v.quoteSymbol}, above the ceiling at ${priceAt(v.ceiling).toPrecision(4)}`), { toast: !o.ok });
+      if (!o.ok) return;
+      await advance(ctx, v.terms.twapWindow);
+      rec.record(note("anyone", `The pump holds for ${duration(v.terms.twapWindow)}`, "The TWAP has followed it and the guard passes; the Anchor has not. Now try Bid above the Anchor."), { toast: true });
+    });
   const wallet = useChain((s) => s.wallet);
   const [ed, setEd] = useState<Editor | null>(null);
   const [preset, setPreset] = useState("tighten");
@@ -330,6 +345,14 @@ export default function CuratePage() {
                 );
               })}
             </div>
+            {net?.caps.devChain && PRESETS.find((p) => p.key === "ceiling")?.when?.(v) && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-faint">
+                Bidding above the Anchor needs a pump that has held.
+                <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void pumpAndHold(v)}>
+                  Pump past the ceiling and hold {duration(v.terms.twapWindow)}
+                </Button>
+              </div>
+            )}
           </Panel>
 
           <div className="grid gap-6 xl:grid-cols-2">

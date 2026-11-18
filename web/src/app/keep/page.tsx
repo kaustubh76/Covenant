@@ -32,6 +32,7 @@ export default function KeepPage() {
   const v = useChain((s) => s.view);
   const ctx = useChain((s) => s.ctx);
   const role = useChain((s) => s.role);
+  const setRole = useChain((s) => s.setRole);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
   const net = useChain((s) => s.net);
@@ -150,7 +151,16 @@ export default function KeepPage() {
         eyebrow="Keeper"
         title="When a sell-off strands support, anyone can bring it back."
         lead="Support is measured in a band under the time-weighted price. A lasting sell-off drags the band down and can leave the vault's reserve beneath it. Restore is open to every address and pays a bounty, so it never depends on the curator showing up. A rally cannot lapse it: asks the vault sold count as support."
-        aside={<Tag tone={lapsed ? "breach" : "pass"}>{lapsed ? "Support has lapsed" : "Support holding"}</Tag>}
+        aside={
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {role !== "keeper" && (
+              <Button size="sm" onClick={() => setRole("keeper")}>
+                Act as keeper
+              </Button>
+            )}
+            <Tag tone={lapsed ? "breach" : "pass"}>{lapsed ? "Support has lapsed" : "Support holding"}</Tag>
+          </div>
+        }
       />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">

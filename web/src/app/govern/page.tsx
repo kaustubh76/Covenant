@@ -1,7 +1,8 @@
 "use client";
 
 import { Check, Minus } from "lucide-react";
-import { formatEther, isAddressEqual, parseEther } from "viem";
+import { useState } from "react";
+import { formatEther, isAddress, isAddressEqual, parseEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
 import { ACTOR_LABEL, type Who, shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
@@ -38,6 +39,9 @@ export default function GovernPage() {
   const busy = useChain((s) => s.busy);
   const net = useChain((s) => s.net);
   const wallet = useChain((s) => s.wallet);
+  // What the visitor typed: a curator to propose, and how much to put in the bounty pool. Empty means the default.
+  const [target, setTarget] = useState("");
+  const [bountyIn, setBountyIn] = useState("");
   if (!v) return <NeedsChain what="governance" />;
 
   const actor = actorFor(role, v);
@@ -76,8 +80,12 @@ export default function GovernPage() {
       rec.record(beatOf(o, label, title, detail), { toast: true });
     });
   // Who a public chain's curator change would name: the connected wallet. Locally, the other demo curator.
-  const proposed = publicChain ? wallet?.address : useChain.getState().ctx?.address(candidate);
-  const bounty = publicChain ? "0.005" : "0.05";
+  const typed = target.trim();
+  const customTarget = typed !== "" && isAddress(typed) ? (typed as `0x${string}`) : null;
+  const targetBad = typed !== "" && !customTarget;
+  const proposed = customTarget ?? (publicChain ? wallet?.address : useChain.getState().ctx?.address(candidate));
+  const bounty = bountyIn.trim() || (publicChain ? "0.005" : "0.05");
+  const bountyOk = /^\d*\.?\d+$/.test(bounty) && Number(bounty) > 0 && Number(bounty) <= (publicChain ? 1 : 1000);
   const curatorParty: Party = publicChain ? v.people.curator : (whoIs(v.people.curator) ?? "curator");
   const pendingIssuerParty: Party = publicChain ? (v.people.pendingIssuer ?? v.people.issuer) : (whoIs(v.people.pendingIssuer) ?? "holder");
 
@@ -130,7 +138,20 @@ export default function GovernPage() {
               <Meter value={1 - Math.max(0, left) / t.curatorTimelock} tone={left > 0 ? "warn" : "pass"} label="Timelock progress" />
             </div>
           )}
-          <div className="mt-5 grid grid-cols-2 gap-3">
+          {!pending && (
+            <label className="mt-5 block text-[13px] text-muted">
+              Curator to propose
+              <input
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                placeholder={publicChain ? "Your wallet, or any 0x… address" : `The ${ACTOR_LABEL[candidate]}, or any 0x… address`}
+                spellCheck={false}
+                className={`num mt-1.5 h-9 w-full rounded-md border bg-transparent px-2.5 text-[13px] text-ink outline-none placeholder:text-faint ${targetBad ? "border-breach/60" : "border-line-strong focus:border-muted"}`}
+              />
+              {targetBad && <span className="mt-1 block text-xs text-breach">That is not an address.</span>}
+            </label>
+          )}
+          <div className="mt-4 grid grid-cols-2 gap-3">
             {pending ? (
               <Button disabled={!!busy} onClick={() => call("Cancel the curator change", "cancelCuratorProposal", [], () => "The current curator stays")}>
                 Cancel change
@@ -138,10 +159,12 @@ export default function GovernPage() {
             ) : (
               <SendButton
                 verb="propose"
-                disabled={!!busy || !proposed}
-                onClick={() => call("Propose a new curator", "proposeCurator", [proposed], () => `${publicChain ? "Your wallet" : ACTOR_LABEL[candidate]} can take over in ${duration(t.curatorTimelock)}`)}
+                disabled={!!busy || !proposed || targetBad}
+                onClick={() =>
+                  call("Propose a new curator", "proposeCurator", [proposed], () => `${customTarget ? shortAddress(customTarget) : publicChain ? "Your wallet" : ACTOR_LABEL[candidate]} can take over in ${duration(t.curatorTimelock)}`)
+                }
               >
-                {publicChain ? "Propose your wallet as curator" : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
+                {customTarget ? `Propose ${shortAddress(customTarget)}` : publicChain ? "Propose your wallet as curator" : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
               </SendButton>
             )}
             <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules", open, openLabel)}>
@@ -166,12 +189,25 @@ export default function GovernPage() {
           </Row>
           <Row label="Restore bounty pool">{amt(v.fees.bountyPool)} ETH</Row>
           <Row label="Pool topped up to">{amt(Number(formatEther(t.bounty)) * 3)} ETH before the treasury is paid</Row>
+          <Row label="Fund the pool with">
+            <span className="inline-flex items-center gap-1.5">
+              <input
+                aria-label="ETH to fund the bounty pool with"
+                value={bountyIn}
+                onChange={(e) => setBountyIn(e.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder={publicChain ? "0.005" : "0.05"}
+                inputMode="decimal"
+                className={`num h-8 w-24 rounded-md border bg-transparent px-2 text-right text-[13px] text-ink outline-none placeholder:text-faint ${bountyOk ? "border-line-strong focus:border-muted" : "border-breach/60"}`}
+              />
+              ETH
+            </span>
+          </Row>
           <div className="mt-5 grid grid-cols-3 gap-3">
             <Button disabled={!!busy} onClick={collect}>
               Collect fees
             </Button>
-            <Button disabled={!!busy} onClick={fund}>
-              Fund {bounty}
+            <Button disabled={!!busy || !bountyOk} onClick={fund}>
+              Fund {bountyOk ? bounty : "…"}
             </Button>
             <Button disabled={!!busy} onClick={() => call("Claim curator fees", "claimCuratorFees", [], () => "Paid to the curator in office when they were earned", curatorParty, "curator")}>
               Curator claims
