@@ -3,10 +3,15 @@
 // The rest of the world, on the chain the app is on: move the clock, trade against the vault, fund the account you act
 // as, keep a save point, reset. On a dev chain (the local one, the Playground) every control is real and immediate. On
 // a public chain the vault is shared, so only small trades that stay inside the guard are offered.
+//
+// Layout: every group in one row from `xl` up; below that the clock stays in the row (from `md`) and the rest opens
+// in a panel above it, so the dock never scrolls sideways. On a phone the panel also carries the role, which the top
+// bar has no room for there.
 
 import clsx from "clsx";
-import { Bookmark, Coins, Pickaxe, RotateCcw, Undo2 } from "lucide-react";
-import { useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bookmark, ChevronDown, ChevronUp, Coins, Pickaxe, RotateCcw, SlidersHorizontal, Undo2 } from "lucide-react";
+import { type ComponentProps, type ReactNode, useEffect, useState } from "react";
 import { parseEther } from "viem";
 import { testTokenAbi } from "@/chain/abi.generated";
 import { ACTOR_LABEL } from "@/chain/accounts";
@@ -19,7 +24,7 @@ import { advance } from "@/chain/time";
 import { must, send } from "@/chain/tx";
 import { Button } from "@/components/ui";
 import { duration, price } from "@/lib/format";
-import { actorFor, useChain } from "@/store/chain";
+import { ROLES, type Role, actorFor, useChain } from "@/store/chain";
 
 const moveDetail = (before: number, after: number) => {
   const d = after - before;
@@ -33,11 +38,20 @@ export function Dock() {
   const reset = useChain((s) => s.reset);
   const busy = useChain((s) => s.busy);
   const role = useChain((s) => s.role);
+  const setRole = useChain((s) => s.setRole);
+  const netKey = useChain((s) => s.netKey);
   const savePoints = useChain((s) => s.savePoints);
   const savePoint = useChain((s) => s.savePoint);
   const backToSavePoint = useChain((s) => s.backToSavePoint);
   const dev = useChain((s) => s.net?.caps.devChain ?? true);
   const [size, setSize] = useState("5");
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
   if (!view) return null;
   const sym = view.tokenSymbol;
   const n = Number(size);
@@ -92,144 +106,244 @@ export function Dock() {
       rec.record(note(actor, `${ACTOR_LABEL[actor]} funded`, `100 more ${view.quoteSymbol} and 1,000 more ${sym}`), { toast: true });
     });
 
+  const readout = (
+    // as tall as a rail of buttons, so every group's name lines up
+    <div className="flex h-[32px] items-center gap-2 whitespace-nowrap">
+      <span className="num text-[13px] text-ink" title={`block ${view.block}`}>
+        T+{duration(Math.max(0, view.time - view.lock.adoptedAt))}
+      </span>
+      <span className="num text-[13px] text-muted">
+        {price(priceAt(view.spot))} {view.quoteSymbol}
+      </span>
+    </div>
+  );
+
   // A public chain's vault is shared: a trade that moved spot past the guard would hold every curator's and
   // depositor's action until the TWAP caught up. These stay well inside it.
-  const publicMarket = (
-    <Group label="Market" title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}>
-      <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => sell(1)}>
-        Sell 1
+  if (!dev) {
+    return (
+      <Shell>
+        <Bar>
+          <Labeled label="Chain">{readout}</Labeled>
+          <Divider />
+          <Labeled
+            label="Market"
+            title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}
+          >
+            <Seg>
+              <Btn onClick={() => sell(1)}>Sell 1</Btn>
+              <Btn onClick={() => move(1)}>Buy +1%</Btn>
+            </Seg>
+          </Labeled>
+        </Bar>
+      </Shell>
+    );
+  }
+
+  const clock = (
+    <Seg>
+      <Btn onClick={() => wait("A minute passes", 60)}>+1m</Btn>
+      <Btn onClick={() => wait(`The TWAP window passes (${duration(twap)})`, twap)} title="One TWAP window: long enough for the average to catch up with spot">
+        +{duration(twap)}
+      </Btn>
+      <Btn onClick={() => wait("An hour passes", 3600)}>+1h</Btn>
+      <Btn onClick={() => wait("A day passes", 86400)}>+1d</Btn>
+      {ahead.length > 0 && (
+        <label className={clsx("relative flex h-7 items-center gap-1 rounded-md pl-2.5 pr-2 text-[12.5px] font-medium text-muted transition-colors hover:bg-raised hover:text-ink", busy && "pointer-events-none opacity-40")}>
+          Jump to
+          <ChevronDown size={12} strokeWidth={2} className="text-faint" />
+          <select
+            aria-label="Jump the clock to"
+            value=""
+            disabled={!!busy}
+            onChange={(e) => {
+              const m = ahead.find((x) => x.key === e.target.value);
+              if (m) void wait(`Jump: ${m.label.toLowerCase()}`, m.at - view.time + 1);
+            }}
+            className="absolute inset-0 cursor-pointer opacity-0"
+          >
+            <option value="" disabled>
+              Jump to…
+            </option>
+            {ahead.map((m) => (
+              <option key={m.key} value={m.key}>
+                {m.label}, in {duration(m.at - view.time)}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      <Btn onClick={() => void mine()} title="Mine one block, one second later" aria-label="Mine a block">
+        <Pickaxe size={13} strokeWidth={1.8} />
+      </Btn>
+    </Seg>
+  );
+  const market = (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <label className={clsx("flex h-[32px] items-center rounded-lg border bg-bg/50 pr-2.5 transition-colors focus-within:border-muted", sizeOk ? "border-line" : "border-breach/60")}>
+        <input
+          aria-label={`Trade size in ${sym}`}
+          value={size}
+          inputMode="decimal"
+          onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ""))}
+          className="num h-full w-12 bg-transparent pl-2 pr-1.5 text-right text-[12.5px] text-ink outline-none"
+        />
+        <span className="max-w-[56px] truncate text-[11px] tracking-wide text-faint">{sym}</span>
+      </label>
+      <Seg>
+        <Btn disabled={!sizeOk} onClick={() => sell(n)}>
+          Sell
+        </Btn>
+        <Btn disabled={!sizeOk} onClick={() => buy(n)}>
+          Buy
+        </Btn>
+      </Seg>
+      <Seg>
+        <Btn onClick={() => move(-20)} title="Sell until spot is 20% lower: a crash">
+          −20%
+        </Btn>
+        <Btn onClick={() => move(-5)}>−5%</Btn>
+        <Btn onClick={() => move(5)}>+5%</Btn>
+        <Btn onClick={() => move(20)} title="Buy until spot is 20% higher: a pump">
+          +20%
+        </Btn>
+      </Seg>
+    </div>
+  );
+  const accounts = (
+    <Seg>
+      <Btn onClick={() => void fund()} title={`Give the ${ACTOR_LABEL[actor]} 100 ${view.quoteSymbol} and 1,000 ${sym}`}>
+        <Coins size={13} strokeWidth={1.8} /> Fund {ACTOR_LABEL[actor]}
+      </Btn>
+      <Btn onClick={() => void savePoint()} title="Remember the chain as it is now, to come back to">
+        <Bookmark size={13} strokeWidth={1.8} /> Save
+      </Btn>
+      <Btn
+        disabled={!savePoints.length}
+        onClick={() => void backToSavePoint()}
+        title={savePoints.length ? `Back to the save point at T+${duration(Math.max(0, savePoints[savePoints.length - 1].at - view.lock.adoptedAt))}` : "Take a save point first"}
+      >
+        {/* not a bare "Back": the Playground's bar has "Back to Base Sepolia" */}
+        <Undo2 size={13} strokeWidth={1.8} /> Back to save{savePoints.length > 1 ? ` (${savePoints.length})` : ""}
+      </Btn>
+    </Seg>
+  );
+  // The Playground's bar under the top bar has its own reset, beside what the chain is.
+  const resetButton =
+    netKey === "playground" ? null : (
+      <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void reset()} title="Put the chain back to the freshly seeded launch">
+        <RotateCcw size={13} strokeWidth={1.8} /> Reset
       </Button>
-      <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => move(1)}>
-        Buy +1%
-      </Button>
-    </Group>
+    );
+  // The top bar shows the role from `sm` up; on a phone it lives here.
+  const rolePick = (
+    <label className={clsx("relative flex h-[32px] items-center gap-1.5 rounded-lg border border-line bg-bg/50 pl-2.5 pr-7 text-[12.5px] text-ink sm:hidden", busy && "opacity-50")}>
+      <span className="text-faint">Acting as</span>
+      <span className="font-medium">{ROLES.find((r) => r.key === role)?.name}</span>
+      <ChevronDown size={13} className="pointer-events-none absolute right-2 text-faint" />
+      <select aria-label="Acting as" value={role} disabled={!!busy} onChange={(e) => setRole(e.target.value as Role)} className="absolute inset-0 cursor-pointer opacity-0 disabled:cursor-not-allowed">
+        {ROLES.map((r) => (
+          <option key={r.key} value={r.key}>
+            {r.name} — {r.does}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur">
-      <div className="scroll-x mx-auto flex h-12 max-w-[1320px] items-center gap-4 px-4 md:px-8">
-        <div className="flex shrink-0 items-baseline gap-2">
-          <span className="eyebrow">Chain</span>
-          <span className="num text-[13px] text-ink" title={`block ${view.block}`}>
-            T+{duration(Math.max(0, view.time - view.lock.adoptedAt))}
-          </span>
-          <span className="num text-[13px] text-muted">
-            {price(priceAt(view.spot))} {view.quoteSymbol}
-          </span>
-        </div>
-        <Divider />
-        {dev ? (
-          <>
-            <Group label="Clock">
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("A minute passes", 60)}>
-                +1m
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait(`The TWAP window passes (${duration(twap)})`, twap)} title="One TWAP window: long enough for the average to catch up with spot">
-                +{duration(twap)}
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("An hour passes", 3600)}>
-                +1h
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => wait("A day passes", 86400)}>
-                +1d
-              </Button>
-              {ahead.length > 0 && (
-                <label className={clsx("relative flex h-8 items-center rounded-md px-3 text-[13px] text-muted hover:bg-raised hover:text-ink", busy && "pointer-events-none opacity-40")}>
-                  Jump to…
-                  <select
-                    aria-label="Jump the clock to"
-                    value=""
-                    disabled={!!busy}
-                    onChange={(e) => {
-                      const m = ahead.find((x) => x.key === e.target.value);
-                      if (m) void wait(`Jump: ${m.label.toLowerCase()}`, m.at - view.time + 1);
-                    }}
-                    className="absolute inset-0 cursor-pointer opacity-0"
-                  >
-                    <option value="" disabled>
-                      Jump to…
-                    </option>
-                    {ahead.map((m) => (
-                      <option key={m.key} value={m.key}>
-                        {m.label}, in {duration(m.at - view.time)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void mine()} title="Mine one block, one second later">
-                <Pickaxe size={13} />
-              </Button>
-            </Group>
-            <Divider />
-            <Group label="Market">
-              <input
-                aria-label={`Trade size in ${sym}`}
-                value={size}
-                inputMode="decimal"
-                onChange={(e) => setSize(e.target.value.replace(/[^0-9.]/g, ""))}
-                className={clsx("num h-8 w-16 rounded-md border bg-transparent px-2 text-right text-[13px] text-ink outline-none", sizeOk ? "border-line-strong" : "border-breach/60")}
-              />
-              <span className="text-[12px] text-faint">{sym}</span>
-              <Button size="sm" variant="ghost" disabled={!!busy || !sizeOk} onClick={() => sell(n)}>
-                Sell
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy || !sizeOk} onClick={() => buy(n)}>
-                Buy
-              </Button>
-              <span className="mx-0.5 h-4 w-px bg-line" />
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => move(-20)} title="Sell until spot is 20% lower: a crash">
-                −20%
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => move(-5)}>
-                −5%
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => move(5)}>
-                +5%
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => move(20)} title="Buy until spot is 20% higher: a pump">
-                +20%
-              </Button>
-            </Group>
-            <Divider />
-            <Group label="Accounts">
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void fund()} title={`Give the ${ACTOR_LABEL[actor]} 100 ${view.quoteSymbol} and 1,000 ${sym}`}>
-                <Coins size={13} /> Fund {ACTOR_LABEL[actor]}
-              </Button>
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void savePoint()} title="Remember the chain as it is now, to come back to">
-                <Bookmark size={13} /> Save
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={!!busy || !savePoints.length}
-                onClick={() => void backToSavePoint()}
-                title={savePoints.length ? `Back to the save point at T+${duration(Math.max(0, savePoints[savePoints.length - 1].at - view.lock.adoptedAt))}` : "Take a save point first"}
-              >
-                <Undo2 size={13} /> Back to save{savePoints.length > 1 ? ` (${savePoints.length})` : ""}
-              </Button>
-            </Group>
-            <div className="ml-auto shrink-0">
-              <Button size="sm" variant="ghost" disabled={!!busy} onClick={() => void reset()} title="Put the chain back to the freshly seeded launch">
-                <RotateCcw size={13} /> Reset
-              </Button>
+    <Shell>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            id="dock-panel"
+            role="region"
+            aria-label="Chain controls"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.18, ease: [0.2, 0.7, 0.2, 1] }}
+            className="absolute inset-x-0 bottom-full max-h-[min(70vh,520px)] overflow-y-auto border-t border-line bg-surface shadow-[0_-16px_40px_-24px_rgba(0,0,0,0.6)] xl:hidden"
+          >
+            <div className="mx-auto grid max-w-[1320px] gap-4 px-4 py-4 md:px-8">
+              <Row label="Clock" className="md:hidden">
+                {clock}
+              </Row>
+              <Row label="Market">{market}</Row>
+              <Row label="Accounts">
+                {rolePick}
+                {accounts}
+              </Row>
+              {resetButton && <Row label="Chain">{resetButton}</Row>}
             </div>
-          </>
-        ) : (
-          publicMarket
+          </motion.div>
         )}
-      </div>
-    </div>
+      </AnimatePresence>
+      <Bar>
+        <Labeled label="Chain">{readout}</Labeled>
+        <Divider show="hidden md:block" />
+        <Labeled label="Clock" show="hidden md:flex">
+          {clock}
+        </Labeled>
+        <Divider show="hidden xl:block" />
+        <Labeled label="Market" show="hidden xl:flex">
+          {market}
+        </Labeled>
+        <Divider show="hidden xl:block" />
+        <Labeled label="Accounts" show="hidden xl:flex">
+          {accounts}
+        </Labeled>
+        <div className="ml-auto flex shrink-0 items-center">
+          {resetButton && <div className="hidden xl:block">{resetButton}</div>}
+          <Button size="sm" variant={open ? "secondary" : "ghost"} className="xl:hidden" aria-expanded={open} aria-controls="dock-panel" onClick={() => setOpen((o) => !o)}>
+            <SlidersHorizontal size={14} strokeWidth={1.8} />
+            Controls
+            <ChevronUp size={14} strokeWidth={1.8} className={clsx("transition-transform duration-200", open && "rotate-180")} />
+          </Button>
+        </div>
+      </Bar>
+    </Shell>
   );
 }
 
-function Group({ label, title, children }: { label: string; title?: string; children: React.ReactNode }) {
+/** Above the page and the activity pill (z-40), below the toasts (z-50), so an open panel never hides a result. */
+function Shell({ children }: { children: ReactNode }) {
+  return <div className="fixed inset-x-0 bottom-0 z-[41] border-t border-line bg-surface/95 backdrop-blur">{children}</div>;
+}
+
+function Bar({ children }: { children: ReactNode }) {
+  return <div className="mx-auto flex h-14 max-w-[1320px] items-center gap-4 px-4 md:px-8">{children}</div>;
+}
+
+/** A group in the bar: its name over its controls. `show` sets when it is displayed (it is `flex` when shown). */
+function Labeled({ label, title, show = "flex", children }: { label: string; title?: string; show?: string; children: ReactNode }) {
   return (
-    <div className="flex shrink-0 items-center gap-1.5" title={title}>
-      <span className="eyebrow mr-1">{label}</span>
+    <div className={clsx("shrink-0 flex-col justify-center gap-1", show)} title={title}>
+      <span className="eyebrow text-[9.5px] leading-none">{label}</span>
       {children}
     </div>
   );
 }
 
-const Divider = () => <div className="h-5 w-px shrink-0 bg-line" />;
+/** A group in the panel: its name beside its controls, or over them on a phone. */
+function Row({ label, className, children }: { label: string; className?: string; children: ReactNode }) {
+  return (
+    <div className={clsx("flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4", className)}>
+      <span className="eyebrow w-20 shrink-0">{label}</span>
+      <div className="flex flex-wrap items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+/** Buttons that belong together, joined in one rail. */
+function Seg({ children }: { children: ReactNode }) {
+  return <div className="inline-flex items-center gap-px rounded-lg border border-line bg-bg/50 p-[1px]">{children}</div>;
+}
+
+/** A dock button: held while anything runs, since each action is asked for against the chain as it is now. */
+function Btn({ disabled, ...rest }: ComponentProps<typeof Button>) {
+  const busy = useChain((s) => s.busy);
+  return <Button size="xs" variant="ghost" disabled={!!busy || disabled} {...rest} />;
+}
+
+const Divider = ({ show = "block" }: { show?: string }) => <div className={clsx("h-8 w-px shrink-0 bg-line", show)} />;

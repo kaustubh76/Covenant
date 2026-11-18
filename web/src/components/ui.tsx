@@ -50,12 +50,13 @@ export function Button({
   size = "md",
   className,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "sm" | "md" | "lg" }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: "primary" | "secondary" | "ghost" | "danger"; size?: "xs" | "sm" | "md" | "lg" }) {
   return (
     <button
       {...rest}
       className={clsx(
         "inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-md font-medium transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-40",
+        size === "xs" && "h-7 px-2.5 text-[12.5px]",
         size === "sm" && "h-8 px-3 text-[13px]",
         size === "md" && "h-10 px-4 text-sm",
         size === "lg" && "h-12 px-6 text-[15px]",
