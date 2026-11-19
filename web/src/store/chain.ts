@@ -143,6 +143,7 @@ let queued = 0;
 let queue: Promise<unknown> = Promise.resolve();
 let unwatch: (() => void) | null = null;
 let retry: ReturnType<typeof setTimeout> | null = null;
+let networksRetry: ReturnType<typeof setTimeout> | null = null;
 let unwallets: (() => void) | null = null;
 let unwallet: (() => void) | null = null;
 let restoring = false;
@@ -215,6 +216,16 @@ export function offeredDevNetwork(s: Pick<ChainState, "networks">): NetworkKey |
   if (ready("playground")) return "playground";
   // Listed but not running: still the one to point a developer at, since its offline page says how to start it.
   return s.networks.some((n) => n.key === "local") ? "local" : null;
+}
+
+/**
+ * Whether this copy of the app is a hosted one (no local chain to start), where a visitor should never be shown deploy
+ * commands. The server's network list says so; when that list could not be fetched, the page's own address does, since
+ * only a copy served from this machine offers the local chain.
+ */
+export function isHostedCopy(networks: Pick<NetworkSummary, "key">[], hostname: string | null): boolean {
+  if (networks.length) return !networks.some((n) => n.key === "local");
+  return hostname !== null && !/^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/.test(hostname);
 }
 
 export const useChain = create<ChainState>((set, get) => ({
@@ -346,10 +357,21 @@ export const useChain = create<ChainState>((set, get) => ({
   },
 
   async loadNetworks() {
-    const networks = await fetch("/api/chain/networks", { cache: "no-store" })
-      .then((r) => r.json() as Promise<NetworkSummary[]>)
-      .catch(() => [] as NetworkSummary[]);
-    set({ networks });
+    const fetched = await fetch("/api/chain/networks", { cache: "no-store" })
+      .then((r) => (r.ok ? (r.json() as Promise<unknown>) : null))
+      .catch(() => null);
+    if (Array.isArray(fetched)) {
+      set({ networks: fetched as NetworkSummary[] });
+      return;
+    }
+    // A blip keeps the list already shown, rather than hiding the network menu and the Playground's offer. With no
+    // list yet, try again shortly, as connect() does.
+    if (!get().networks.length && !networksRetry) {
+      networksRetry = setTimeout(() => {
+        networksRetry = null;
+        void get().loadNetworks();
+      }, 3000);
+    }
   },
 
   async connectWallet(id) {

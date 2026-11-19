@@ -2,7 +2,7 @@
 
 import { Panel } from "@/components/ui";
 import type { NetworkKey } from "@/chain/network";
-import { useChain } from "@/store/chain";
+import { isHostedCopy, useChain } from "@/store/chain";
 
 /** Shown in place of a live page while the app connects, or when no local chain is running. */
 const START: Record<NetworkKey, { where: string; how: string }> = {
@@ -30,9 +30,9 @@ export function NeedsChain({ what = "this page" }: { what?: string }) {
   const netKey = useChain((s) => s.netKey) ?? "local";
   const served = useChain((s) => s.networks);
   const start = START[netKey];
-  // A hosted copy offers no local chain, and its public network is deployed: offline there means the RPC did not
-  // answer, which retries on its own. Deploy commands would only be noise to a visitor.
-  const hosted = served.length > 0 && !served.some((n) => n.key === "local");
+  // A hosted copy offers no local chain, and its public network is deployed: offline there means the RPC or the app
+  // server did not answer, which retries on its own. Deploy commands would only be noise to a visitor.
+  const hosted = isHostedCopy(served, typeof window === "undefined" ? null : window.location.hostname);
   const rpcTrouble = netKey !== "local" && !!reason && /not answering|is chain|429|rate/i.test(reason);
   // The Playground's backend sleeps when idle and wakes in about a minute; busy and waking both retry on their own.
   if (netKey === "playground" && status !== "ready" && (status === "connecting" || /busy|in use|not answering|Waking|stopped|redeploy/i.test(reason ?? ""))) {
