@@ -1,10 +1,11 @@
 # Covenant's backend on Render: Playground chains with real writes (backend/). The web app stays on Vercel.
-# The service was created with the Render CLI using these same settings; this Blueprint reproduces it.
+# This Blueprint creates the service; the relayer's key (RELAYER_PRIVATE_KEY) is then set as a secret in Render, never here.
 services:
   - type: web
     name: covenant-backend
     runtime: docker
     plan: free
+    region: virginia
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /healthz
@@ -25,6 +26,3 @@ services:
         value: https://covenant-uhi11.vercel.app,http://localhost:3000,http://127.0.0.1:3000
       - key: MAX_CHAINS
         value: "4"
-      # The relayer's own key, set as a secret in Render, never in this file
-      - key: RELAYER_PRIVATE_KEY
-        sync: false
