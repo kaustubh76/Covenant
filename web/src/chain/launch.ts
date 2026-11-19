@@ -33,7 +33,7 @@ import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import type { Terms } from "./terms";
 import { latest, reach } from "./time";
-import { must, send } from "./tx";
+import { devTxFields, must, receiptFor, send } from "./tx";
 
 export const Q96 = 2n ** 96n;
 /** CCA prices are quote per token, Q96. The suite's auctions floor at 1.0 and step in 1/64ths. */
@@ -248,18 +248,15 @@ const ALLOCATION_SCHEDULE = [
   },
 ] as const;
 
-const receiptOf = (ctx: ChainCtx, hash: Hex) =>
-  ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
-
 /** Step 1a: the token, with the whole launch supply in the issuer's hands. */
 export async function deployLaunchToken(ctx: ChainCtx, spec: LaunchSpec): Promise<Address> {
   const issuer = ctx.wallet(spec.issuer);
   const total = spec.auctionSupply + spec.lpReserve;
   const hash =
     spec.token === "fixed"
-      ? await issuer.deployContract({ abi: launchTokenAbi, bytecode: launchTokenBytecode, args: [spec.name, spec.symbol, total, ctx.address(spec.issuer)] })
-      : await issuer.deployContract({ abi: testTokenAbi, bytecode: testTokenBytecode, args: [spec.name, spec.symbol, 18] });
-  const receipt = await receiptOf(ctx, hash);
+      ? await issuer.deployContract({ abi: launchTokenAbi, bytecode: launchTokenBytecode, args: [spec.name, spec.symbol, total, ctx.address(spec.issuer)], ...devTxFields(ctx) })
+      : await issuer.deployContract({ abi: testTokenAbi, bytecode: testTokenBytecode, args: [spec.name, spec.symbol, 18], ...devTxFields(ctx) });
+  const receipt = await receiptFor(ctx, hash);
   const token = receipt.contractAddress;
   if (receipt.status !== "success" || !token) throw new Error("token deployment failed");
   if (spec.token === "test") {

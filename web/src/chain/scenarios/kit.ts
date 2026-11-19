@@ -10,7 +10,7 @@ import { type BeatInput, beatOf } from "../beat";
 import type { ChainCtx } from "../client";
 import { devControls } from "../client";
 import { advance } from "../time";
-import { type Outcome, must, send } from "../tx";
+import { type Outcome, must, receiptFor, send } from "../tx";
 import { type VaultView, readVaultView } from "../view";
 
 export interface Kit {
@@ -81,7 +81,7 @@ export async function sameBlock(k: Kit, senders: (() => Promise<Hex>)[]): Promis
     for (const s of senders) hashes.push(await s());
     await test.mine({ blocks: 1 });
     for (const hash of hashes) {
-      const r = await k.ctx.pub.waitForTransactionReceipt({ hash });
+      const r = await receiptFor(k.ctx, hash);
       if (r.status !== "success") throw new Error(`same-block transaction ${hash} reverted`);
     }
   } finally {

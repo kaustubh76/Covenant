@@ -13,7 +13,7 @@ import { SINK, bidLeg, cut, cutAll, honestLegs } from "../plans";
 import { toPool } from "../price";
 import { PRESETS } from "../terms";
 import { advance, sandbox } from "../time";
-import { must, send } from "../tx";
+import { devTxFields, must, send } from "../tx";
 import { type VaultView, positionLiquidity, readSqrtPrice, readVaultView } from "../view";
 import { type Kit, attempt, collectingKit, fund, sameBlock, settleTwap, ticksAsDrop, tokenBalance, view } from "./kit";
 
@@ -176,6 +176,7 @@ export const ATTACKS: Attack[] = [
             functionName: "swap",
             args: [v.key, { zeroForOne: !v.quoteIs0, amountSpecified: -BIG, sqrtPriceLimitX96: sellLimit }, settings, "0x"],
             gas: 3_000_000n,
+            ...devTxFields(k.ctx, 3_000_000n),
           }),
         () =>
           w.writeContract({
@@ -185,6 +186,7 @@ export const ATTACKS: Attack[] = [
             args: [v.key, { zeroForOne: v.quoteIs0, amountSpecified: -BIG, sqrtPriceLimitX96: home }, settings, "0x"],
             value: BIG,
             gas: 3_000_000n,
+            ...devTxFields(k.ctx, 3_000_000n),
           }),
       ]);
       const after = await view(k, f.vault);

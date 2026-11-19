@@ -80,6 +80,35 @@ export interface SendOptions {
 const FORCED_GAS = 10_000_000n;
 
 /**
+ * A dev chain's sends skip the node round trips a public chain needs. Its Anvil prices gas at zero (`client.ts`), so a
+ * fixed limit costs nothing and needs no estimate, and its fees are known without reading a block. On the Playground
+ * every round trip crosses the internet to the backend, and a run of the attack lab sends dozens of transactions in a
+ * row. The limit stays under EIP-7825's per-transaction cap (2^24), which a later Anvil may enforce; `sameBlock` sends
+ * with its own, smaller limits, so its transactions share one block.
+ */
+const DEV_GAS = 16_000_000n;
+const DEV_FEES = { maxFeePerGas: 0n, maxPriorityFeePerGas: 0n } as const;
+
+/**
+ * The gas and fees a dev chain's direct writes (outside `send`) carry, and nothing on a public chain, whose node and
+ * wallet price them. A dev-chain write must not leave its fees to viem: it asks Anvil to fill them
+ * (`eth_fillTransaction`), keeps Anvil's 1 gwei tip with the chain's zero fee cap, and Anvil refuses the result.
+ */
+export const devTxFields = (ctx: ChainCtx, gas: bigint = DEV_GAS) => (ctx.net.caps.devChain ? { gas, ...DEV_FEES } : {});
+
+/**
+ * A sent transaction's receipt. Anvil mines on send, so a dev chain's receipt is read once before falling back to
+ * polling, which would first ask for the block number.
+ */
+export async function receiptFor(ctx: ChainCtx, hash: Hex): Promise<TransactionReceipt> {
+  if (ctx.net.caps.devChain) {
+    const mined = await ctx.pub.getTransactionReceipt({ hash }).catch(() => null);
+    if (mined) return mined;
+  }
+  return ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
+}
+
+/**
  * The gas a pre-flighted call is sent with: the node's estimate, plus headroom. An estimate is the least that ran in the
  * block it was made against, but some of Covenant's costs move with the clock. The first swap of each oracle minute
  * stores a new slot (TwapOracle.write), about 22k gas more than a write inside the minute, so a swap estimated in one
@@ -126,13 +155,15 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
     return { ok: false, value: pre.value, refused: who.refusal, error: { name: "NotSent", args: [], signature: "Not sent", rule: "Other", reason: who.refusal } };
   }
   const wallet = who.wallet;
+  const dev = ctx.net.caps.devChain;
   let hash: Hex;
   try {
     hash = await wallet.writeContract({
       ...(call as object),
       account: wallet.account,
       chain: ctx.chain,
-      gas: opts.gas ?? (pre.ok ? await gasFor(ctx, party, call as never) : FORCED_GAS),
+      gas: opts.gas ?? (dev ? DEV_GAS : pre.ok ? await gasFor(ctx, party, call as never) : FORCED_GAS),
+      ...(dev ? DEV_FEES : {}),
     } as never);
   } catch (e) {
     // Declined in the wallet, the wallet on another network, not enough ETH, a node that did not answer: nothing was
@@ -145,7 +176,7 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
   // Anvil mines at once; a public chain is polled at its own pace, which its RPC's rate limits also prefer.
   let receipt: TransactionReceipt;
   try {
-    receipt = await ctx.pub.waitForTransactionReceipt({ hash, pollingInterval: ctx.net.caps.devChain ? 100 : 1000, timeout: 180_000 });
+    receipt = await receiptFor(ctx, hash);
   } catch (e) {
     // Sent but not seen mined in time: keep the hash, so the visitor can follow it, rather than losing it to an error.
     const why = classify(e);

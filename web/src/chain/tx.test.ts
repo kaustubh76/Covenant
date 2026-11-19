@@ -46,6 +46,52 @@ describe("send", () => {
   });
 });
 
+/** A dev chain (the Playground): a dev key signs, and every round trip to the node is counted. */
+function devChain(sent: Record<string, unknown>[], asked: string[], mined = true) {
+  return {
+    net: { key: "playground", name: "Playground", caps: { devChain: true } },
+    address: () => ME,
+    pub: {
+      simulateContract: async () => (asked.push("simulate"), { result: undefined }),
+      estimateContractGas: async () => (asked.push("estimateGas"), 100_000n),
+      getTransactionReceipt: async () => {
+        asked.push("getReceipt");
+        if (!mined) throw new Error("Transaction receipt could not be found.");
+        return { status: "success", transactionHash: HASH, blockNumber: 1n };
+      },
+      waitForTransactionReceipt: async () => (asked.push("waitReceipt"), { status: "success", transactionHash: HASH, blockNumber: 1n }),
+    },
+    wallet: () => ({
+      account: { address: ME },
+      writeContract: async (tx: Record<string, unknown>) => (sent.push(tx), HASH),
+    }),
+  } as unknown as ChainCtx;
+}
+
+describe("send, on a dev chain", () => {
+  it("skips the gas estimate and the fee lookup, and reads the receipt Anvil has already mined", async () => {
+    const sent: Record<string, unknown>[] = [];
+    const asked: string[] = [];
+    const o = await send(devChain(sent, asked), "holder", poke);
+    expect(o.ok).toBe(true);
+    expect(asked).toEqual(["simulate", "getReceipt"]);
+    expect(sent[0]).toMatchObject({ gas: 16_000_000n, maxFeePerGas: 0n, maxPriorityFeePerGas: 0n });
+  });
+
+  it("polls for the receipt when the block is not mined yet", async () => {
+    const asked: string[] = [];
+    const o = await send(devChain([], asked, false), "holder", poke);
+    expect(o.ok).toBe(true);
+    expect(asked).toEqual(["simulate", "getReceipt", "waitReceipt"]);
+  });
+
+  it("keeps a gas limit the caller chose", async () => {
+    const sent: Record<string, unknown>[] = [];
+    await send(devChain(sent, []), "holder", poke, { gas: 3_000_000n });
+    expect(sent[0].gas).toBe(3_000_000n);
+  });
+});
+
 describe("send, when nothing is mined", () => {
   it("reports a wallet's refusal as declined, not as a revert", async () => {
     const ctx = chain(100_000n, []);
