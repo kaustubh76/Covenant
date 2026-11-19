@@ -69,3 +69,13 @@ export function snapToAuctionTick(price: number, floorQ96: bigint, spacingQ96: b
   const steps = Math.max(0, Math.round((price * TWO_96 - Number(floorQ96)) / Number(spacingQ96)));
   return floorQ96 + BigInt(steps) * spacingQ96;
 }
+
+/** Uniswap v4's sqrt price bounds, in Q96. A swap's price limit must lie strictly between them. */
+export const MIN_SQRT_PRICE = 4295128739n;
+export const MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970342n;
+
+/** sqrt(1.0001^tick) in Q96, approximately: good enough for a swap's price limit, clamped to v4's bounds. */
+export function sqrtPriceLimitAt(poolTick: number): bigint {
+  const raw = BigInt(Math.floor(sqrtAtTick(poolTick) * 2 ** 96));
+  return raw <= MIN_SQRT_PRICE ? MIN_SQRT_PRICE + 1n : raw >= MAX_SQRT_PRICE ? MAX_SQRT_PRICE - 1n : raw;
+}

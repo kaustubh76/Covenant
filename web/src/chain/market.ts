@@ -6,19 +6,13 @@ import { type Address, formatEther, maxUint256, parseEther } from "viem";
 import { poolSwapTestAbi, testTokenAbi } from "./abi.generated";
 import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
-import { sqrtAtTick, sqrtX96ToFloat, tickAtSqrt, toPool, toPrice } from "./price";
+import { MAX_SQRT_PRICE, MIN_SQRT_PRICE, sqrtPriceLimitAt, sqrtX96ToFloat, tickAtSqrt, toPool, toPrice } from "./price";
 import { type Outcome, type SendOptions, must, send, simulate } from "./tx";
 import { readSqrtPrice } from "./view";
 import type { VaultView } from "./view";
 
-export const MIN_SQRT_PRICE = 4295128739n;
-export const MAX_SQRT_PRICE = 1461446703485210103287273052203988822378723970342n;
-
-/** sqrt(1.0001^tick) in Q96, approximately: good enough for a swap's price limit, clamped to v4's bounds. */
-export function sqrtPriceLimitAt(poolTick: number): bigint {
-  const raw = BigInt(Math.floor(sqrtAtTick(poolTick) * 2 ** 96));
-  return raw <= MIN_SQRT_PRICE ? MIN_SQRT_PRICE + 1n : raw >= MAX_SQRT_PRICE ? MAX_SQRT_PRICE - 1n : raw;
-}
+// Moved to price.ts, which imports nothing, so the backend's relayer can bundle them; re-exported for older imports.
+export { MAX_SQRT_PRICE, MIN_SQRT_PRICE, sqrtPriceLimitAt } from "./price";
 
 export type Pool = Pick<VaultView, "key" | "poolId" | "quoteIs0" | "token">;
 
