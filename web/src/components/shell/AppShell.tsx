@@ -79,9 +79,10 @@ function RoleSwitcher() {
     return wallet && holder.toLowerCase() === wallet.address.toLowerCase() ? "your wallet" : `${shortAddress(holder)} only`;
   };
   return (
-    <label className={clsx("relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted", busy && "opacity-50")}>
-      {/* the prefix only where the bar has room for it beside the nav, the network and a wallet */}
-      <span className="hidden text-faint min-[1360px]:inline">Acting as</span>
+    <label className={clsx("relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted", busy && "opacity-50")} title={`Acting as ${ROLES.find((r) => r.key === role)?.name ?? role}`}>
+      {/* The prefix only from lg to xl: the nav sits in the tab row there, and the bar has room for it beside a wallet
+          and an action's label. Narrower, or from xl where the bar also holds the nav, the title says it. */}
+      <span className="hidden text-faint lg:inline xl:hidden">Acting as</span>
       <span className="font-medium">{ROLES.find((r) => r.key === role)?.name}</span>
       <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-faint" />
       {/* Not while an action runs: the action was asked for as the role chosen when it was clicked. */}
@@ -197,7 +198,7 @@ function WalletControl() {
     <button
       onClick={disconnectWallet}
       title={`${wallet.name} · ${wallet.address}. Click to disconnect.`}
-      className="num flex h-9 items-center gap-2 rounded-md border border-line-strong px-3 text-[13px] text-ink hover:border-muted"
+      className="num flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md border border-line-strong px-3 text-[13px] text-ink hover:border-muted"
     >
       <Dot tone="pass" />
       {shortAddress(wallet.address)}
@@ -211,21 +212,36 @@ function ChainStatus() {
   const status = useChain((s) => s.status);
   const reason = useChain((s) => s.reason);
   const busy = useChain((s) => s.busy);
+  // Words only from lg to xl, where the nav sits in the tab row and the bar has room. Narrower, the network, the wallet
+  // and the role fill the bar; from xl the nav shares it, and a label (up to 220 px while an action runs) would push its
+  // last links out. There the badge is its icon, and the words are in its title and for screen readers.
+  const words = (text: string) => (
+    <span className="sr-only lg:not-sr-only xl:sr-only">
+      <span className="block max-w-[220px] truncate">{text}</span>
+    </span>
+  );
   if (busy) {
     return (
-      <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex" aria-live="polite">
-        <Loader2 size={13} className="animate-spin" />
-        <span className="max-w-[220px] truncate">{busy}</span>
+      <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex" aria-live="polite" title={busy}>
+        <Loader2 size={13} className="shrink-0 animate-spin" />
+        {words(busy)}
       </span>
     );
   }
   if (status === "ready") return null;
-  const tone = status === "offline" ? "breach" : "neutral";
+  if (status !== "offline") {
+    return (
+      <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex" title={reason ?? "Connecting to the chain"}>
+        <Loader2 size={13} className="shrink-0 animate-spin" />
+        {words("Connecting")}
+      </span>
+    );
+  }
   return (
-    <span className="hidden sm:inline-flex" title={reason ?? undefined}>
-      <Tag tone={tone}>
-        <Dot tone={tone} />
-        {status === "offline" ? "Offline" : "Connecting"}
+    <span className="hidden sm:inline-flex" title={reason ?? "Offline"}>
+      <Tag tone="breach">
+        <Dot tone="breach" />
+        {words("Offline")}
       </Tag>
     </span>
   );
