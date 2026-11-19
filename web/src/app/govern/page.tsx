@@ -1,8 +1,8 @@
 "use client";
 
 import { Check, Minus } from "lucide-react";
-import { useState } from "react";
-import { formatEther, isAddress, isAddressEqual, parseEther } from "viem";
+import { useEffect, useState } from "react";
+import { type Address, formatEther, isAddressEqual, parseEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
 import { ACTOR_LABEL, type Who, shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
@@ -15,6 +15,7 @@ import { amt, duration } from "@/lib/format";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { RelayButton } from "@/components/controls/RelayButton";
+import { AddressInput, parseAddress } from "@/components/controls/AddressInput";
 
 const POWERS: [string, boolean[]][] = [
   ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
@@ -43,6 +44,36 @@ export default function GovernPage() {
   // What the visitor typed: a curator to propose, and how much to put in the bounty pool. Empty means the default.
   const [target, setTarget] = useState("");
   const [bountyIn, setBountyIn] = useState("");
+  const ctx = useChain((s) => s.ctx);
+  const seen = useChain((s) => s.seen);
+  // A curator keeps what it booked in office after it is replaced (claimCuratorFees pays the caller its own balance).
+  // Read for every earlier curator this vault's logs name and, on a public chain, for the connected wallet too: a change
+  // older than the log window is not in them.
+  const [earlier, setEarlier] = useState<{ address: Address; fees0: bigint; fees1: bigint }[]>([]);
+  useEffect(() => {
+    if (!ctx || !v) return;
+    const names = new Map<string, Address>();
+    if (seen && isAddressEqual(seen.vault, v.address)) for (const a of seen.curators) names.set(a.toLowerCase(), a);
+    if (!ctx.net.caps.devChain && wallet) names.set(wallet.address.toLowerCase(), wallet.address);
+    names.delete(v.people.curator.toLowerCase());
+    const list = [...names.values()];
+    if (!list.length) {
+      setEarlier((e) => (e.length ? [] : e));
+      return;
+    }
+    let live = true;
+    const fees = (address: Address) =>
+      Promise.all([
+        ctx.pub.readContract({ address: v.address, abi: covenantVaultAbi, functionName: "curatorFees0", args: [address] }),
+        ctx.pub.readContract({ address: v.address, abi: covenantVaultAbi, functionName: "curatorFees1", args: [address] }),
+      ]).then(([fees0, fees1]) => ({ address, fees0, fees1 }));
+    Promise.all(list.map(fees))
+      .then((rows) => live && setEarlier(rows.filter((r) => r.fees0 > 0n || r.fees1 > 0n)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx, v, seen, wallet]);
   if (!v) return <NeedsChain what="governance" />;
 
   const actor = actorFor(role, v);
@@ -81,14 +112,23 @@ export default function GovernPage() {
       rec.record(beatOf(o, label, title, detail), { toast: true });
     });
   // Who a public chain's curator change would name: the connected wallet. Locally, the other demo curator.
-  const typed = target.trim();
-  const customTarget = typed !== "" && isAddress(typed) ? (typed as `0x${string}`) : null;
-  const targetBad = typed !== "" && !customTarget;
+  const { address: customTarget, bad: targetBad } = parseAddress(target);
   const proposed = customTarget ?? (publicChain ? wallet?.address : useChain.getState().ctx?.address(candidate));
   const bounty = bountyIn.trim() || (publicChain ? "0.005" : "0.05");
   const bountyOk = /^\d*\.?\d+$/.test(bounty) && Number(bounty) > 0 && Number(bounty) <= (publicChain ? 1 : 1000);
   const curatorParty: Party = publicChain ? v.people.curator : (whoIs(v.people.curator) ?? "curator");
   const pendingIssuerParty: Party = publicChain ? (v.people.pendingIssuer ?? v.people.issuer) : (whoIs(v.people.pendingIssuer) ?? "holder");
+
+  const paid = (r: readonly [bigint, bigint]) => {
+    const [q, t] = v.quoteIs0 ? r : [r[1], r[0]];
+    return `${amt(eth(q))} ETH and ${amt(eth(t))} ${sym}`;
+  };
+  const claimCurator = (as: Party, address: Address, title: string) =>
+    run(title, async (c, rec) => {
+      const o = await send(c, as, { address: v.address, abi: covenantVaultAbi, functionName: "claimCuratorFees", args: [] }, { force: true, describe });
+      const r = o.value as readonly [bigint, bigint] | undefined;
+      rec.record(beatOf(o, whoIs(address) ?? "anyone", title, () => (r ? `${paid(r)} to ${who(address)}` : undefined)), { toast: true });
+    });
 
   const collect = () =>
     run("Collect fees", async (c, rec) => {
@@ -140,17 +180,13 @@ export default function GovernPage() {
             </div>
           )}
           {!pending && (
-            <label className="mt-5 block text-[13px] text-muted">
-              Curator to propose
-              <input
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                placeholder={publicChain ? "Your wallet, or any 0x… address" : `The ${ACTOR_LABEL[candidate]}, or any 0x… address`}
-                spellCheck={false}
-                className={`num mt-1.5 h-9 w-full rounded-md border bg-transparent px-2.5 text-[13px] text-ink outline-none placeholder:text-faint ${targetBad ? "border-breach/60" : "border-line-strong focus:border-muted"}`}
-              />
-              {targetBad && <span className="mt-1 block text-xs text-breach">That is not an address.</span>}
-            </label>
+            <AddressInput
+              className="mt-5"
+              label="Curator to propose"
+              value={target}
+              onChange={setTarget}
+              placeholder={publicChain ? "Your wallet, or any 0x… address" : `The ${ACTOR_LABEL[candidate]}, or any 0x… address`}
+            />
           )}
           <div className="mt-4 grid grid-cols-2 gap-3">
             {pending ? (
@@ -210,11 +246,36 @@ export default function GovernPage() {
             <Button disabled={!!busy || !bountyOk} onClick={fund}>
               Fund {bountyOk ? bounty : "…"}
             </Button>
-            <Button disabled={!!busy} onClick={() => call("Claim curator fees", "claimCuratorFees", [], () => "Paid to the curator in office when they were earned", curatorParty, "curator")}>
+            <Button disabled={!!busy} onClick={() => claimCurator(curatorParty, v.people.curator, "Claim curator fees")}>
               Curator claims
             </Button>
           </div>
           <RelayButton action="collectFees" title="Collect fees" className="mt-3" />
+          {earlier.length > 0 && (
+            <div className="mt-5 border-t border-line pt-4">
+              <div className="eyebrow mb-2">Earlier curators, still owed</div>
+              <ul className="space-y-2.5">
+                {earlier.map((r) => {
+                  const [q, tk] = v.quoteIs0 ? [r.fees0, r.fees1] : [r.fees1, r.fees0];
+                  const ours = mine(r.address);
+                  return (
+                    <li key={r.address} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 text-[13px]">
+                      <span className="text-muted">{who(r.address)}</span>
+                      <span className="num text-ink">
+                        {amt(eth(q))} ETH · {amt(eth(tk))} {sym}
+                      </span>
+                      <SendButton size="sm" verb="claim" disabled={!!busy || !ours} onClick={() => claimCurator(r.address, r.address, "A former curator claims its fees")}>
+                        {ours ? "Claim" : `Only ${shortAddress(r.address)} can claim`}
+                      </SendButton>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mt-2 text-xs leading-relaxed text-faint">
+                A curator keeps the fees it booked while in office. Replacing it changes who books the next ones, not who owns these.
+              </p>
+            </div>
+          )}
           <p className="mt-3 text-xs leading-relaxed text-faint">Fees are realized whenever a range is touched. Trade in the bar below, then collect, to see them arrive.</p>
         </Panel>
       </div>

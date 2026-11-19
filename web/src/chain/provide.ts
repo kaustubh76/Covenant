@@ -19,10 +19,11 @@ export function depositCall(v: Pick<VaultView, "address">, shares: bigint, value
 /**
  * A generous native amount to simulate the deposit with, from the vault's own holdings: the vault refunds what it does
  * not need. `cap` keeps it within what the payer can spend; a simulation that sends more than the account holds fails
- * for that alone, before the vault is asked anything.
+ * for that alone, before the vault is asked anything. The lens's principal already counts idle quote (CovenantLens
+ * `_ranges`), so idle is not added again.
  */
-export const quoteBudget = (v: Pick<VaultView, "principal" | "idle">, fraction: number, cap?: bigint) => {
-  const budget = parseEther(((v.principal.quote + v.idle.quote) * fraction * 1.1 + 0.01).toFixed(18));
+export const quoteBudget = (v: Pick<VaultView, "principal">, fraction: number, cap?: bigint) => {
+  const budget = parseEther((v.principal.quote * fraction * 1.1 + 0.01).toFixed(18));
   return cap !== undefined && cap < budget ? (cap > 0n ? cap : 0n) : budget;
 };
 

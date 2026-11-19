@@ -1,9 +1,9 @@
 // The vault's history, read back from the chain: every vault event and every swap in its pool, attributed to the
 // demo actor that sent the transaction. This keeps the activity feed after a reload and includes other tabs' actions.
 
-import { type Address, type Hex, type Log, decodeEventLog, formatEther, getAddress, isAddressEqual } from "viem";
+import { type Address, type Hex, type Log, decodeEventLog, formatEther, getAddress, isAddressEqual, zeroAddress } from "viem";
 import { covenantVaultAbi, poolManagerAbi } from "./abi.generated";
-import { type Who, actorOf, shortAddress } from "./accounts";
+import { ACTOR_LABEL, type Who, actorOf, shortAddress } from "./accounts";
 import type { Beat } from "./beat";
 import type { ChainCtx } from "./client";
 import { launchRecord } from "./discover";
@@ -58,7 +58,7 @@ function describe(name: string, args: Record<string, unknown>, v: VaultView): { 
     case "CuratorProposalCancelled":
       return { title: "Curator proposal cancelled", actor: "issuer" };
     case "CuratorChanged":
-      return { title: "Curator changed", detail: "The new curator is bound by the same rules" };
+      return { title: "Curator changed", detail: `${named(args.previous)} → ${named(args.current)}. The new curator is bound by the same rules` };
     case "IssuerTransferStarted":
       return { title: "Issuer transfer started" };
     case "IssuerTransferred":
@@ -76,9 +76,63 @@ function describe(name: string, args: Record<string, unknown>, v: VaultView): { 
   }
 }
 
+/** An address as the feed names it: the demo role behind it, or its short form. */
+function named(a: unknown): string {
+  const actor = actorOf(a as Address);
+  return actor ? ACTOR_LABEL[actor] : typeof a === "string" ? shortAddress(getAddress(a)) : "?";
+}
+
+/** Who a vault's own logs name: every curator a change named (newest first) and every depositor (newest first). */
+export interface Seen {
+  vault: Address;
+  /** Both sides of every CuratorChanged: the curators before, and the one in office. */
+  curators: Address[];
+  depositors: Address[];
+}
+
+/**
+ * The addresses in a vault's logs that a page can act for or watch: curators that may still hold booked fees, and
+ * depositors that may still hold shares. Pure, from logs already read for the feed, so it costs no calls.
+ */
+export function seenIn(logs: readonly Log[], vault: Address): Seen {
+  const curators: Address[] = [];
+  const depositors: Address[] = [];
+  const add = (list: Address[], a: unknown) => {
+    if (typeof a !== "string" || a.toLowerCase() === zeroAddress) return;
+    const at = list.findIndex((x) => x.toLowerCase() === a.toLowerCase());
+    if (at >= 0) list.splice(at, 1);
+    list.unshift(getAddress(a));
+  };
+  const ordered = logs
+    .filter((l) => l.address.toLowerCase() === vault.toLowerCase())
+    .sort((a, b) => Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)) || (a.logIndex ?? 0) - (b.logIndex ?? 0));
+  for (const log of ordered) {
+    try {
+      const d = decodeEventLog({ abi: covenantVaultAbi, data: log.data, topics: log.topics });
+      if (d.eventName === "CuratorChanged") {
+        add(curators, d.args.previous);
+        add(curators, d.args.current);
+      } else if (d.eventName === "Deposited") add(depositors, d.args.owner);
+    } catch {
+      /* an event this app does not read */
+    }
+  }
+  return { vault, curators, depositors };
+}
+
 const SWAP = poolManagerAbi.find((e) => e.type === "event" && e.name === "Swap") as Extract<(typeof poolManagerAbi)[number], { type: "event"; name: "Swap" }>;
 
+/** The vault's feed, and who its logs name (seenIn), from one read of its logs. */
+export interface Activity {
+  beats: Beat[];
+  seen: Seen;
+}
+
 export async function readHistory(ctx: ChainCtx, v: VaultView): Promise<Beat[]> {
+  return (await readActivity(ctx, v)).beats;
+}
+
+export async function readActivity(ctx: ChainCtx, v: VaultView): Promise<Activity> {
   // On a public chain only the recent window is read on first load, then only new blocks (logs.ts). Kept spans (the
   // launch's first blocks, the live proof's) are read once, so the vault's own story stays in the feed after that.
   const floor = BigInt(ctx.net.manifest.deployedAtBlock ?? 0);
@@ -93,11 +147,13 @@ export async function readHistory(ctx: ChainCtx, v: VaultView): Promise<Beat[]> 
     scanLogs(ctx, `swaps:${v.poolId}`, floor, readSwaps),
   ]);
   // Kept spans and the recent window can overlap: keep each log once.
-  const seen = new Set<string>();
-  const logs = [...keptVault.flat(), ...keptSwaps.flat(), ...vaultLogs, ...swapLogs]
-    .filter((l) => !seen.has(`${l.transactionHash}:${l.logIndex}`) && !!seen.add(`${l.transactionHash}:${l.logIndex}`))
-    .sort((a, b) => Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)) || (a.logIndex ?? 0) - (b.logIndex ?? 0))
-    .slice(-MAX_LOGS);
+  const once = new Set<string>();
+  const all = [...keptVault.flat(), ...keptSwaps.flat(), ...vaultLogs, ...swapLogs]
+    .filter((l) => !once.has(`${l.transactionHash}:${l.logIndex}`) && !!once.add(`${l.transactionHash}:${l.logIndex}`))
+    .sort((a, b) => Number((a.blockNumber ?? 0n) - (b.blockNumber ?? 0n)) || (a.logIndex ?? 0) - (b.logIndex ?? 0));
+  // Who the logs name is read from all of them; the feed shows only the newest.
+  const seen = seenIn(all as Log[], v.address);
+  const logs = all.slice(-MAX_LOGS);
 
   // Block times and senders never change for a given block hash or transaction hash, so they are fetched once. (Block
   // numbers do repeat after a snapshot revert, which is why times are keyed by hash.)
@@ -144,5 +200,5 @@ export async function readHistory(ctx: ChainCtx, v: VaultView): Promise<Beat[]> 
       });
     }
   }
-  return out.reverse();
+  return { beats: out.reverse(), seen };
 }

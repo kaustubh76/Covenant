@@ -7,7 +7,7 @@ import { type Beat, type BeatInput, note } from "@/chain/beat";
 import { classify } from "@/chain/failure";
 import { type ChainCtx, createChainCtx } from "@/chain/client";
 import { discoverLaunches } from "@/chain/discover";
-import { readHistory } from "@/chain/history";
+import { type Seen, readActivity } from "@/chain/history";
 import { forgetScans } from "@/chain/logs";
 import { type LaunchRecord, type Network, type NetworkKey, firstChoice, isNetworkKey } from "@/chain/network";
 import { openPlayground, resetPlayground } from "@/chain/playground";
@@ -47,9 +47,13 @@ export function partyFor(role: Role, view: VaultView | null, net: Network | null
   return actorFor(role, view);
 }
 
-/** On a public chain, whether the connected wallet holds `party`'s place; always true locally. */
+/**
+ * Whether `party`'s action can be sent from here. On a public chain, when the connected wallet holds its place; on a dev
+ * chain, when a dev key signs for it: every role has one, an address only if it is one of the dev accounts.
+ */
 export function canSendAs(party: Party, net: Network | null, wallet: WalletState | null): boolean {
-  if (!net || net.caps.devChain) return true;
+  if (!net) return true;
+  if (net.caps.devChain) return !isAddressParty(party) || actorOf(party) !== undefined;
   if (!wallet) return false;
   return !isAddressParty(party) || party.toLowerCase() === wallet.address.toLowerCase();
 }
@@ -93,6 +97,8 @@ interface ChainState {
   vault: Address | null;
   view: VaultView | null;
   history: Beat[];
+  /** Who the current vault's logs name (curators, depositors), read with `history`. Checked against `vault` before use. */
+  seen: Seen | null;
   log: Beat[];
   toast: Beat | null;
   role: Role;
@@ -237,6 +243,7 @@ export const useChain = create<ChainState>((set, get) => ({
   vault: null,
   view: null,
   history: [],
+  seen: null,
   log: [],
   toast: null,
   role: "holder",
@@ -344,7 +351,7 @@ export const useChain = create<ChainState>((set, get) => ({
     // back reads its recent window afresh (a restarted fork shares nothing with the one before).
     refreshSeq++;
     if (left && left !== key) forgetScans(left);
-    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], log: [], toast: null, savePoints: [] });
+    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], seen: null, log: [], toast: null, savePoints: [] });
     // Keep ?net= in step, so a copied link opens the same network.
     try {
       const url = new URL(window.location.href);
@@ -429,7 +436,7 @@ export const useChain = create<ChainState>((set, get) => ({
       const gone = e instanceof BaseError && !!e.walk((x) => x instanceof ContractFunctionRevertedError || x instanceof ContractFunctionZeroDataError);
       const fallback = get().net?.runtime?.defaultVault;
       if (gone && fallback && vault.toLowerCase() !== fallback.toLowerCase()) {
-        set({ vault: fallback, view: null, history: [] });
+        set({ vault: fallback, view: null, history: [], seen: null });
         void get().refresh();
         return;
       }
@@ -439,9 +446,9 @@ export const useChain = create<ChainState>((set, get) => ({
     if (mine !== refreshSeq) return;
     set({ view, reason: null });
     try {
-      const [history, launches] = await Promise.all([readHistory(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
+      const [activity, launches] = await Promise.all([readActivity(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
       if (mine === refreshSeq) {
-        set({ history, launches });
+        set({ history: activity.beats, seen: activity.seen, launches });
         rememberLaunches(ctx.net, launches);
       }
     } catch (e) {
@@ -457,7 +464,7 @@ export const useChain = create<ChainState>((set, get) => ({
   async selectVault(vault) {
     const key = get().netKey;
     if (key) save(vaultKey(key), vault);
-    set({ vault, view: null, history: [] });
+    set({ vault, view: null, history: [], seen: null });
     await get().refresh();
   },
 
@@ -522,7 +529,7 @@ export const useChain = create<ChainState>((set, get) => ({
     });
     if (done) {
       const net = get().net;
-      set({ log: [], history: [], toast: null, savePoints: [] });
+      set({ log: [], history: [], seen: null, toast: null, savePoints: [] });
       if (net?.runtime) await get().selectVault(net.runtime.defaultVault);
     }
     return !!done;

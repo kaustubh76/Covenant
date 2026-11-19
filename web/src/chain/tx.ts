@@ -35,7 +35,7 @@ export function partyAddress(ctx: ChainCtx, party: Party): Address {
 export function signerFor(ctx: ChainCtx, party: Party): { wallet: WalletClient<Transport, Chain, Account> } | { refusal: string } {
   if (ctx.net.caps.devChain) {
     const actor = isAddressParty(party) ? actorOf(party) : party;
-    return actor ? { wallet: ctx.wallet(actor) } : { refusal: `There is no dev key for ${shortAddress(party)} on the local chain.` };
+    return actor ? { wallet: ctx.wallet(actor) } : { refusal: `There is no dev key for ${shortAddress(party)} on ${ctx.net.key === "playground" ? "the Playground" : "the local chain"}.` };
   }
   if (!ctx.signer) return { refusal: `Connect a wallet to send this on ${ctx.net.name}.` };
   if (isAddressParty(party) && party.toLowerCase() !== ctx.signer.toLowerCase()) {

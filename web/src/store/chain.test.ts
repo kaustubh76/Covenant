@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { NetworkKey } from "@/chain/network";
-import { isHostedCopy, offeredDevNetwork, useChain } from "./chain";
+import { addressOf } from "@/chain/accounts";
+import type { Network, NetworkKey } from "@/chain/network";
+import { canSendAs, isHostedCopy, offeredDevNetwork, useChain } from "./chain";
 
 const list = (...n: [NetworkKey, "ready" | "offline"][]) => ({ networks: n.map(([key, state]) => ({ key, name: key, state })) });
 
@@ -50,5 +51,25 @@ describe("loadNetworks, when the app server does not answer", () => {
     await vi.advanceTimersByTimeAsync(3000);
     expect(fetch).toHaveBeenCalledTimes(2);
     expect(useChain.getState().networks).toEqual(list);
+  });
+});
+
+describe("canSendAs: whether an action can leave this page", () => {
+  const dev = { key: "playground", caps: { devChain: true } } as Network;
+  const pub = { key: "base-sepolia", caps: { devChain: false } } as Network;
+  const stranger = "0x00000000000000000000000000000000000000a1" as const;
+  const mine = { id: "w", name: "Wallet", address: "0xf76b92051035021d8EF9562058f3e8085006D8f0" as const, chainId: 84532 };
+
+  it("on a dev chain: every role, and an address only when a dev key signs for it", () => {
+    expect(canSendAs("lp", dev, null)).toBe(true);
+    expect(canSendAs(addressOf("curator"), dev, null)).toBe(true);
+    expect(canSendAs(stranger, dev, null)).toBe(false);
+  });
+
+  it("on a public chain: an address only from its own wallet, and nothing without one", () => {
+    expect(canSendAs("lp", pub, null)).toBe(false);
+    expect(canSendAs("lp", pub, mine)).toBe(true);
+    expect(canSendAs(mine.address.toLowerCase() as `0x${string}`, pub, mine)).toBe(true);
+    expect(canSendAs(stranger, pub, mine)).toBe(false);
   });
 });

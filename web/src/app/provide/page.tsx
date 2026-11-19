@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { formatEther, maxUint256, parseEther } from "viem";
+import { useEffect, useRef, useState } from "react";
+import { type Address, formatEther, isAddressEqual, maxUint256, parseEther, zeroAddress } from "viem";
 import { covenantVaultAbi, testTokenAbi } from "@/chain/abi.generated";
+import { ACTOR_LABEL, type Who, actorOf, shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { NEVER } from "@/chain/launch";
 import { swap } from "@/chain/market";
 import { type ActionCall, type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { priceAt } from "@/chain/price";
 import { depositCall, ensureAllowance, quoteBudget, withSlack } from "@/chain/provide";
-import { isAddressParty, send } from "@/chain/tx";
+import { type Party, isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { ShapeChart } from "@/components/covenant/ShapeChart";
@@ -19,6 +20,7 @@ import { amt, duration, pct } from "@/lib/format";
 import { useBalances } from "@/lib/useBalances";
 import { ROLES, actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
+import { AddressInput, parseAddress } from "@/components/controls/AddressInput";
 
 const eth = (x: bigint) => Number(formatEther(x));
 /** On a public chain the deposit is simulated within the wallet's ETH, less what the market keeps back for gas. */
@@ -45,8 +47,9 @@ export default function ProvidePage() {
   const wallet = useChain((s) => s.wallet);
   const launches = useChain((s) => s.launches);
   const actor = actorFor(role, v);
-  // Deposits, withdrawals and fee claims come from the connected wallet on a public chain; the principal from the
-  // vault's issuer only (see partyFor). Balances and shares are read for the acting role either way.
+  // The acting role deposits: on a public chain that is the connected wallet, or the vault's issuer or curator by
+  // address (see partyFor), and the principal leaves for the issuer only. The position panel reads and exits as the
+  // role too, unless an address is being watched (below).
   const party = partyFor(role, v, net);
   const publicChain = !!net && !net.caps.devChain;
   const mayAct = canSendAs(party, net, wallet);
@@ -55,7 +58,52 @@ export default function ProvidePage() {
 
   const newShares = v ? (v.raw.totalShares * BigInt(addPct)) / 100n : 0n;
   const mine = v?.raw.sharesOf[actor] ?? 0n;
-  const burn = (mine * BigInt(outPct)) / 100n;
+
+  // Watching: any address's position, read for itself, with its exit simulated as that address. Deposits stay with the
+  // acting role. `?watch=0x…` opens it, and is kept in step so the link can be shared.
+  const [watchText, setWatchText] = useState("");
+  const typedWatch = parseAddress(watchText).address;
+  // Address zero is the principal's own account (VaultStorage's PRINCIPAL_ACCOUNT): its shares leave only through the
+  // issuer's withdrawPrincipal, so it is explained rather than shown as a position anyone could exit.
+  const watchesPrincipal = !!typedWatch && isAddressEqual(typedWatch, zeroAddress);
+  const watched = watchesPrincipal ? null : typedWatch;
+  const [watchedPos, setWatchedPos] = useState<{ vault: Address; address: Address; shares: bigint; owed: readonly [bigint, bigint] } | null>(null);
+  const seen = useChain((s) => s.seen);
+  const urlRead = useRef(false);
+  useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (!urlRead.current) {
+        urlRead.current = true;
+        const asked = url.searchParams.get("watch");
+        if (asked && !watched) {
+          setWatchText(asked);
+          return;
+        }
+      }
+      if (watched) url.searchParams.set("watch", watched);
+      else url.searchParams.delete("watch");
+      if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url);
+    } catch {
+      /* not in a browser */
+    }
+  }, [watched]);
+  useEffect(() => {
+    if (!ctx || !v || !watched) return;
+    let live = true;
+    const at = { address: v.address, abi: covenantVaultAbi } as const;
+    Promise.all([ctx.pub.readContract({ ...at, functionName: "sharesOf", args: [watched] }), ctx.pub.readContract({ ...at, functionName: "feesOwed", args: [watched] })])
+      .then(([shares, owed]) => live && setWatchedPos({ vault: v.address, address: watched, shares, owed }))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx, v, watched]);
+  const watchedHere = watched && v && watchedPos && isAddressEqual(watchedPos.address, watched) && isAddressEqual(watchedPos.vault, v.address) ? watchedPos : null;
+  // whose position the panel shows and exits: the watched address, or the acting role
+  const posParty: Party = watched ?? party;
+  const posShares = watched ? (watchedHere?.shares ?? 0n) : mine;
+  const burn = (posShares * BigInt(outPct)) / 100n;
 
   useEffect(() => {
     if (!ctx || !v || newShares === 0n) return;
@@ -73,20 +121,34 @@ export default function ProvidePage() {
       return;
     }
     let live = true;
-    preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v)
+    preflight(ctx, posParty, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v)
       .catch(failedPreflight)
       .then((p) => live && setOut(p));
     return () => {
       live = false;
     };
-  }, [ctx, v, party, burn]);
+  }, [ctx, v, posParty, burn]);
 
   if (!v) return <NeedsChain what="liquidity provision" />;
   const sym = v.tokenSymbol;
   const name = ROLES.find((r) => r.key === role)?.name ?? role;
   const cost = dep?.ok ? (dep.value as readonly [bigint, bigint]) : null;
   const back = out?.ok ? (out.value as readonly [bigint, bigint]) : null;
-  const owed = v.fees.owed[actor] ?? { quote: 0, token: 0 };
+  const devChain = !publicChain;
+  /** An address as the panel names it: a dev account by role, the connected wallet as yours, anything else short. */
+  const named = (a: Address) => {
+    const known = devChain ? actorOf(a) : undefined;
+    if (known) return `${ACTOR_LABEL[known]} · ${shortAddress(a)}`;
+    return wallet && isAddressEqual(wallet.address, a) ? `Your wallet · ${shortAddress(a)}` : shortAddress(a);
+  };
+  const owedPair = (o: readonly [bigint, bigint]) => (v.quoteIs0 ? { quote: eth(o[0]), token: eth(o[1]) } : { quote: eth(o[1]), token: eth(o[0]) });
+  const owed = watched ? (watchedHere ? owedPair(watchedHere.owed) : { quote: 0, token: 0 }) : (v.fees.owed[actor] ?? { quote: 0, token: 0 });
+  const posWho: Who = watched ? ((devChain ? actorOf(watched) : undefined) ?? "anyone") : actor;
+  const mayExit = canSendAs(posParty, net, wallet);
+  const share = (x: bigint) => pct((Number(x) / Number(v.raw.totalShares)) * 1e4);
+  const picks = [...(wallet ? [wallet.address] : []), ...(seen && isAddressEqual(seen.vault, v.address) ? seen.depositors : [])]
+    .filter((a, i, all) => all.findIndex((b) => isAddressEqual(a, b)) === i)
+    .slice(0, 5);
   const isIssuer = role === "issuer";
   const principalBurn = (v.raw.principalWithdrawable * BigInt(principalPct)) / 100n;
 
@@ -112,20 +174,20 @@ export default function ProvidePage() {
 
   const withdraw = () =>
     run(`Withdraw ${outPct}% of position`, async (c, rec) => {
-      const p = await preflight(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v);
+      const p = await preflight(c, posParty, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, 0n, 0n, NEVER] }, v);
       const [m0, m1] = p.ok ? (p.value as readonly [bigint, bigint]) : [0n, 0n];
-      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, (m0 * 995n) / 1000n, (m1 * 995n) / 1000n, NEVER] }, { force: true });
+      const o = await send(c, posParty, { address: v.address, abi: covenantVaultAbi, functionName: "withdraw", args: [burn, (m0 * 995n) / 1000n, (m1 * 995n) / 1000n, NEVER] }, { force: true });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Withdrawn");
-      rec.record(beatOf(o, actor, `Withdraw ${outPct}% of position`, () => (ev ? `Received ${amt(eth(ev.args.amount0 as bigint))} ETH and ${amt(eth(ev.args.amount1 as bigint))} ${sym}` : undefined)), {
+      rec.record(beatOf(o, posWho, `Withdraw ${outPct}% of position`, () => (ev ? `Received ${amt(eth(ev.args.amount0 as bigint))} ETH and ${amt(eth(ev.args.amount1 as bigint))} ${sym}` : undefined)), {
         toast: true,
       });
     });
 
   const claim = () =>
     run("Claim fees", async (c, rec) => {
-      const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "claimFees", args: [] });
+      const o = await send(c, posParty, { address: v.address, abi: covenantVaultAbi, functionName: "claimFees", args: [] });
       const r = o.value as readonly [bigint, bigint] | undefined;
-      rec.record(beatOf(o, actor, "Claim fees", () => (r ? `${amt(eth(r[0]))} ETH and ${amt(eth(r[1]))} ${sym}` : undefined)), { toast: true });
+      rec.record(beatOf(o, posWho, "Claim fees", () => (r ? `${amt(eth(r[0]))} ETH and ${amt(eth(r[1]))} ${sym}` : undefined)), { toast: true });
     });
 
   const withdrawPrincipal = () =>
@@ -142,7 +204,7 @@ export default function ProvidePage() {
   // A wallet on a public chain starts with ETH only: the token side of a deposit is bought from the pool first. With
   // none of the token the deposit cannot even be simulated (the transfer fails first), so the need is read from the
   // vault's own holdings, which a proportional deposit matches exactly; once the wallet holds some, the simulation's.
-  const tokenNeed = cost ? eth(cost[1]) : (v.principal.token + v.idle.token) * (addPct / 100) * 1.01;
+  const tokenNeed = cost ? eth(cost[1]) : v.principal.token * (addPct / 100) * 1.01;
   const tokenShort = publicChain && bal ? Math.max(0, tokenNeed - bal.token) : 0;
   const buyShortfall = () =>
     run(`Buy ${amt(tokenShort)} ${sym}`, async (c, rec) => {
@@ -183,7 +245,7 @@ export default function ProvidePage() {
               {cost
                 ? `${amt(eth(cost[0]))} ETH + ${amt(eth(cost[1]))} ${sym}`
                 : dep && !dep.ok && tokenShort > 0
-                  ? `about ${amt((v.principal.quote + v.idle.quote) * (addPct / 100))} ETH + ${amt(tokenNeed)} ${sym}`
+                  ? `about ${amt(v.principal.quote * (addPct / 100))} ETH + ${amt(tokenNeed)} ${sym}`
                   : dep && !dep.ok
                     ? "—"
                     : "…"}
@@ -216,33 +278,71 @@ export default function ProvidePage() {
           </p>
         </Panel>
 
-        <Panel eyebrow="Your position" title={mine > 0n ? `${pct((Number(mine) / Number(v.raw.totalShares)) * 1e4)} of the vault` : "No position yet"}>
-          {mine > 0n ? (
-            <>
-              <Slider label="Withdraw" value={outPct} min={1} max={100} onChange={setOutPct} display={`${outPct}%`} />
-              <div className="mt-4">
-                <Row label="You receive">{back ? `${amt(eth(back[0]))} ETH + ${amt(eth(back[1]))} ${sym}` : "…"}</Row>
-                <Row label="Fees earned">
-                  {amt(owed.quote)} ETH · {amt(owed.token)} {sym}
-                </Row>
-              </div>
-              <div className="mt-5 grid grid-cols-2 gap-3">
-                <Button variant="secondary" onClick={withdraw} disabled={!!busy}>
-                  Withdraw
-                </Button>
-                <Button variant="ghost" onClick={claim} disabled={!!busy}>
-                  Claim fees
-                </Button>
-              </div>
-              <p className="mt-2 text-center text-xs text-faint">Outside LPs are never locked, and an exit is never blocked by the price guard.</p>
-            </>
-          ) : (
-            <p className="py-8 text-center text-[13px] leading-relaxed text-muted">
-              {role === "curator"
-                ? "The curator holds no shares and never earns any by reshaping. There is nothing here to withdraw."
-                : "Deposit to receive shares. They redeem for the same slice of every range, whatever shape the curator has given the vault by then."}
+        <Panel
+          eyebrow={watched ? "Watched position" : "Your position"}
+          title={watched ? (watchedHere ? (posShares > 0n ? `${share(posShares)} of the vault` : "No shares") : "Reading…") : mine > 0n ? `${share(mine)} of the vault` : "No position yet"}
+        >
+          <AddressInput label="Watch an address" value={watchText} onChange={setWatchText} placeholder="Any 0x… address, to see its position" />
+          {watchesPrincipal && (
+            <p className="mt-1 text-xs leading-relaxed text-faint">
+              Address zero holds the issuer&apos;s principal. It leaves only through the issuer&apos;s withdrawPrincipal, to the treasury, as it vests.
             </p>
           )}
+          {!watched && picks.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {picks.map((a) => (
+                <button
+                  key={a}
+                  type="button"
+                  onClick={() => setWatchText(a)}
+                  className="rounded-full border border-line-strong px-2.5 py-1 text-xs text-muted transition-colors hover:border-muted hover:text-ink"
+                >
+                  {named(a)}
+                </button>
+              ))}
+            </div>
+          )}
+          {watched && (
+            <button type="button" onClick={() => setWatchText("")} className="mt-2 text-xs text-faint underline-offset-2 hover:text-ink hover:underline">
+              Stop watching: back to the {name}
+            </button>
+          )}
+          <div className="mt-5">
+            {posShares > 0n ? (
+              <>
+                <Slider label="Withdraw" value={outPct} min={1} max={100} onChange={setOutPct} display={`${outPct}%`} />
+                <div className="mt-4">
+                  <Row label={watched ? "Withdrawing returns" : "You receive"}>{back ? `${amt(eth(back[0]))} ETH + ${amt(eth(back[1]))} ${sym}` : out && !out.ok ? "—" : "…"}</Row>
+                  <Row label="Fees earned">
+                    {amt(owed.quote)} ETH · {amt(owed.token)} {sym}
+                  </Row>
+                </div>
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <SendButton verb="withdraw" variant="secondary" onClick={withdraw} disabled={!!busy || !mayExit}>
+                    {mayExit || !isAddressParty(posParty) ? "Withdraw" : `Only ${shortAddress(posParty)} can withdraw`}
+                  </SendButton>
+                  <SendButton verb="claim" variant="ghost" onClick={claim} disabled={!!busy || !mayExit}>
+                    Claim fees
+                  </SendButton>
+                </div>
+                <p className="mt-2 text-center text-xs text-faint">
+                  {!mayExit && isAddressParty(posParty)
+                    ? `Simulated as ${shortAddress(posParty)}. Only that wallet can send it.`
+                    : "Outside LPs are never locked, and an exit is never blocked by the price guard."}
+                </p>
+              </>
+            ) : (
+              <p className="py-6 text-center text-[13px] leading-relaxed text-muted">
+                {watched
+                  ? watchedHere
+                    ? `${named(watched)} holds no shares in this vault.`
+                    : `Reading ${shortAddress(watched)}'s position…`
+                  : role === "curator"
+                    ? "The curator holds no shares and never earns any by reshaping. There is nothing here to withdraw."
+                    : "Deposit to receive shares. They redeem for the same slice of every range, whatever shape the curator has given the vault by then."}
+              </p>
+            )}
+          </div>
         </Panel>
       </div>
 
