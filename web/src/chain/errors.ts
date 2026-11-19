@@ -1,5 +1,6 @@
 import { BaseError, type Hex, decodeErrorResult, formatEther } from "viem";
 import { errorAbi } from "./abi.generated";
+import { shortAddress } from "./accounts";
 
 /** Which promise of the covenant (or which part of the stack) a refusal comes from. */
 export type Rule = "Conservation" | "Support" | "Pace" | "Guard" | "Anchor" | "Lock" | "Access" | "Restore" | "Shape" | "Terms" | "Auction" | "Pool" | "Other";
@@ -133,6 +134,14 @@ const REASONS: Record<string, Describer> = {
   AuctionNotStarted: () => ["Auction", "The auction has not started yet."],
   AuctionIsOver: () => ["Auction", "The auction is over."],
   AuctionIsNotOver: () => ["Auction", "The auction is still running."],
+  AuctionSoldOut: () => ["Auction", "Every token is already spoken for: the auction has nothing left to sell."],
+  TickPriceNotAtBoundary: () => ["Auction", "A bid's price must sit on the auction's price grid."],
+  InvalidBidPriceTooHigh: ([, max]) => ["Auction", `A bid can go up to ${(n(max) / 2 ** 96).toPrecision(4)} ETH a token at most.`],
+  BidAmountTooSmall: () => ["Auction", "The bid is too small to buy anything at this price."],
+  // the auction's own (no arguments: the ETH sent is not the bid's amount) and the launcher's (an amount over its cap)
+  InvalidAmount: ([amount, max]) => ["Auction", amount === undefined ? "The ETH sent must equal the bid's amount." : `${eth(amount)} is more than the ${eth(max)} allowed.`],
+  NotAuthorized: ([authorized, caller]) => ["Auction", `Only ${shortAddress(String(authorized))}, the recipient the auction names, can do this. It was sent from ${shortAddress(String(caller))}.`],
+  CannotSweepTokens: () => ["Auction", "The unsold tokens have already been swept to the treasury."],
   // ---- the pool
   PriceLimitAlreadyExceeded: () => ["Pool", "The price is already past the swap's limit."],
 };

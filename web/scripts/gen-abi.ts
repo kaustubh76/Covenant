@@ -70,6 +70,9 @@ const CONTRACTS: Spec[] = [
       "exitPartiallyFilledBid",
       "claimTokens",
       "sweepUnsoldTokens",
+      // the treasury's sweep: who may send it, and whether it has been
+      "sweepUnsoldTokensBlock",
+      "tokensRecipient",
     ],
     events: "*",
   },

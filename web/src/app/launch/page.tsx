@@ -1,19 +1,22 @@
 "use client";
 
 import clsx from "clsx";
-import { Check, X } from "lucide-react";
+import { Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { formatEther, parseEther } from "viem";
+import { formatEther, isAddressEqual } from "viem";
 import { ccaAbi, covenantLensAbi, covenantVaultAbi, seedPlannerAbi } from "@/chain/abi.generated";
 import { shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
+import { type DraftBid, addBid, bidProblems, bidWei, draftBids, maxBids, placedPrice, placementOrder, removeBid, switchBidder } from "@/chain/bids";
 import {
   AUCTION_FLOOR,
   AUCTION_TICK,
   type AuctionGrid,
   type Launch,
   type OnWait,
+  SWEEP_DUST,
+  type Sale,
   TESTNET_PRICE_SHIFT,
   WALLET_AUCTION_BLOCKS,
   WALLET_START_DELAY,
@@ -22,13 +25,15 @@ import {
   closeAuction,
   defaultLaunchSpec,
   migrate,
+  readSale,
   registerLaunch,
   seed,
   seedParamsFor,
   settleBids,
+  sweepUnsold,
   testnetLaunchSpec,
 } from "@/chain/launch";
-import { priceAt, q96ToNumber, snapToAuctionTick, ticksToPct } from "@/chain/price";
+import { priceAt, q96ToNumber, ticksToPct } from "@/chain/price";
 import { PRESETS, PRESET_INFO, type PresetKey, type Terms, termsProblems } from "@/chain/terms";
 import { reach } from "@/chain/time";
 import { NeedsChain } from "@/components/chain/NeedsChain";
@@ -44,22 +49,10 @@ import { SendButton } from "@/components/controls/SendButton";
 const DAY = 86_400;
 const HOUR = 3_600;
 
-interface DraftBid {
-  id: string;
-  bidder: "alice" | "bob";
-  price: number;
-  amount: number;
-}
-/** The suite's bids at a launch's scale: prices from its floor, amounts times `scale` (1 locally, 1/8192 on a testnet). */
-const draftBids = (floorEth: number, scale: number): DraftBid[] => [
-  { id: "b1", bidder: "bob", price: floorEth * (1 + 1 / 64), amount: 300 * scale },
-  { id: "b2", bidder: "bob", price: floorEth * (1 + 3 / 64), amount: 300 * scale },
-  { id: "b3", bidder: "alice", price: floorEth * (1 + 19 / 64), amount: 1400 * scale },
-];
 const LOCAL_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR, auctionTick: AUCTION_TICK };
 /** A public chain's launch (testnetLaunchSpec): every price and bid divided by 2^13, so faucet ETH is enough. */
 const TESTNET_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR >> BigInt(TESTNET_PRICE_SHIFT), auctionTick: AUCTION_TICK >> BigInt(TESTNET_PRICE_SHIFT) };
-const wei = (eth: number) => parseEther(eth.toFixed(18));
+const tokens = (x: bigint) => Number(formatEther(x));
 
 type Check = { ok: boolean; isCovenantVault: boolean; hookIsCovenant: boolean; poolMatchesVault: boolean; lpGoesToVault: boolean; vaultIsFresh: boolean; tokensReservedForLp: bigint };
 type Phase = "terms" | "bidding" | "bid" | "closed" | "migrated" | "seeded";
@@ -143,8 +136,10 @@ export default function LaunchPage() {
   const grid = isPublic ? TESTNET_GRID : LOCAL_GRID;
   const floorEth = q96ToNumber(grid.floorPrice);
   const scale = isPublic ? 2 ** -TESTNET_PRICE_SHIFT : 1;
-  const snap = (p: number) => q96ToNumber(snapToAuctionTick(p, grid.floorPrice, grid.auctionTick));
+  /** The grid price a typed price is placed at (one tick above the floor at least): what the auction will see. */
+  const snap = (p: number) => q96ToNumber(placedPrice(p, grid));
   const who = (b: DraftBid) => (isPublic ? "You" : b.bidder === "bob" ? "Bob" : "Alice");
+  const ctx = useChain((s) => s.ctx);
 
   const [presetKey, setPresetKey] = useState<PresetKey | "">("standard");
   const [draft, setDraft] = useState<Terms>(PRESETS.standard);
@@ -156,10 +151,24 @@ export default function LaunchPage() {
   const [result, setResult] = useState<{ clearing: number; raised: number; outbid: number } | null>(null);
   const [supportBefore, setSupportBefore] = useState<number | null>(null);
   const [settled, setSettled] = useState<Settled | null>(null);
+  // What the auction sold, once it is over, and whether the treasury has swept the rest. Read when the auction closes,
+  // after a sweep, and once for a saved public launch that resumes past its close.
+  const [sale, setSale] = useState<Sale | null>(null);
   // the bids follow the network's scale until they are placed
   useEffect(() => {
     if (phase === "terms") setBids(draftBids(floorEth, scale));
   }, [floorEth, scale, phase]);
+  const pastClose = phase === "closed" || phase === "migrated" || phase === "seeded";
+  useEffect(() => {
+    if (!ctx || !launch || !pastClose || sale) return;
+    let live = true;
+    readSale(ctx, launch)
+      .then((s) => live && setSale(s))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx, launch, pastClose, sale]);
 
   const keep = isPublic && net && wallet ? savedKey(net.key, wallet.address) : null;
   // Resume this wallet's launch on this network after a reload.
@@ -192,6 +201,8 @@ export default function LaunchPage() {
     setDraft((d) => ({ ...d, [k]: v }));
   };
   const editBid = (id: string, k: "price" | "amount", v: number) => setBids((b) => b.map((x) => (x.id === id ? { ...x, [k]: v } : x)));
+  const draftIssues = bidProblems(bids, grid);
+  const fullBook = bids.length >= maxBids(isPublic);
   const opened = phase !== "terms";
   const placed = !["terms", "bidding"].includes(phase);
   const live = ["migrated", "seeded"].includes(phase);
@@ -222,10 +233,11 @@ export default function LaunchPage() {
     run("Placing bids", async (ctx, rec) => {
       if (!launch) return;
       await reach(ctx, launch.startBlock, (now, target) => rec.progress(`The auction opens in ${target - now} blocks`));
-      for (const b of bids) {
-        if (b.amount <= 0) continue;
-        const o = await bid(ctx, launch, b.bidder, snapToAuctionTick(b.price, launch.floorPrice, launch.auctionTick), wei(b.amount));
-        rec.record(beatOf(o, b.bidder, `${who(b)} ${isPublic ? "bid" : "bids"} ${amt(b.amount)} ETH up to ${priceText(snap(b.price))}`), { toast: !o.ok });
+      // Lowest price first: the clearing price never falls, so each bid lands at or above the one the last bid left.
+      for (const b of placementOrder(bids, launch)) {
+        const price = placedPrice(b.price, launch);
+        const o = await bid(ctx, launch, b.bidder, price, bidWei(b.amount));
+        rec.record(beatOf(o, b.bidder, `${who(b)} ${isPublic ? "bid" : "bids"} ${amt(b.amount)} ETH up to ${priceText(q96ToNumber(price))}`), { toast: !o.ok });
       }
       setPhase("bid");
     });
@@ -242,8 +254,19 @@ export default function LaunchPage() {
       ]);
       const r = { clearing: q96ToNumber(clearing), raised: Number(formatEther(raised)), outbid: levels.reduce((s, l) => s + Number(l.demand) / 2 ** 96 / 1e18, 0) };
       setResult(r);
+      setSale(await readSale(ctx, launch));
       rec.record(note("anyone", `Auction clears at ${priceText(r.clearing)} ETH`, `${amt(r.raised)} ETH raised. ${amt(r.outbid)} ETH of outbid demand stays on-chain`), { toast: true });
       setPhase("closed");
+    });
+
+  // The auction's tokens recipient (the launch's treasury) takes what no bid bought. Once, any time after the close.
+  const sweep = () =>
+    run("Sweeping the unsold tokens", async (ctx, rec) => {
+      if (!launch) return;
+      const o = await sweepUnsold(ctx, launch);
+      const to = isPublic ? "your wallet" : "the treasury";
+      rec.record(beatOf(o, "treasury", `Unsold ${symbol} swept to ${to}`, () => (o.amount !== undefined ? `${amt(tokens(o.amount))} ${symbol} the auction did not sell` : undefined)), { toast: true });
+      setSale(await readSale(ctx, launch));
     });
 
   const migrateAndAdopt = async () => {
@@ -296,8 +319,16 @@ export default function LaunchPage() {
     setResult(null);
     setSupportBefore(null);
     setSettled(null);
+    setSale(null);
+    // back to "terms": the bids return to the defaults (the effect above), and the next commit deploys a fresh token,
+    // so a new vault and pool. On a dev chain the old launch stays where it is.
     setPhase("terms");
   };
+  const raisedNothing = phase === "closed" && result !== null && result.raised === 0;
+  const sweepTo = isPublic ? "your wallet" : "the treasury";
+  // On a public chain only the auction's named recipient can sweep: the wallet that made the launch. (With no wallet at
+  // all, the send button asks for one first.)
+  const sweepRefused = isPublic && sale && wallet && !isAddressEqual(wallet.address, sale.recipient) ? `Only ${shortAddress(sale.recipient)} can sweep` : null;
 
   const curveBids = bids.map((b) => ({ id: b.id, bidder: who(b), maxPrice: snap(b.price), amount: b.amount }));
 
@@ -401,13 +432,26 @@ export default function LaunchPage() {
                 </Panel>
               )}
             </div>
-            <Panel eyebrow="Order book" title={placed ? "Bids placed" : "Scripted bidders"}>
+            <Panel eyebrow="Order book" title={placed ? "Bids placed" : isPublic ? "Your bids" : "Bidders"}>
               <ul className="space-y-3">
-                {bids.map((b) => (
-                  <li key={b.id} className="grid grid-cols-[48px_1.2fr_1fr] items-center gap-3 text-sm">
-                    <span className="text-ink">{who(b)}</span>
-                    <label className="flex items-center gap-2 rounded-md border border-line-strong px-2.5 py-1.5">
-                      <span className="whitespace-nowrap text-xs text-faint">up to</span>
+                {bids.map((b, i) => (
+                  <li key={b.id} className="grid grid-cols-[48px_1.2fr_1fr_20px] items-center gap-2 text-sm sm:grid-cols-[52px_1.2fr_1fr_24px] sm:gap-2.5">
+                    {isPublic || placed ? (
+                      <span className="text-ink">{who(b)}</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setBids((x) => switchBidder(x, b.id))}
+                        title="Switch the bidder"
+                        aria-label={`Bid ${i + 1} is ${who(b)}'s: switch to ${b.bidder === "bob" ? "Alice" : "Bob"}`}
+                        className="rounded-md border border-dashed border-line-strong px-1.5 py-1 text-left text-ink transition-colors hover:border-muted"
+                      >
+                        {who(b)}
+                      </button>
+                    )}
+                    <label className="flex items-center gap-2 rounded-md border border-line-strong px-2 py-1.5 sm:px-2.5">
+                      {/* on a phone the field keeps its name for assistive tech, and the chart above says "maximum price" */}
+                      <span className="hidden whitespace-nowrap text-xs text-faint sm:inline">up to</span>
                       <input
                         disabled={placed}
                         type="number"
@@ -415,12 +459,12 @@ export default function LaunchPage() {
                         min={floorEth}
                         value={Number(b.price.toPrecision(5))}
                         onChange={(e) => editBid(b.id, "price", Number(e.target.value) || floorEth)}
-                        onBlur={() => editBid(b.id, "price", Math.max(floorEth * (1 + 1 / 64), snap(b.price)))}
+                        onBlur={() => editBid(b.id, "price", snap(b.price))}
                         className="num w-full bg-transparent text-right text-ink outline-none"
-                        aria-label={`${b.bidder} max price`}
+                        aria-label={`Bid ${i + 1} (${who(b)}): max price`}
                       />
                     </label>
-                    <label className="flex items-center gap-2 rounded-md border border-line-strong px-2.5 py-1.5">
+                    <label className="flex items-center gap-2 rounded-md border border-line-strong px-2 py-1.5 sm:px-2.5">
                       <span className="text-xs text-faint">ETH</span>
                       <input
                         disabled={placed}
@@ -430,23 +474,68 @@ export default function LaunchPage() {
                         value={Number(b.amount.toPrecision(6))}
                         onChange={(e) => editBid(b.id, "amount", Math.max(0, Number(e.target.value) || 0))}
                         className="num w-full bg-transparent text-right text-ink outline-none"
-                        aria-label={`${b.bidder} amount`}
+                        aria-label={`Bid ${i + 1} (${who(b)}): ETH`}
                       />
                     </label>
+                    {placed ? (
+                      <span />
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setBids((x) => removeBid(x, b.id))}
+                        title="Remove this bid"
+                        aria-label={`Remove bid ${i + 1} (${who(b)}, up to ${priceText(snap(b.price))} ETH)`}
+                        className="grid h-7 w-5 place-items-center rounded text-faint transition-colors hover:text-breach sm:w-6"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-faint">Prices snap to the auction&apos;s grid of 1/64 of the floor. Bids must be above the {priceText(floorEth)} ETH floor.</p>
+              {!placed && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                  <Button size="sm" variant="ghost" disabled={fullBook} onClick={() => setBids((x) => addBid(x, grid, scale, isPublic))}>
+                    <Plus size={14} />
+                    Add a bid
+                  </Button>
+                  {fullBook && (
+                    <span className="text-xs text-faint">
+                      {maxBids(isPublic)} bids at most{isPublic ? ": each is a wallet prompt" : ""}
+                    </span>
+                  )}
+                </div>
+              )}
+              <p className="mt-3 text-xs leading-relaxed text-faint">
+                Prices snap to the auction&apos;s grid of 1/64 of the floor and must be above the {priceText(floorEth)} ETH floor. Bids go in lowest price first, so a
+                higher bid can&apos;t price out a lower one. Bid for less than the 1,000 tokens and the treasury sweeps what is left.
+              </p>
+              {phase === "bidding" && (draftIssues.blocking || draftIssues.warning) && (
+                <p className={clsx("mt-2 text-xs", draftIssues.blocking ? "text-breach" : "text-warn")}>{draftIssues.blocking ?? draftIssues.warning}</p>
+              )}
               {result && (
                 <div className="mt-5">
                   <Row label="Clearing price">{priceText(result.clearing)} ETH</Row>
                   <Row label="Raised">{amt(result.raised)} ETH</Row>
-                  <Row label="To the pool (10% of the raise)">{amt(result.raised * 0.1)} ETH + 100 tokens</Row>
+                  <Row label="To the pool (10% of the raise)">{amt(result.raised * 0.1)} ETH + up to 100 tokens</Row>
                   <Row label="Outbid demand left on-chain">{amt(result.outbid)} ETH</Row>
+                  {sale && (
+                    <>
+                      <Row label="Sold">{amt(tokens(sale.sold))} of 1,000 tokens</Row>
+                      <Row label="Unsold">
+                        {sale.unsold <= SWEEP_DUST ? "none: sold out" : `${amt(tokens(sale.unsold))}${sale.swept ? `, swept to ${sweepTo}` : ""}`}
+                      </Row>
+                    </>
+                  )}
                 </div>
               )}
+              {sale && sale.closed && !sale.swept && sale.unsold > SWEEP_DUST && (
+                <SendButton verb="sweep" variant="secondary" className="mt-5 w-full" disabled={!!busy || !!sweepRefused} onClick={() => void sweep()}>
+                  {sweepRefused ?? `Sweep ${amt(tokens(sale.unsold))} unsold ${symbol} to ${sweepTo}`}
+                </SendButton>
+              )}
               {phase === "bidding" && (
-                <Button variant="primary" className="mt-5 w-full" disabled={!!busy} onClick={() => void placeBids()}>
+                <Button variant="primary" className="mt-5 w-full" disabled={!!busy || !!draftIssues.blocking} onClick={() => void placeBids()}>
                   Place the bids
                 </Button>
               )}
@@ -455,11 +544,14 @@ export default function LaunchPage() {
                   Close the auction
                 </Button>
               )}
-              {phase === "closed" && (
-                <Button variant="primary" className="mt-5 w-full" disabled={!!busy} onClick={() => void migrateAndAdopt()}>
-                  Migrate into Covenant
-                </Button>
-              )}
+              {phase === "closed" &&
+                (raisedNothing ? (
+                  <p className="mt-4 text-[13px] text-breach">No bid was accepted, so nothing was raised and there is nothing to migrate. Start over below.</p>
+                ) : (
+                  <Button variant="primary" className="mt-5 w-full" disabled={!!busy} onClick={() => void migrateAndAdopt()}>
+                    Migrate into Covenant
+                  </Button>
+                ))}
               {live &&
                 (settled ? (
                   <p className="mt-4 text-[13px] text-pass">
@@ -470,8 +562,14 @@ export default function LaunchPage() {
                     Exit the bids and claim the tokens
                   </Button>
                 ))}
-              {isPublic && !live && (
-                <button type="button" disabled={!!busy} onClick={startOver} className="mt-3 w-full text-center text-xs text-faint underline-offset-2 hover:text-ink hover:underline disabled:opacity-50">
+              {!live && (
+                <button
+                  type="button"
+                  disabled={!!busy}
+                  onClick={startOver}
+                  title={isPublic ? undefined : "The old launch stays on this chain. The next one deploys a new token, vault and pool."}
+                  className="mt-3 w-full text-center text-xs text-faint underline-offset-2 hover:text-ink hover:underline disabled:opacity-50"
+                >
                   Abandon this launch and start over
                 </button>
               )}
@@ -495,11 +593,9 @@ export default function LaunchPage() {
                 <ShapeLegend />
                 {phase === "seeded" ? (
                   <div className="flex flex-wrap gap-2.5">
-                    {isPublic && (
-                      <Button variant="ghost" disabled={!!busy} onClick={startOver}>
-                        Start a new launch
-                      </Button>
-                    )}
+                    <Button variant="ghost" disabled={!!busy} onClick={startOver}>
+                      Start a new launch
+                    </Button>
                     <Link href="/vault">
                       <Button variant="primary">Open the vault</Button>
                     </Link>

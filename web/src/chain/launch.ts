@@ -33,7 +33,7 @@ import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import type { Terms } from "./terms";
 import { latest, reach } from "./time";
-import { devTxFields, must, receiptFor, send } from "./tx";
+import { type Party, devTxFields, must, receiptFor, send } from "./tx";
 
 export const Q96 = 2n ** 96n;
 /** CCA prices are quote per token, Q96. The suite's auctions floor at 1.0 and step in 1/64ths. */
@@ -389,6 +389,47 @@ export const runDefaultAuction = (ctx: ChainCtx, launch: Launch) => runAuction(c
 export async function closeAuction(ctx: ChainCtx, launch: Launch, by: Actor = "deployer", onWait?: OnWait): Promise<void> {
   await reach(ctx, launch.endBlock, onWait);
   must(await send(ctx, by, { address: launch.auction, abi: ccaAbi, functionName: "checkpoint", args: [] }), "checkpoint");
+}
+
+/** What the auction sold. Final once its last block is checkpointed; the treasury may then sweep the rest, once. */
+export interface Sale {
+  /** The last block is checkpointed: `sold` and `unsold` no longer move. */
+  closed: boolean;
+  sold: bigint;
+  /** What the sweep sends (`remainingSupply`). A sweep does not lower it, so `swept` says whether it has happened. */
+  unsold: bigint;
+  swept: boolean;
+  /** The only address the auction lets sweep: the launch's treasury. */
+  recipient: Address;
+}
+
+/** Below this an auction counts as sold out: a full sale can leave a few wei to rounding. */
+export const SWEEP_DUST = 10n ** 12n;
+
+export async function readSale(ctx: ChainCtx, launch: Pick<Launch, "auction" | "endBlock">): Promise<Sale> {
+  const at = { address: launch.auction, abi: ccaAbi } as const;
+  const [last, sold, unsold, sweptAt, recipient] = await Promise.all([
+    ctx.pub.readContract({ ...at, functionName: "lastCheckpointedBlock" }),
+    ctx.pub.readContract({ ...at, functionName: "totalCleared" }),
+    ctx.pub.readContract({ ...at, functionName: "remainingSupply" }),
+    ctx.pub.readContract({ ...at, functionName: "sweepUnsoldTokensBlock" }),
+    ctx.pub.readContract({ ...at, functionName: "tokensRecipient" }),
+  ]);
+  return { closed: last === launch.endBlock, sold, unsold, swept: sweptAt !== 0n, recipient };
+}
+
+/**
+ * The treasury takes what the auction did not sell. `by` defaults to the address the auction names, so a dev chain's
+ * treasury key signs, and on a public chain the wallet that made the launch. The amount comes from the auction's own
+ * TokensSwept: LBPStrategy emits an event with the same signature.
+ */
+export async function sweepUnsold(ctx: ChainCtx, launch: Pick<Launch, "auction">, by?: Party) {
+  const party = by ?? (await ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "tokensRecipient" }));
+  const o = await send(ctx, party, { address: launch.auction, abi: ccaAbi, functionName: "sweepUnsoldTokens", args: [] });
+  const event = o.receipt
+    ? parseEventLogs({ abi: ccaAbi, eventName: "TokensSwept", logs: o.receipt.logs }).find((l) => l.address.toLowerCase() === launch.auction.toLowerCase())
+    : undefined;
+  return { ...o, amount: event?.args.tokensAmount };
 }
 
 /** The position NFTs a transaction minted to `to`, read from its receipt (on a shared chain others mint in between). */

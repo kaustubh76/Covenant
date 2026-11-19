@@ -43,6 +43,24 @@ describe("decodeRevert", () => {
     expect(decodeRevert(new RawContractError({ data: auction })).rule).toBe("Auction");
   });
 
+  it("says who may sweep an auction, and that a sweep only happens once", () => {
+    const treasury = "0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f";
+    const bob = "0xBcd4042DE499D14e55001CcbB24a551F3b954096";
+    const d = decodeRevert(new RawContractError({ data: encodeErrorResult({ abi: errorAbi, errorName: "NotAuthorized", args: [treasury, bob] }) }));
+    expect(d.rule).toBe("Auction");
+    expect(d.reason).toBe("Only 0x2361…1E8f, the recipient the auction names, can do this. It was sent from 0xBcd4…4096.");
+    expect(decodeRevert(new RawContractError({ data: encodeErrorResult({ abi: errorAbi, errorName: "CannotSweepTokens" }) })).reason).toContain("already been swept");
+  });
+
+  it("tells the auction's InvalidAmount from the launcher's, which share a name", () => {
+    const shapes = errorAbi.filter((e) => e.type === "error" && e.name === "InvalidAmount");
+    expect(shapes.map((e) => e.inputs.length).sort()).toEqual([0, 2]);
+    const of = (inputs: number, args: readonly unknown[]) =>
+      decodeRevert(new RawContractError({ data: encodeErrorResult({ abi: shapes.filter((e) => e.inputs.length === inputs), errorName: "InvalidAmount", args } as never) }));
+    expect(of(0, []).reason).toBe("The ETH sent must equal the bid's amount.");
+    expect(of(2, [2n * 10n ** 18n, 10n ** 18n]).reason).toBe("2.00 is more than the 1.00 allowed.");
+  });
+
   it("keeps unknown errors readable", () => {
     expect(describeError("SomethingNew", [1n]).signature).toBe("SomethingNew(1)");
     expect(decodeRevert(new Error("boom")).reason).toBe("boom");
