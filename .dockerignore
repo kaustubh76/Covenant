@@ -1,8 +1,13 @@
-# What the backend's image may be built from: backend/ and the Playground's records. Never .env, keys or anything else.
+# What the backend's image may be built from: backend/, the Playground's and Base Sepolia's public records, and the two
+# app files the relayer bundles. Never .env, keys or anything else.
 *
 !backend/
 !deployments/playground.json
 !deployments/playground.runtime.json
+!deployments/84532.json
+!deployments/84532.runtime.json
+!web/src/chain/abi.generated.ts
+!web/src/chain/price.ts
 backend/node_modules
 backend/dist
 **/.env

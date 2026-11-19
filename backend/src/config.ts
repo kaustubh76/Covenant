@@ -6,6 +6,15 @@ const int = (name: string, fallback: number): number => {
   const v = Number(process.env[name]);
   return Number.isFinite(v) && v > 0 ? Math.floor(v) : fallback;
 };
+const num = (name: string, fallback: number): number => {
+  const v = Number(process.env[name]);
+  return Number.isFinite(v) && v > 0 ? v : fallback;
+};
+/** A private key from the environment, with or without 0x; anything else is no key. */
+const keyOf = (raw: string | undefined): `0x${string}` | null => {
+  const k = raw?.trim().replace(/^0x/i, "");
+  return k && /^[0-9a-fA-F]{64}$/.test(k) ? (`0x${k}` as `0x${string}`) : null;
+};
 const list = (name: string, fallback: string[]): string[] => process.env[name]?.split(",").map((s) => s.trim()).filter(Boolean) ?? fallback;
 
 /** The repository root: src/ and dist/ both sit one level under backend/. */
@@ -37,6 +46,12 @@ export interface Config {
   readRate: number;
   /** How long a read may queue for its turn before the caller is told to go direct. */
   readMaxWaitMs: number;
+  /** The relayer's own key (never the deployer's), or null: then the relayer is off. A Render secret; never logged. */
+  relayerKey: `0x${string}` | null;
+  /** ETH the relayer may spend a day, gas and drips together. */
+  relayDailyEth: number;
+  dripEth: number;
+  dripTokens: number;
 }
 
 export function loadConfig(): Config {
@@ -56,5 +71,9 @@ export function loadConfig(): Config {
     baseSepoliaRpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",
     readRate: int("READ_RATE", 15),
     readMaxWaitMs: int("READ_MAX_WAIT_MS", 4_000),
+    relayerKey: keyOf(process.env.RELAYER_PRIVATE_KEY),
+    relayDailyEth: num("RELAY_DAILY_ETH", 0.02),
+    dripEth: num("RELAY_DRIP_ETH", 0.002),
+    dripTokens: num("RELAY_DRIP_TOKENS", 2),
   };
 }

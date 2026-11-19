@@ -16,8 +16,15 @@ services:
         - deployments/playground.runtime.json
         - Dockerfile
         - .dockerignore
+        - deployments/84532.json
+        - deployments/84532.runtime.json
+        - web/src/chain/abi.generated.ts
+        - web/src/chain/price.ts
     envVars:
       - key: ALLOWED_ORIGINS
         value: https://covenant-uhi11.vercel.app,http://localhost:3000,http://127.0.0.1:3000
       - key: MAX_CHAINS
         value: "4"
+      # The relayer's own key, set as a secret in Render, never in this file
+      - key: RELAYER_PRIVATE_KEY
+        sync: false

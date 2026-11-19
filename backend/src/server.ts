@@ -9,6 +9,7 @@ import { Playground, SESSION_ID, type Session } from "./playground/pool";
 import { readRecords } from "./playground/records";
 import { proxy } from "./playground/rpc";
 import { BaseSepoliaReader } from "./readcache/proxy";
+import { Relayer } from "./relay/relayer";
 
 export function createBackend(config = loadConfig(), log = (line: string) => console.log(`${new Date().toISOString()} ${line}`)) {
   const records = readRecords(config.records);
@@ -27,6 +28,8 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
   // The shared Base Sepolia reader, and how fast one address may call it (a browser paces itself at 12 a second).
   const reader = new BaseSepoliaReader({ upstream: config.baseSepoliaRpc, rate: config.readRate, maxWaitMs: config.readMaxWaitMs });
   const reads = new Buckets(40, 160);
+  // Real Base Sepolia transactions for visitors without a wallet, from the backend's own key; off without one.
+  const relayer = new Relayer({ key: config.relayerKey, rpc: config.baseSepoliaRpc, records: config.records, dailyEth: config.relayDailyEth, dripEth: config.dripEth, dripTokens: config.dripTokens });
   const started = Date.now();
 
   const describe = (s: Session, resumed: boolean, expired: boolean) => ({
@@ -82,6 +85,13 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     if (s && req.method === "DELETE" && !s[2]) {
       await playground.close(s[1], "closed by its visitor");
       return json(res, 200, { ok: true });
+    }
+    if (req.method === "GET" && path === "/v1/relay") return json(res, 200, await relayer.status());
+    const relay = path.match(/^\/v1\/relay\/([A-Za-z]+)$/);
+    if (relay && req.method === "POST") {
+      const body = await readBody(req, 10_000);
+      const out = await relayer.handle(relay[1], body, ip);
+      return json(res, 200, { ...out, explorer: `https://sepolia.basescan.org/tx/${out.hash}` });
     }
     if (req.method === "POST" && path === "/rpc/base-sepolia") {
       if (!reads.take(ip)) throw new HttpError(429, "Too many reads from this address; call the network directly.", { "retry-after": "1" });
