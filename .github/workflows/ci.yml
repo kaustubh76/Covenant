@@ -43,7 +43,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           # The README's minimum.
-          node-version: 20
+          node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
       - name: Unit tests, then the guided demo and the attack lab on a local chain
