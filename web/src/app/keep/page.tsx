@@ -22,6 +22,7 @@ import { useBalances } from "@/lib/useBalances";
 import { actorFor, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
+import { RelayButton } from "@/components/controls/RelayButton";
 
 const fallPct = (ticks: number) => `${((1 - Math.exp(-ticks * LN_BASE)) * 100).toFixed(0)}%`;
 /** Who restores in a simulation when no wallet is connected: any address will do, nothing is sent. */
@@ -221,6 +222,7 @@ export default function KeepPage() {
                     ? "Nothing to restore"
                     : "Call restore anyway"}
             </SendButton>
+            {plan?.pre.ok && <RelayButton action="restore" title="Restore support" body={{ indices: [...plan.indices].sort((a, b) => a - b) }} className="mt-2 w-full" />}
             <p className="mt-2 text-center text-xs text-faint">
               {!g.ok
                 ? "The guard is tripped: restore will revert until the price settles."
@@ -276,6 +278,7 @@ export default function KeepPage() {
             <Button className="mt-4 w-full" variant="ghost" onClick={poke} disabled={!!busy}>
               Call poke()
             </Button>
+            <RelayButton action="poke" title="Sync the Anchor (poke)" className="mt-2 w-full" />
           </Panel>
         </div>
       </div>

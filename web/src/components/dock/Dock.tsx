@@ -25,6 +25,7 @@ import { must, send } from "@/chain/tx";
 import { Button } from "@/components/ui";
 import { duration, price } from "@/lib/format";
 import { ROLES, type Role, actorFor, useChain } from "@/store/chain";
+import { useRelay } from "@/lib/useRelay";
 
 const moveDetail = (before: number, after: number) => {
   const d = after - before;
@@ -44,6 +45,9 @@ export function Dock() {
   const savePoint = useChain((s) => s.savePoint);
   const backToSavePoint = useChain((s) => s.backToSavePoint);
   const dev = useChain((s) => s.net?.caps.devChain ?? true);
+  const wallet = useChain((s) => s.wallet);
+  const relayer = useRelay();
+  const viaRelay = !wallet && relayer.enabled;
   const [size, setSize] = useState("5");
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -131,8 +135,13 @@ export function Dock() {
             title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}
           >
             <Seg>
-              <Btn onClick={() => sell(1)}>Sell 1</Btn>
-              <Btn onClick={() => move(1)}>Buy +1%</Btn>
+              {/* With no wallet, the backend's relayer makes these two small trades when it is on. */}
+              <Btn onClick={() => (viaRelay ? void relayer.send("sell", `Market sells 1 ${sym}`) : sell(1))} title={viaRelay ? "Sent by Covenant's backend: no wallet needed" : undefined}>
+                Sell 1
+              </Btn>
+              <Btn onClick={() => (viaRelay ? void relayer.send("buy", `Market buys ${sym} up 1%`) : move(1))} title={viaRelay ? "Sent by Covenant's backend: no wallet needed" : undefined}>
+                Buy +1%
+              </Btn>
             </Seg>
           </Labeled>
         </Bar>

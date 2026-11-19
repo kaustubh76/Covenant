@@ -6,6 +6,7 @@ import { ChevronDown, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import { parseEther } from "viem";
 import { shortAddress } from "@/chain/accounts";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { NETWORKS, type NetworkKey, explorerTx, isNetworkKey } from "@/chain/network";
@@ -14,6 +15,7 @@ import { ROLES, type Role, useChain } from "@/store/chain";
 import { Dock } from "@/components/dock/Dock";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
+import { useRelay } from "@/lib/useRelay";
 
 const NAV = [
   { href: "/vault", label: "Vault" },
@@ -139,6 +141,25 @@ function WalletControl() {
   const connectWallet = useChain((s) => s.connectWallet);
   const disconnectWallet = useChain((s) => s.disconnectWallet);
   const switchWalletChain = useChain((s) => s.switchWalletChain);
+  const ctx = useChain((s) => s.ctx);
+  const busy = useChain((s) => s.busy);
+  const relay = useRelay();
+  // A wallet on Base Sepolia with almost no ETH can ask the backend for test funds (the relayer's drip).
+  const [low, setLow] = useState(false);
+  useEffect(() => {
+    if (!wallet || !ctx || net?.key !== "base-sepolia" || wallet.chainId !== net.chainId) {
+      setLow(false);
+      return;
+    }
+    let live = true;
+    ctx.pub
+      .getBalance({ address: wallet.address })
+      .then((b) => live && setLow(b < parseEther("0.002")))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [wallet, ctx, net]);
   // Dev chains (the local one, the Playground) sign with their own keys: there is no wallet to connect.
   if (!netKey || NETWORKS[netKey].caps.devChain) return null;
   if (!wallet) {
@@ -157,6 +178,12 @@ function WalletControl() {
     );
   }
   return (
+    <>
+      {low && relay.enabled && (
+        <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => void relay.send("drip", "Test funds for your wallet", { to: wallet.address }).then(() => setLow(false))} title="Covenant's backend sends this wallet a little Base Sepolia ETH and some of the vault's token, once a day">
+          Get test funds
+        </Button>
+      )}
     <button
       onClick={disconnectWallet}
       title={`${wallet.name} · ${wallet.address}. Click to disconnect.`}
@@ -165,6 +192,7 @@ function WalletControl() {
       <Dot tone="pass" />
       {shortAddress(wallet.address)}
     </button>
+    </>
   );
 }
 

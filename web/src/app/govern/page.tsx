@@ -14,6 +14,7 @@ import { Button, Meter, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration } from "@/lib/format";
 import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
+import { RelayButton } from "@/components/controls/RelayButton";
 
 const POWERS: [string, boolean[]][] = [
   ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
@@ -213,6 +214,7 @@ export default function GovernPage() {
               Curator claims
             </Button>
           </div>
+          <RelayButton action="collectFees" title="Collect fees" className="mt-3" />
           <p className="mt-3 text-xs leading-relaxed text-faint">Fees are realized whenever a range is touched. Trade in the bar below, then collect, to see them arrive.</p>
         </Panel>
       </div>
