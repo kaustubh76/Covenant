@@ -2,7 +2,7 @@
 
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ChevronDown, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
+import { ChevronDown, Droplet, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -80,7 +80,8 @@ function RoleSwitcher() {
   };
   return (
     <label className={clsx("relative flex h-9 items-center gap-2 rounded-md border border-line-strong pl-3 pr-8 text-[13px] text-ink hover:border-muted", busy && "opacity-50")}>
-      <span className="hidden text-faint sm:inline">Acting as</span>
+      {/* the prefix only where the bar has room for it beside the nav, the network and a wallet */}
+      <span className="hidden text-faint min-[1360px]:inline">Acting as</span>
       <span className="font-medium">{ROLES.find((r) => r.key === role)?.name}</span>
       <ChevronDown size={14} className="pointer-events-none absolute right-2.5 text-faint" />
       {/* Not while an action runs: the action was asked for as the role chosen when it was clicked. */}
@@ -180,8 +181,17 @@ function WalletControl() {
   return (
     <>
       {low && relay.enabled && (
-        <Button size="sm" variant="secondary" disabled={!!busy} onClick={() => void relay.send("drip", "Test funds for your wallet", { to: wallet.address }).then(() => setLow(false))} title="Covenant's backend sends this wallet a little Base Sepolia ETH and some of the vault's token, once a day">
-          Get test funds
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={!!busy}
+          onClick={() => void relay.send("drip", "Test funds for your wallet", { to: wallet.address }).then(() => setLow(false))}
+          title="Covenant's backend sends this wallet a little Base Sepolia ETH and some of the vault's token, once a day"
+          aria-label="Get test funds"
+        >
+          {/* Icon only at every width: the top bar stops widening at 1320 px, and beside the network, the wallet and the
+              role the words would push the last nav links out of it. The title and aria-label say what it does. */}
+          <Droplet size={14} strokeWidth={1.8} className="text-accent" />
         </Button>
       )}
     <button
@@ -239,7 +249,8 @@ function TopBar() {
           <Seal className="h-[22px] w-[22px] text-accent" />
           <span className="display text-[22px] leading-none">Covenant</span>
         </Link>
-        <nav className="scroll-x hidden min-w-0 flex-1 items-center gap-1 lg:flex" aria-label="Main">
+        {/* From xl: below it, with a wallet connected, the network, the wallet and the role leave the nav too little room. */}
+        <nav className="scroll-x hidden min-w-0 flex-1 items-center gap-1 xl:flex" aria-label="Main">
           {NAV.map((n) => (
             <Link
               key={n.href}
@@ -262,7 +273,7 @@ function TopBar() {
           </div>
         </div>
       </div>
-      <nav className="scroll-x flex items-center gap-1 border-t border-line px-3 py-1.5 lg:hidden" aria-label="Main">
+      <nav className="scroll-x flex items-center gap-1 border-t border-line px-3 py-1.5 xl:hidden" aria-label="Main">
         {NAV.map((n) => (
           <Link
             key={n.href}

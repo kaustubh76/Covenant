@@ -131,7 +131,8 @@ export function Dock() {
           <Labeled label="Chain">{readout}</Labeled>
           <Divider />
           <Labeled
-            label="Market"
+            // said on the face, not only in a tooltip a touch screen never shows
+            label={viaRelay ? "Market · via backend" : "Market"}
             title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}
           >
             <Seg>

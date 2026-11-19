@@ -38,7 +38,8 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
   return (
     <>
       {/* ---------------------------------------------------------------- hero */}
-      <section className="relative -mt-[104px] overflow-hidden pt-[104px] lg:-mt-14 lg:pt-14">
+      {/* under the header: its bar and, below xl, its tab row (AppShell) */}
+      <section className="relative -mt-[104px] overflow-hidden pt-[104px] xl:-mt-14 xl:pt-14">
         <FluidField className="h-[1040px]" />
         <Container className="relative">
           <div className="mx-auto flex max-w-5xl flex-col items-center pb-14 pt-20 text-center md:pt-28">

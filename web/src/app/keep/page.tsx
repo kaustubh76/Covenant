@@ -23,6 +23,7 @@ import { actorFor, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { RelayButton } from "@/components/controls/RelayButton";
+import { useRelay } from "@/lib/useRelay";
 
 const fallPct = (ticks: number) => `${((1 - Math.exp(-ticks * LN_BASE)) * 100).toFixed(0)}%`;
 /** Who restores in a simulation when no wallet is connected: any address will do, nothing is sent. */
@@ -42,6 +43,9 @@ export default function KeepPage() {
   // Restore and poke are open to anyone: on a public chain that is the connected wallet (see partyFor).
   const party = partyFor(role, v, net);
   const publicChain = !!net && !net.caps.devChain;
+  // With no wallet and the relayer on, "Have the backend send it" is the live way to restore: it leads, and the send
+  // button (which can only ask for a wallet then) steps back.
+  const relayLeads = useRelay().enabled && !wallet;
   const bal = useBalances(actor);
   // Each result is kept with the vault it was worked out for: switching vaults never draws one vault's plan on another's
   // ranges, and a simulation's answer goes with it.
@@ -206,11 +210,12 @@ export default function KeepPage() {
               <Row label="Your balance">{bal ? `${amt(bal.quote)} ETH` : publicChain && !wallet ? "Connect a wallet" : "…"}</Row>
             </div>
 
+            {plan?.pre.ok && <RelayButton action="restore" title="Restore support" body={{ indices: [...plan.indices].sort((a, b) => a - b) }} className="mt-5 w-full" prominent />}
             <SendButton
               verb="restore"
               gate={!!plan?.pre.ok}
-              variant={plan?.pre.ok ? "primary" : "secondary"}
-              className="mt-5 w-full"
+              variant={plan?.pre.ok && !relayLeads ? "primary" : "secondary"}
+              className={plan?.pre.ok && relayLeads ? "mt-2 w-full" : "mt-5 w-full"}
               onClick={restore}
               disabled={!!busy || (publicChain && !plan?.pre.ok)}
             >
@@ -222,7 +227,6 @@ export default function KeepPage() {
                     ? "Nothing to restore"
                     : "Call restore anyway"}
             </SendButton>
-            {plan?.pre.ok && <RelayButton action="restore" title="Restore support" body={{ indices: [...plan.indices].sort((a, b) => a - b) }} className="mt-2 w-full" />}
             <p className="mt-2 text-center text-xs text-faint">
               {!g.ok
                 ? "The guard is tripped: restore will revert until the price settles."
