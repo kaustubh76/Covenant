@@ -1,5 +1,6 @@
 # Covenant's backend on Render: Playground chains with real writes (backend/). The web app stays on Vercel.
-# This Blueprint creates the service; the relayer's key (RELAYER_PRIVATE_KEY) is then set as a secret in Render, never here.
+# This Blueprint creates the service. The relayer's key (RELAYER_PRIVATE_KEY) is a secret: the dashboard asks for it when
+# the Blueprint is applied (sync: false), and it is never written here. Without it the relayer stays off.
 services:
   - type: web
     name: covenant-backend
@@ -26,3 +27,5 @@ services:
         value: https://covenant-uhi11.vercel.app,http://localhost:3000,http://127.0.0.1:3000
       - key: MAX_CHAINS
         value: "4"
+      - key: RELAYER_PRIVATE_KEY
+        sync: false

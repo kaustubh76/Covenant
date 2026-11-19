@@ -1,6 +1,7 @@
 # Covenant backend
 
-The service behind the app's **Playground**, and a shared reader for Base Sepolia's history. Each visitor gets a private chain: an Anvil loaded from the same seeded
+The service behind the app's **Playground**, a shared reader for Base Sepolia's history, and a small relayer that sends
+a few fixed actions on Base Sepolia for visitors without a wallet. Each visitor gets a private chain: an Anvil loaded from the same seeded
 launch as `make demo`. Every button in the app sends real transactions to it. A visitor can act as any role, trade, move
 the clock, run the attack lab and reset, all without a wallet and without touching Base Sepolia.
 
@@ -17,6 +18,8 @@ It runs on Render from the repository's `Dockerfile` (see `render.yaml`); the we
 | `DELETE /v1/playground/sessions/:id` | Stop the chain |
 | `POST /rpc/play/:id` | JSON-RPC to that chain, single or batched, through an allowlist |
 | `POST /rpc/base-sepolia` | The shared Base Sepolia reader: read-only JSON-RPC, cached and paced (below) |
+| `GET /v1/relay` | Whether the relayer is set up, its address and balance, today's spend and budget, and its actions |
+| `POST /v1/relay/:action` | Send one of the relayer's actions (below) on a recorded vault. Returns the hash and a Basescan link |
 
 ## The Base Sepolia reader
 
@@ -32,6 +35,31 @@ has their own rate budget at the public endpoint, and pooling them behind one ad
 - **Writes are refused,** including `eth_sendRawTransaction`: wallets send through their own RPC.
 - **The upstream** is `BASE_SEPOLIA_RPC_URL`, the public endpoint by default. A keyed provider can go there as a Render
   secret; it is never logged or returned.
+
+## The relayer
+
+Visitors on Base Sepolia without a wallet, or without the role an action needs, can have the backend send it. It signs
+with its own key, `RELAYER_PRIVATE_KEY`; without one, `/v1/relay` reports it off and the app hides its buttons.
+
+- **Actions,** each on one of the recorded vaults (`{ "vault": "0x…" }`). The caller never supplies calldata:
+  - `poke` and `collectFees`;
+  - `restore` with `indices`, the ranges to put back;
+  - `sell`, one token into the pool;
+  - `buy`, up to 0.003 ETH, with a price limit 100 ticks above spot;
+  - `drip` with `to`, test funds for a wallet: `RELAY_DRIP_ETH` and `RELAY_DRIP_TOKENS` of the vault's token.
+- **Simulated first.** Each transaction is simulated just before it is sent; one that would revert is not sent, and the
+  caller gets 409 with the reason.
+- **Limits:**
+  - 10 actions an hour per address, and 20 trades an hour across everyone;
+  - one drip a day per wallet and per address;
+  - `RELAY_DAILY_ETH` a day in all, then 503 until the next day (UTC);
+  - a floor of 0.005 ETH, counting what is still in flight.
+- **Refused:**
+  - a key that is the deployer's, or a vault's issuer, curator or treasury;
+  - a trade while the price is more than half the guard away from its average.
+- **The key** is never logged or returned. Fund the account with `npm run relayer:fund -- --new` in `web/`: it creates
+  the key in the repository's `.env` and tops it up from `PRIVATE_KEY` to 0.05 ETH and 50 of each launch's token.
+  Running it again sends only the shortfall. On Render the key is a secret, set in the dashboard.
 
 ## Safety
 
@@ -75,3 +103,7 @@ one second per block, as the local chain runs; otherwise the TWAP oracle would s
 | `BASE_SEPOLIA_RPC_URL` | `https://sepolia.base.org` | the reader's upstream; may carry a key |
 | `READ_RATE` | 15 | upstream calls a second, all visitors together |
 | `READ_MAX_WAIT_MS` | 4000 | longer than this, the caller is told to read directly |
+| `RELAYER_PRIVATE_KEY` | none | the relayer's own key, with or without 0x; without it the relayer is off. A secret |
+| `RELAY_DAILY_ETH` | 0.02 | the relayer's spend a day, gas and drips together |
+| `RELAY_DRIP_ETH` | 0.002 | ETH per drip |
+| `RELAY_DRIP_TOKENS` | 2 | the vault's token per drip |

@@ -17,7 +17,8 @@
     "demo": "tsx scripts/demo.ts",
     "fork": "tsx scripts/fork.ts",
     "launch": "tsx scripts/launch-public.ts",
-    "proof": "tsx scripts/proof-public.ts"
+    "proof": "tsx scripts/proof-public.ts",
+    "relayer:fund": "tsx scripts/fund-relayer.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
