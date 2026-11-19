@@ -224,10 +224,10 @@ It needs Foundry (`forge`, `anvil`) and Node 22.14 or newer (24 recommended, as 
 | Page | What it does on-chain |
 |---|---|
 | Vault | the vault's live state from `CovenantLens`, the rule rail, positions, fees and events |
-| Launch | create a vault with chosen terms, verify it with `verifyLaunch`, bid in the CCA, migrate, adopt and seed |
+| Launch | create a vault with chosen terms, verify it with `verifyLaunch`, draft the CCA's order book (add, remove and reprice bids, placed lowest first), migrate, adopt and seed; an undersold auction leaves tokens the treasury sweeps (`sweepUnsoldTokens`), once |
 | Curate | an editor for cuts and legs; every edit is simulated with `eth_simulateV1`, so the verdict and the drawn layout are the contract's own |
 | Keep | restore with a pre-flighted bounty; a crash button that finds the smallest sell-off that strands support |
-| Provide, Govern | deposits and exits in kind, fee claims, the curator timelock, the issuer transfer |
+| Provide, Govern | deposits and exits in kind, fee claims, and any address's position watched (`?watch=0x…`) with its exit simulated as it; the curator timelock, the issuer transfer, and a replaced curator's claim on the fees it booked in office |
 | Attack lab | all 20 attacks from the Solidity suite as real transactions, each in its own snapshot |
 | Guided demo | the spec's 10 steps (`LaunchToRelease.t.sol`) as real transactions, rewindable step by step |
 
