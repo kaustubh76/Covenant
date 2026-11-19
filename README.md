@@ -18,6 +18,12 @@ The full product spec is in [`docs/SPEC.md`](docs/SPEC.md) and the execution flo
 
 **The app, live on Base Sepolia: https://covenant-uhi11.vercel.app.** Nothing to install, and no wallet needed to look around. Every reshape drawn on Curate is simulated against the live vault, so the verdict shown is the contract's own. Keep simulates the smallest sell-off that would strand support. Connect a wallet to act.
 
+**No wallet? Open the Playground** from the bar under the top bar. It is your own private chain on Covenant's backend,
+loaded with the demo's launch, where every button sends a real transaction: act as any role, trade, move the clock,
+run all 20 attacks, then reset. On Base Sepolia itself, a visitor without a wallet can also have the backend send a few
+fixed actions: a poke, a fee collection, a restore when support has lapsed, a small trade, or test funds for a new wallet
+([Backend](#backend)).
+
 ![The live CVNT vault on Base Sepolia](docs/img/vault.jpg)
 
 **The live proof.** On 2026-11-17, Covenant's rules were exercised as real transactions against the launched CVNT vault (`make proof-sepolia`; the record is [`deployments/84532.proof.json`](deployments/84532.proof.json)). The runner simulated the whole plan before sending anything, the crash included.
@@ -234,6 +240,23 @@ make web-test    # unit tests, then the demo and attack lab against a dedicated 
 cd web && npm run test:fork   # the public-chain code path, and all three proof runners, on fresh forks of Base Sepolia (needs network)
 ```
 
+### Backend
+
+The hosted app on Vercel calls a small service on Render, built from the root `Dockerfile` (code in [`backend/`](backend/README.md)).
+It runs at https://covenant-backend-tozj.onrender.com (`/healthz`, `/v1/info`, `/v1/relay`):
+
+- **Playground chains.** One private Anvil per visitor, loaded from the same seeded launch as `make demo`
+  (`npm run playground:seed` in `web/`). JSON-RPC goes through an allowlist; chains stop after 10 idle minutes.
+- **A Base Sepolia reader.** The activity feed's history (logs, receipts, blocks) is fetched once and served to every
+  visitor from a cache, paced under the public endpoint's rate limit. Reads of the chain's head stay in the browser.
+- **A relayer** with its own funded key (`npm run relayer:fund` in `web/`): poke, collect fees, restore, sell 1, buy
+  +1%, and test funds. Each is simulated before it is sent, under per-address limits and a daily budget; the caller never
+  supplies calldata.
+
+It is on Render's free plan, which sleeps after 15 idle minutes; the first visit after that waits about a minute while
+it wakes, and the app says so. Locally, `npm run dev` in `backend/` and `COVENANT_BACKEND_URL=http://localhost:8080` for
+the app.
+
 ### Repository
 
 ```
@@ -249,6 +272,7 @@ test/fork       the same launch against Uniswap's deployed Base Sepolia contract
 test/prototype  the original prototype, kept unmodified (imports only) as the baseline for the proof of concept
 script/         Deploy.s.sol (Base Sepolia), LocalStack.s.sol (local Anvil), base/CovenantDeployer.sol, tokens/LaunchToken.sol, config/84532.json
 web/            the demo app: src/chain is the contract layer, src/app the pages, scripts/ the chain bring-ups and launch runner
+backend/        the hosted app's service on Render: Playground chains, the Base Sepolia reader, the relayer
 docs/           SPEC.md (the product spec), ARCHITECTURE.md, SECURITY.md, flow diagram, prototype archive
 ```
 
