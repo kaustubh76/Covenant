@@ -11,7 +11,7 @@ From the repository root:
 make demo
 ```
 
-It needs Foundry (`forge`, `anvil`) and Node 20 or newer. In a few seconds it does the following:
+It needs Foundry (`forge`, `anvil`) and Node 22.14 or newer (24 recommended, as in `.nvmrc`). In a few seconds it does the following:
 
 1. Starts Anvil on `127.0.0.1:8545` with a deterministic setup: a fixed genesis time, one second per block and no
    fees.

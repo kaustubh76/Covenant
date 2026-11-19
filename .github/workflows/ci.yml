@@ -42,7 +42,7 @@ jobs:
           version: v1.1.0
       - uses: actions/setup-node@v4
         with:
-          # The README's minimum.
+          # The README asks for 22.14 or newer; CI builds on the LTS.
           node-version: 24
           cache: npm
           cache-dependency-path: web/package-lock.json
