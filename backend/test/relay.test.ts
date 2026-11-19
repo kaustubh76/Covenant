@@ -1,5 +1,6 @@
 // The relayer's rules, with stand-in chain clients: nothing here touches a network.
 
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { type Hex, parseEther } from "viem";
 import { describe, expect, it } from "vitest";
@@ -10,7 +11,7 @@ const HASH = `0x${"ab".repeat(32)}` as Hex;
 const ME = "0x00000000000000000000000000000000000000a1";
 
 /** Chain clients that answer every read, pass every simulation unless told otherwise, and mine every send. */
-function clients(o: { revert?: string } = {}) {
+function clients(o: { revert?: string; me?: string; curator?: string; twap?: number } = {}) {
   const sent: string[] = [];
   const pub = {
     simulateContract: async (c: { functionName: string }) => {
@@ -19,13 +20,22 @@ function clients(o: { revert?: string } = {}) {
     },
     readContract: async (c: { functionName: string }) => {
       if (c.functionName === "allowance") return 0n;
-      return { key: { currency0: "0x0000000000000000000000000000000000000000", currency1: "0x1", fee: 3000, tickSpacing: 60, hooks: "0x2" }, quoteIsCurrency0: true, spotPrice: -88_000 };
+      if (c.functionName === "treasury") return "0x00000000000000000000000000000000000000f1";
+      return {
+        key: { currency0: "0x0000000000000000000000000000000000000000", currency1: "0x1", fee: 3000, tickSpacing: 60, hooks: "0x2" },
+        quoteIsCurrency0: true,
+        spotPrice: -88_000,
+        twapPrice: o.twap ?? -88_010,
+        terms: { guardTicks: 300 },
+        issuer: "0x00000000000000000000000000000000000000e1",
+        curator: o.curator ?? "0x00000000000000000000000000000000000000c1",
+      };
     },
     waitForTransactionReceipt: async () => ({ status: "success", gasUsed: 50_000n, effectiveGasPrice: 1_000_000n }),
     getBalance: async () => parseEther("0.05"),
   };
   const wallet = {
-    account: { address: ME },
+    account: { address: o.me ?? ME },
     writeContract: async (c: { functionName: string }) => (sent.push(c.functionName), HASH),
     sendTransaction: async () => (sent.push("transfer"), HASH),
   };
@@ -88,5 +98,54 @@ describe("the relayer", () => {
     const r = relayer(clients(), { dailyEth: 0.003 });
     await expect(r.handle("drip", JSON.stringify({ to: "0x00000000000000000000000000000000000000b4" }), "5.5.5.5")).resolves.toBeTruthy();
     await expect(r.handle("buy", "", "5.5.5.6")).rejects.toMatchObject({ status: 503 });
+  });
+
+  it("cannot be raced: ten parallel drips from one caller send one", async () => {
+    const c = clients();
+    const r = relayer(c);
+    const tries = Array.from({ length: 10 }, (_, i) => r.handle("drip", JSON.stringify({ to: `0x00000000000000000000000000000000000001${String(i).padStart(2, "0")}` }), "4.4.4.4"));
+    const results = await Promise.allSettled(tries);
+    expect(results.filter((x) => x.status === "fulfilled")).toHaveLength(1);
+  });
+
+  it("holds its budget against parallel callers too", async () => {
+    const r = relayer(clients(), { dailyEth: 0.006 });
+    const tries = Array.from({ length: 6 }, (_, i) => r.handle("drip", JSON.stringify({ to: `0x00000000000000000000000000000000000002${String(i).padStart(2, "0")}` }), `3.3.3.${i}`));
+    const ok = (await Promise.allSettled(tries)).filter((x) => x.status === "fulfilled");
+    expect(ok).toHaveLength(2); // 0.0024 reserved each: two fit in 0.006, a third would not
+  });
+
+  it("refuses to run from the deployer's key or from any vault role's", async () => {
+    const deployer = JSON.parse(readFileSync(resolve(RECORDS, "84532.json"), "utf8")).deployer as string;
+    expect(relayer(clients({ me: deployer })).enabled).toBe(false);
+    const asCurator = relayer(clients({ curator: ME }));
+    await expect(asCurator.handle("poke", "", "1.1.1.1")).rejects.toMatchObject({ status: 503 });
+    await expect(asCurator.status()).resolves.toMatchObject({ enabled: false });
+  });
+
+  it("will not trade while spot is already half a guard from its average", async () => {
+    await expect(relayer(clients({ twap: -88_200 })).handle("buy", "", "2.2.2.2")).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("caps relayed trades across every caller", async () => {
+    const r = relayer(clients(), { dailyEth: 1 });
+    for (let i = 0; i < 20; i++) await r.handle("poke", "", `10.0.0.${i}`); // pokes are not trades
+    for (let i = 0; i < 20; i++) await r.handle("buy", "", `10.1.0.${i}`);
+    await expect(r.handle("buy", "", "10.2.0.1")).rejects.toMatchObject({ status: 429 });
+  });
+
+  it("fails closed when the key's roles cannot be checked, and checks again next time", async () => {
+    const c = clients();
+    let failing = true;
+    const read = (c.clients as unknown as { pub: { readContract: (x: { functionName: string }) => Promise<unknown> } }).pub;
+    const real = read.readContract;
+    read.readContract = async (x) => {
+      if (failing && x.functionName === "snapshot") throw new Error("rpc down");
+      return real(x);
+    };
+    const r = relayer(c);
+    await expect(r.handle("poke", "", "1.2.3.4")).rejects.toMatchObject({ status: 503 });
+    failing = false;
+    await expect(r.handle("poke", "", "1.2.3.4")).resolves.toMatchObject({ status: "success" });
   });
 });
