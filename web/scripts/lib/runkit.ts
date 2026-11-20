@@ -107,15 +107,18 @@ export function runKit<K extends string>(o: { path: string; record: RunRecord<K>
    * A step the contracts must refuse, put on chain anyway so the refusal is the chain's own: pre-flighted first, and
    * sent only if the pre-flight fails with one of `expect` (anything else stops the run with nothing sent). It goes out
    * with a gas limit from a simulation, since an estimate of a revert fails, and its error is decoded by replaying it
-   * in its own block. `retry` names pre-flight errors that mean "not yet" rather than "wrong": the step waits on them.
+   * in its own block. One that an earlier run sent and that settled stops the run: the contract accepted what it should
+   * have refused, and that is for a person to look at, not something to send again.
    */
-  const refuse = async (
-    key: K,
-    a: Attempt & { expect: string | string[]; detail?: (e: DecodedError) => string; ready?: (e: DecodedError | undefined) => boolean },
-  ): Promise<RunStep> => {
+  const refuse = async (key: K, a: Attempt & { expect: string | string[]; detail?: (e: DecodedError) => string }): Promise<RunStep> => {
     const done = p.steps[key];
     if (done) return done;
     const expect = Array.isArray(a.expect) ? a.expect : [a.expect];
+    const earlier = p.pending?.[key];
+    if (earlier) {
+      const r = await ctx.pub.getTransactionReceipt({ hash: earlier }).catch(() => null);
+      if (r?.status === "success") throw new Error(`${key} (${a.title}) was meant to be refused, but ${link(earlier)} settled. Nothing more was sent.`);
+    }
     let receipt = await landed(key, "reverted");
     if (!receipt) {
       const from = signerOf(a.ctx);
@@ -204,11 +207,11 @@ export async function replayTx(ctx: ChainCtx, hash: Hex, describe: DescribeConte
 }
 
 /** A call's gas as the chain would use it (reverting or not), with room to spare, for sending it unestimated. */
-export async function gasOf(ctx: ChainCtx, from: Address, call: { address: Address; abi: Abi | readonly unknown[]; functionName: string; args: readonly unknown[] }): Promise<bigint> {
+export async function gasOf(ctx: ChainCtx, from: Address, call: { address: Address; abi: Abi | readonly unknown[]; functionName: string; args: readonly unknown[]; value?: bigint }): Promise<bigint> {
   const latest = await ctx.pub.getBlock({ blockTag: "latest" });
   const [block] = (await ctx.pub.simulateBlocks({
     blockNumber: latest.number,
-    blocks: [{ blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n }, calls: [{ account: from, to: call.address, abi: call.abi, functionName: call.functionName, args: call.args }] }],
+    blocks: [{ blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n }, calls: [{ account: from, to: call.address, abi: call.abi, functionName: call.functionName, args: call.args, value: call.value }] }],
   } as never)) as unknown as { calls: { gasUsed: bigint }[] }[];
   return (block.calls[0].gasUsed * 3n) / 2n + 100_000n;
 }

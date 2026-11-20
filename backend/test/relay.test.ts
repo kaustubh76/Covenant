@@ -91,6 +91,13 @@ describe("the relayer", () => {
     expect(c.sent).toEqual(["poke"]);
   });
 
+  it("caps attempts per address, refused ones included", async () => {
+    const r = relayer(clients({ revert: "restore" }));
+    for (let i = 0; i < 20; i++) await expect(r.handle("restore", JSON.stringify({ indices: [0] }), "5.5.5.5")).rejects.toMatchObject({ status: 409 });
+    await expect(r.handle("restore", JSON.stringify({ indices: [0] }), "5.5.5.5")).rejects.toMatchObject({ status: 429 });
+    await expect(r.handle("restore", JSON.stringify({ indices: [0] }), "4.4.4.4")).rejects.toMatchObject({ status: 409 });
+  });
+
   it("names the vaults it serves in its status", async () => {
     const s = await relayer().status();
     expect(s).toMatchObject({ enabled: true });

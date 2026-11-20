@@ -142,6 +142,7 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     reads.prune();
     looks.prune();
     resets.prune();
+    relayer.prune();
   }, 30_000);
   timer.unref();
 

@@ -11,7 +11,7 @@ import { useChain } from "@/store/chain";
 
 /**
  * One status per backend, shared by every button on the page. A backend that does not answer is asleep: it is asked
- * again with backoff (10 s, 20 s, 40 s, then every minute, for about five minutes) and the buttons say it is waking
+ * again with backoff (10 s, 20 s, 40 s, then every minute, nine tries over about seven minutes) and the buttons say it is waking
  * meanwhile, rather than vanishing until a reload.
  */
 const answers = new Map<string, RelayStatus>();

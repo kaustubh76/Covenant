@@ -467,8 +467,8 @@ export async function runLifecycleProof(o: LifecycleProofOptions): Promise<Lifec
 
   // An outside LP joins: tokens and ETH from the issuer first.
   await view();
-  const lpTokens = parseEther(((v.principal.token + v.idle.token) * 0.1 * 1.5 + 1).toFixed(18));
-  const lpEth = parseEther(((v.principal.quote + v.idle.quote) * 0.1 * 2).toFixed(18)) + 2n * GAS_MONEY;
+  const lpTokens = parseEther((v.principal.token * 0.1 * 1.5 + 1).toFixed(18));
+  const lpEth = parseEther((v.principal.quote * 0.1 * 2).toFixed(18)) + 2n * GAS_MONEY;
   if (!p.steps.lpFunds) {
     const prior = await kit.landed("lpFunds");
     if (prior)

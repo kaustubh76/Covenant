@@ -51,6 +51,8 @@ export interface Ledger {
   vaults: { vault: Address; symbol: string }[];
   txs: LedgerTx[];
   coverage: CoverageRow[];
+  /** The attack lab's cards, so the page names them without loading the attack code. */
+  cards?: { id: string; title: string; who: string; rule: string }[];
   /** Each attack card, with the transactions that played it. */
   attacks: Record<
     string,

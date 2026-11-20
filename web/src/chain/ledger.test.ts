@@ -35,6 +35,7 @@ describe("the ledger", () => {
 
   it("links every attack in the lab to a transaction that played it", () => {
     expect(Object.keys(ATTACK_TXS).sort()).toEqual(ATTACKS.map((a) => a.id).sort());
+    expect(ledger.cards?.map((c) => c.id).sort()).toEqual(ATTACKS.map((a) => a.id).sort());
     const bare = ATTACKS.filter((a) => !ledger.attacks[a.id]?.length).map((a) => a.id);
     expect(bare).toEqual([]);
     const hashes = new Set(ledger.txs.map((t) => t.hash.toLowerCase()));

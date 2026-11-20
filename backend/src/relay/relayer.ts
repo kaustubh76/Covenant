@@ -88,6 +88,11 @@ export class Relayer {
   private readonly launches: Launch[];
   private readonly defaultVault: Address;
   private readonly perIp: Buckets;
+  /**
+   * Every request, sent or refused: refusals give back the sent quota above, but each still costs the shared upstream a
+   * few reads and a simulation, so one address cannot loop them. Twenty at once, then one every ten seconds.
+   */
+  private readonly attempts: Buckets;
   /** Relayed trades across every caller: each moves the shared live vault, so they are capped in total too. */
   private readonly swaps: Buckets;
   private readonly dripped = new Map<string, number>();
@@ -110,6 +115,7 @@ export class Relayer {
     this.launches = runtime.launches;
     this.defaultVault = runtime.defaultVault;
     this.perIp = new Buckets(10 / 3600, 10, o.now);
+    this.attempts = new Buckets(1 / 10, 20, o.now);
     this.swaps = new Buckets(20 / 3600, 20, o.now);
     this.deployer = manifest.deployer ?? null;
     if (o.clients) {
@@ -150,6 +156,15 @@ export class Relayer {
       return "Could not check the relayer key's roles just now. Try again.";
     });
     return this.roles;
+  }
+
+  /** Forget refilled rate buckets and day-old drips, so the maps stay small on a long-running service. */
+  prune(): void {
+    this.perIp.prune();
+    this.swaps.prune();
+    this.attempts.prune();
+    const t = this.now();
+    for (const [k, at] of this.dripped) if (t - at >= 24 * 3600_000) this.dripped.delete(k);
   }
 
   /** The recorded vaults this relayer acts on. */
@@ -210,6 +225,7 @@ export class Relayer {
   async handle(action: string, raw: string, ip: string): Promise<Relayed> {
     if (!this.enabled) throw new HttpError(503, "The relayer is not set up on this backend.");
     if (!(RELAY_ACTIONS as readonly string[]).includes(action)) throw new HttpError(404, `No relay action ${action}.`);
+    if (!this.attempts.take(ip)) throw new HttpError(429, "Too many relay requests from this address. Wait a little.", { "retry-after": "10" });
     let body: { vault?: unknown; to?: unknown; indices?: unknown };
     try {
       body = raw ? (JSON.parse(raw) as typeof body) : {};

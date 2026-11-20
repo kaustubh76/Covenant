@@ -2,7 +2,7 @@
   "network": "Base Sepolia",
   "chainId": 84532,
   "explorer": "https://sepolia.basescan.org",
-  "generatedAt": "2026-11-20T00:53:40.896Z",
+  "generatedAt": "2026-11-20T01:23:41.046Z",
   "generatedAtBlock": 61070581,
   "addresses": {
     "deployer": [
@@ -2668,6 +2668,128 @@
           "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
         }
       ]
+    }
+  ],
+  "cards": [
+    {
+      "id": "curator-withdraw",
+      "title": "Curator withdraws the liquidity",
+      "who": "Curator",
+      "rule": "Access"
+    },
+    {
+      "id": "skim",
+      "title": "Skim 10% while reshaping",
+      "who": "Curator",
+      "rule": "Conservation"
+    },
+    {
+      "id": "softrug",
+      "title": "Soft rug",
+      "who": "Curator",
+      "rule": "Support"
+    },
+    {
+      "id": "manipulate",
+      "title": "Push the price, then act",
+      "who": "Attacker and friends",
+      "rule": "Guard"
+    },
+    {
+      "id": "flash",
+      "title": "Flash round trip to bend the TWAP",
+      "who": "Attacker",
+      "rule": "Oracle"
+    },
+    {
+      "id": "pace",
+      "title": "Restructure the whole vault at once",
+      "who": "Curator",
+      "rule": "Pace"
+    },
+    {
+      "id": "instant-curator",
+      "title": "Swap in a friendly curator",
+      "who": "Issuer and a new curator",
+      "rule": "Pace"
+    },
+    {
+      "id": "fragment",
+      "title": "Gas-grief the vault",
+      "who": "Curator",
+      "rule": "Shape"
+    },
+    {
+      "id": "farm",
+      "title": "Farm the restore bounty",
+      "who": "Keeper",
+      "rule": "Restore"
+    },
+    {
+      "id": "cheap-shares",
+      "title": "Mint shares cheaply",
+      "who": "Outside LP",
+      "rule": "Shares"
+    },
+    {
+      "id": "lp-exit",
+      "title": "An LP exit hurts holders",
+      "who": "Outside LP",
+      "rule": "Shares"
+    },
+    {
+      "id": "big-dump",
+      "title": "Drain the support with a big dump",
+      "who": "Attacker",
+      "rule": "Conservation"
+    },
+    {
+      "id": "issuer-exit",
+      "title": "Issuer exits early",
+      "who": "Issuer",
+      "rule": "Lock"
+    },
+    {
+      "id": "outsider",
+      "title": "Remove the vault's liquidity directly",
+      "who": "Attacker",
+      "rule": "Access"
+    },
+    {
+      "id": "pump-quick",
+      "title": "Pump-ratchet, quick",
+      "who": "Attacker",
+      "rule": "Anchor"
+    },
+    {
+      "id": "pump-patient",
+      "title": "Pump-ratchet, held for four days",
+      "who": "Attacker",
+      "rule": "Anchor"
+    },
+    {
+      "id": "colluding-curator",
+      "title": "A curator chases a pump",
+      "who": "Curator and attacker",
+      "rule": "Anchor"
+    },
+    {
+      "id": "freeze-exits",
+      "title": "Freeze withdrawals",
+      "who": "Attacker",
+      "rule": "Guard"
+    },
+    {
+      "id": "dust-restore",
+      "title": "Restore dust for the bounty",
+      "who": "Keeper",
+      "rule": "Restore"
+    },
+    {
+      "id": "vault-pays",
+      "title": "Make the vault pay for a deposit",
+      "who": "Outside LP",
+      "rule": "Conservation"
     }
   ],
   "attacks": {

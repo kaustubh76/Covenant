@@ -24,6 +24,7 @@ import {
 } from "../src/chain/abi.generated";
 import { CATALOGUE, type CoverageRow, type Ledger, type LedgerRole, type LedgerTx, fnNames } from "../src/chain/ledger";
 import { NETWORKS, type Runtime, parseManifest } from "../src/chain/network";
+import { ATTACKS } from "../src/chain/scenarios/attacks";
 import { ATTACK_TXS, type StoryKey } from "../src/chain/scenarios/onchain";
 import { ROOT, manifestPath, runtimePath } from "./lib/localchain";
 
@@ -281,6 +282,7 @@ async function main() {
     vaults,
     txs,
     coverage,
+    cards: ATTACKS.map((a) => ({ id: a.id, title: a.title, who: a.who, rule: a.rule })),
     attacks,
   };
   const out = join(ROOT, "deployments", `${RECORDS}.ledger.json`);
