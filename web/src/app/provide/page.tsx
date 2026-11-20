@@ -205,15 +205,16 @@ export default function ProvidePage() {
       );
     });
 
-  // A wallet on a public chain starts with ETH only: the token side of a deposit is bought from the pool first. With
-  // none of the token the deposit cannot even be simulated (the transfer fails first), so the need is read from the
-  // vault's own holdings, which a proportional deposit matches exactly; once the wallet holds some, the simulation's.
+  // A wallet on a public chain starts with ETH only, and on a dev chain the issuer and curator hold none of the token
+  // (the launch took all the issuer minted): the token side of a deposit is bought from the pool first. With none of
+  // the token the deposit cannot even be simulated (the transfer fails first), so the need is read from the vault's own
+  // holdings, which a proportional deposit matches exactly; once the payer holds some, the simulation's.
   const tokenNeed = cost ? eth(cost[1]) : v.principal.token * (addPct / 100) * 1.01;
-  const tokenShort = publicChain && bal ? Math.max(0, tokenNeed - bal.token) : 0;
+  const tokenShort = bal ? Math.max(0, tokenNeed - bal.token) : 0;
   const buyShortfall = () =>
     run(`Buy ${amt(tokenShort)} ${sym}`, async (c, rec) => {
       // exact-input: the shortfall plus 2%, at the spot price plus 3% for the pool fee and the price the buy moves
-      if (isAddressParty(party)) return; // a role held by a fixed address (issuer, curator) does not shop for itself
+      if (isAddressParty(party)) return; // a public chain's issuer or curator is a fixed address, not this wallet: it does not shop here
       const ethIn = parseEther((tokenShort * 1.02 * priceAt(v.spot) * 1.03).toFixed(18));
       const o = await swap(c, v, party, true, ethIn);
       rec.record(beatOf(o, actor, `Buy ${sym} for the deposit`, () => `About ${amt(tokenShort * 1.02)} ${sym} for ${amt(eth(ethIn))} ETH`), { toast: true });
@@ -269,11 +270,14 @@ export default function ProvidePage() {
           </SendButton>
           <p className="mt-2 text-center text-xs text-faint">
             {dep && !dep.ok && tokenShort > 0 && dep.error?.name !== "SetupEpoch"
-              ? `The deposit takes ${sym} too, in proportion, and this wallet holds ${amt(bal?.token ?? 0)}: buy the difference, then deposit.`
+              ? `The deposit takes ${sym} too, in proportion, and ${publicChain ? "this wallet" : `the ${name}`} holds ${amt(bal?.token ?? 0)}: buy the difference, then deposit.`
               : dep && !dep.ok
               ? dep.error?.name === "SetupEpoch"
                 ? `Deposits open when the setup epoch ends, in ${duration(v.pace.setupEndsAt - v.time)}.${publicChain ? (otherVaults ? " Another launch may already take them: pick it above." : "") : " Use +1d below."}`
-                : dep.error?.reason
+                : dep.error?.name === "PriceGuard" && devChain
+                  ? // a buy moves spot past the guard: on a dev chain the clock lets the time-weighted price catch up
+                    `${dep.error.reason} Use +1h below.`
+                  : dep.error?.reason
               : tokenShort > 0
                 ? `The deposit takes ${sym} too, in proportion: buy the difference, then deposit.`
                 : publicChain
