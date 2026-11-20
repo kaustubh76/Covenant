@@ -121,6 +121,8 @@ export class Playground {
       limits: this.o.limits,
       height: async () => Number(await rpc<string>(s.chain.url, "eth_blockNumber", [], 5_000)) - s.chain.baseHead,
       memoryMb: () => this.memoryOf(s.chain),
+      // the first six characters only, as every other line here: the whole id is the key to the chain
+      onRefuse: (why) => this.o.log?.(`chain ${s.id.slice(0, 6)} refused ${why}`),
     };
   }
 
@@ -149,7 +151,9 @@ export class Playground {
     await Promise.all([...this.sessions.keys()].map((id) => this.close(id, "shutting down")));
   }
 
-  stats(): { chains: number; starting: number; max: number } {
-    return { chains: this.sessions.size, starting: this.starting, max: this.o.maxChains };
+  /** How many chains run, and each one's resident memory in MB where it can be read (Linux): no ids, nothing else. */
+  stats(): { chains: number; starting: number; max: number; mb?: number[] } {
+    const mb = [...this.sessions.values()].map((s) => this.memoryOf(s.chain)).filter((x): x is number => x !== null).map((x) => Math.round(x));
+    return { chains: this.sessions.size, starting: this.starting, max: this.o.maxChains, ...(mb.length ? { mb } : {}) };
   }
 }

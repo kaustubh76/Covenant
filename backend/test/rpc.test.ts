@@ -107,11 +107,13 @@ describe("the Playground's JSON-RPC allowlist", () => {
 
   it("stops a chain growing once its memory is past the limit, and lets reads and reverts through", async () => {
     let mb: number | null = 120;
-    const meter: Meter = { usage: { held: [] }, limits: { height: 3_000, snapshots: 32, memoryMb: 100 }, height: async () => 10, memoryMb: () => mb };
+    const told: string[] = [];
+    const meter: Meter = { usage: { held: [] }, limits: { height: 3_000, snapshots: 32, memoryMb: 100 }, height: async () => 10, memoryMb: () => mb, onRefuse: (w) => void told.push(w) };
     const s1 = screen(JSON.stringify([{ jsonrpc: "2.0", id: 1, method: "eth_sendRawTransaction", params: ["0x02"] }, { jsonrpc: "2.0", id: 2, method: "evm_snapshot" }, { jsonrpc: "2.0", id: 3, method: "evm_revert", params: ["0x1"] }, { jsonrpc: "2.0", id: 4, method: "eth_call", params: [{}, "latest"] }]));
     await hold(s1.forward, s1.refused, s1.size, meter);
     expect(s1.forward.map((f) => f.method)).toEqual(["evm_revert", "eth_call"]);
     expect(s1.refused.get(0)?.error?.message).toMatch(/^This Playground chain has used the memory one chain may \(100 MB\)\. Reset it to start again/);
+    expect(told).toEqual(["eth_sendRawTransaction: memory 120 MB, past 100", "evm_snapshot: memory 120 MB, past 100"]);
     expect(s1.refused.get(1)?.error?.code).toBe(-32000);
     // where memory cannot be read (macOS), the guard stands aside
     mb = null;

@@ -43,6 +43,8 @@ export interface Meter {
   /** The snapshots the visitor holds, by id, oldest first: taken by evm_snapshot, given back by an evm_revert. */
   usage: { held: bigint[] };
   limits: { height: number; snapshots: number; memoryMb?: number };
+  /** Told of each call refused for going past a limit, for the log. */
+  onRefuse?: (why: string) => void;
 }
 
 /** How many blocks a call mines: anvil_mine's count, evm_mine's (a count in its options object, else one), one per raw transaction. Null when the count is not a number. */
@@ -136,14 +138,17 @@ export async function hold(forward: Request[], refused: Map<number, Reply>, size
     const blocks = blocksOf(String(r.method), r.params) ?? 0;
     if (full && (blocks > 0 || r.method === "evm_snapshot")) {
       refused.set(at[k], refuse(r.id, USED_UP, `This Playground chain has used the memory one chain may (${meter.limits.memoryMb} MB). ${RESET}`));
+      meter.onRefuse?.(`${r.method}: memory ${Math.round(mb!)} MB, past ${meter.limits.memoryMb}`);
       return;
     }
     if (blocks > 0 && height + blocks > meter.limits.height) {
       refused.set(at[k], refuse(r.id, USED_UP, `This Playground chain is ${meter.limits.height} blocks past its seed, as far as one chain may go. ${RESET}`));
+      meter.onRefuse?.(`${r.method}: ${blocks} more blocks at height ${height}, past ${meter.limits.height}`);
       return;
     }
     if (r.method === "evm_snapshot" && held + 1 > meter.limits.snapshots) {
       refused.set(at[k], refuse(r.id, USED_UP, `This Playground chain holds ${meter.limits.snapshots} snapshots and save points, the most one chain may: go back to one of them. ${RESET}`));
+      meter.onRefuse?.(`evm_snapshot: ${held} held, the most is ${meter.limits.snapshots}`);
       return;
     }
     height += blocks;
