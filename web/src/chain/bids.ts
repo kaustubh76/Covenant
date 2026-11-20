@@ -37,10 +37,17 @@ const MAX_BID_ETH = 1e12;
 /** A bid's amount in wei; 0 for anything that is not a positive, payable amount. */
 export const bidWei = (amount: number) => (Number.isFinite(amount) && amount > 0 && amount < MAX_BID_ETH ? parseEther(amount.toFixed(18)) : 0n);
 
+/**
+ * The highest price a draft is placed at, in ETH per token: far beyond any real bid (the auction refuses it with its own
+ * limit), and still finite on the Q96 grid. A typed "1e309" is Infinity, which the grid cannot hold.
+ */
+const MAX_BID_PRICE = 1e30;
+
 /** The grid price a draft is placed at: snapped to the auction's ticks, and never below one tick above the floor. */
 export function placedPrice(price: number, grid: AuctionGrid): bigint {
-  const snapped = snapToAuctionTick(price, grid.floorPrice, grid.auctionTick);
   const lowest = grid.floorPrice + grid.auctionTick;
+  if (!Number.isFinite(price) || price <= 0) return lowest;
+  const snapped = snapToAuctionTick(Math.min(price, MAX_BID_PRICE), grid.floorPrice, grid.auctionTick);
   return snapped < lowest ? lowest : snapped;
 }
 
@@ -86,4 +93,28 @@ export function bidProblems(bids: readonly DraftBid[], grid: AuctionGrid): { blo
   const prices = live.map((b) => placedPrice(b.price, grid));
   const shared = prices.some((p, i) => prices.indexOf(p) !== i);
   return { blocking, warning: shared ? "Two bids share a price: once the first fills the supply there, the next one is refused." : null };
+}
+
+/** A bid as the auction holds it: the grid price it goes up to and the ETH it committed (the CCA's amountQ96 >> 96). */
+export interface PlacedBid {
+  maxPrice: bigint;
+  amount: bigint;
+}
+
+/**
+ * Which drafts are already in the auction: each bid the wallet has there claims the first unclaimed draft at the same
+ * grid price and amount. A public launch resumed after a reload checks this before placing, so no bid goes in twice.
+ */
+export function matchPlaced(drafts: readonly DraftBid[], inAuction: readonly PlacedBid[], grid: AuctionGrid): string[] {
+  const left = [...inAuction];
+  const ids: string[] = [];
+  for (const d of drafts) {
+    const price = placedPrice(d.price, grid);
+    const wei = bidWei(d.amount);
+    const i = left.findIndex((b) => b.maxPrice === price && b.amount === wei);
+    if (i < 0) continue;
+    ids.push(d.id);
+    left.splice(i, 1);
+  }
+  return ids;
 }

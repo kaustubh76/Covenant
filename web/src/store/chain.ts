@@ -12,10 +12,10 @@ import { forgetScans } from "@/chain/logs";
 import { type LaunchRecord, type Network, type NetworkKey, firstChoice, isNetworkKey } from "@/chain/network";
 import { openPlayground, resetPlayground } from "@/chain/playground";
 import { sanitizeLaunches } from "@/chain/remembered";
-import { type Party, isAddressParty } from "@/chain/tx";
+import { type Party, StepFailed, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
 import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
-import { revertTo, snapshot } from "@/chain/time";
+import { SnapshotGone, revertTo, snapshot } from "@/chain/time";
 
 export type Role = "holder" | "issuer" | "curator" | "keeper" | "lp";
 
@@ -126,6 +126,12 @@ interface ChainState {
   reset(): Promise<boolean>;
   /** Save points on a dev chain, newest last: snapshots to come back to, clock and all. Session only. */
   savePoints: { id: Hex; at: number }[];
+  /**
+   * Bumped whenever the chain behind the app is not the one it was: another network, a reset, a fresh Playground chain
+   * after the last one stopped, a return to a save point. A page that keeps chain state of its own (the launch desk)
+   * starts over when it changes, rather than act on blocks and contracts that are not there.
+   */
+  chainEpoch: number;
   savePoint(): Promise<void>;
   backToSavePoint(): Promise<void>;
 }
@@ -207,7 +213,9 @@ function chosenNetwork(): NetworkKey | null {
 
 /** The chain context for `net`: dev keys locally; on a public chain, the wallet signs once it is on the right chain. */
 function ctxFor(net: Network, wallet: WalletState | null, wallets: DiscoveredWallet[]): ChainCtx {
-  if (net.caps.devChain || !wallet || wallet.chainId !== net.chainId) return createChainCtx(net);
+  if (net.caps.devChain || !wallet) return createChainCtx(net);
+  // A wallet on another network signs nothing here, and a send says to switch it (not to connect one).
+  if (wallet.chainId !== net.chainId) return createChainCtx(net, undefined, { walletChainId: wallet.chainId });
   const provider = wallets.find((w) => w.id === wallet.id)?.provider;
   return provider ? createChainCtx(net, { account: wallet.address, transport: custom(provider) }) : createChainCtx(net);
 }
@@ -254,6 +262,7 @@ export const useChain = create<ChainState>((set, get) => ({
   wallet: null,
   walletError: null,
   savePoints: [],
+  chainEpoch: 0,
 
   async connect() {
     if (retry) clearTimeout(retry);
@@ -319,8 +328,9 @@ export const useChain = create<ChainState>((set, get) => ({
     const saved = load(vaultKey(key));
     const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? (saved as Address) : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
     const ctx = ctxFor(net, get().wallet, get().wallets);
-    set({ net, ctx, launches, vault, status: "ready", reason: null });
-    if (fresh) get().record(note("anyone", "A fresh Playground chain", "Your last one had stopped after sitting idle, so this one starts from the seed again."), { toast: true });
+    // A fresh Playground chain replaced one that had stopped: the save points were snapshots of the old one.
+    set({ net, ctx, launches, vault, status: "ready", reason: null, ...(fresh ? { savePoints: [], chainEpoch: get().chainEpoch + 1 } : {}) });
+    if (fresh) get().record(note("anyone", "A fresh Playground chain", "Your last one had stopped (it sat idle, or the backend restarted), so this one starts from the seed again."), { toast: true });
     await get().refresh();
     if (stale()) return;
     unwatch?.();
@@ -335,6 +345,8 @@ export const useChain = create<ChainState>((set, get) => ({
         set({ status: "offline", reason: `Lost ${net.name}.` });
         unwatch?.();
         unwatch = null;
+        // one reconnect at a time, however many errors arrive before it starts
+        if (retry) clearTimeout(retry);
         retry = setTimeout(() => void get().connect(), 3000);
       },
     });
@@ -351,7 +363,22 @@ export const useChain = create<ChainState>((set, get) => ({
     // back reads its recent window afresh (a restarted fork shares nothing with the one before).
     refreshSeq++;
     if (left && left !== key) forgetScans(left);
-    set({ netKey: key, status: "connecting", reason: null, net: null, ctx: null, view: null, launches: [], vault: null, history: [], seen: null, log: [], toast: null, savePoints: [] });
+    set({
+      netKey: key,
+      status: "connecting",
+      reason: null,
+      net: null,
+      ctx: null,
+      view: null,
+      launches: [],
+      vault: null,
+      history: [],
+      seen: null,
+      log: [],
+      toast: null,
+      savePoints: [],
+      chainEpoch: get().chainEpoch + 1,
+    });
     // Keep ?net= in step, so a copied link opens the same network.
     try {
       const url = new URL(window.location.href);
@@ -414,7 +441,10 @@ export const useChain = create<ChainState>((set, get) => ({
   async switchWalletChain() {
     const { wallet, wallets, net } = get();
     const provider = wallets.find((w) => w.id === wallet?.id)?.provider;
-    if (!provider || !net) return;
+    if (!provider || !net) {
+      set({ walletError: !net ? "Pick a network first." : "The connected wallet is no longer on this page: connect it again." });
+      return;
+    }
     try {
       await switchWalletTo(provider, net);
     } catch (e) {
@@ -474,18 +504,32 @@ export const useChain = create<ChainState>((set, get) => ({
     queued++;
     if (!get().busy) set({ busy: label });
     const next = queue.then(async () => {
-      const { ctx } = get();
+      const { ctx, status, net } = get();
       try {
         if (!ctx) return undefined;
+        // A chain that stopped answering (a Playground chain evicted or stopped, a node gone) keeps the last numbers on
+        // screen while the app reconnects, so its buttons still look live: say so, rather than send into nothing.
+        if (status !== "ready") {
+          const error = {
+            name: "NoAnswer",
+            args: [],
+            signature: "Reconnecting",
+            rule: "Other" as const,
+            reason: `${net?.name ?? "The chain"} is not answering right now, so nothing was sent. The app is reconnecting: try again in a moment.`,
+          };
+          get().record({ actor: "anyone", title: label, ok: false, error }, { toast: true });
+          return undefined;
+        }
         if (opts.quiet) quiet++;
         set({ busy: label });
         const rec: Recorder = { record: (b, o) => get().record(b, o), progress: (l) => set({ busy: l }) };
         try {
           return await job(ctx, rec);
         } catch (e) {
-          // A declined wallet request, a wallet on another network or a node that did not answer is said as such; only
-          // what nobody here recognises is shown as the error's own message.
-          const error = classify(e) ?? { name: "Error", args: [], signature: message(e), rule: "Other" as const, reason: message(e) };
+          // A step that had to succeed (must) carries what the contract or the wallet said. A declined wallet request, a
+          // wallet on another network or a node that did not answer is said as such; only what nobody here recognises
+          // is shown as the error's own message.
+          const error = (e instanceof StepFailed ? e.outcome.error : undefined) ?? classify(e) ?? { name: "Error", args: [], signature: message(e), rule: "Other" as const, reason: message(e) };
           get().record({ actor: "anyone", title: label, ok: false, error }, { toast: true });
           return undefined;
         } finally {
@@ -503,8 +547,9 @@ export const useChain = create<ChainState>((set, get) => ({
   },
 
   record(beats, opts = {}) {
+    const vault = get().vault ?? undefined;
     const list = (Array.isArray(beats) ? beats : [beats]).map(
-      (b): Beat => ({ ...b, id: `app-${++seq}`, at: b.at ?? get().view?.time ?? 0, source: "app" }),
+      (b): Beat => ({ ...b, id: `app-${++seq}`, at: b.at ?? get().view?.time ?? 0, source: "app", vault }),
     );
     if (!list.length) return;
     set((s) => ({ log: [...list.reverse(), ...s.log].slice(0, LOG_LIMIT), toast: opts.toast ? list[0] : s.toast }));
@@ -529,7 +574,7 @@ export const useChain = create<ChainState>((set, get) => ({
     });
     if (done) {
       const net = get().net;
-      set({ log: [], history: [], seen: null, toast: null, savePoints: [] });
+      set({ log: [], history: [], seen: null, toast: null, savePoints: [], chainEpoch: get().chainEpoch + 1 });
       if (net?.runtime) await get().selectVault(net.runtime.defaultVault);
     }
     return !!done;
@@ -548,10 +593,19 @@ export const useChain = create<ChainState>((set, get) => ({
     const top = get().savePoints.at(-1);
     if (!top || !get().net?.caps.devChain) return;
     await get().run("Going back to the save point", async (ctx, rec) => {
-      await revertTo(ctx, top.id);
+      try {
+        await revertTo(ctx, top.id);
+      } catch (e) {
+        if (!(e instanceof SnapshotGone)) throw e;
+        // The chain was reset or replaced since (another tab's reset, a fresh Playground chain): none of the save
+        // points taken on it is there any more, and nothing moved.
+        set({ savePoints: [] });
+        rec.record({ actor: "anyone", title: "Back to the save point", ok: false, error: { name: "NotSent", args: [], signature: "Save point gone", rule: "Other", reason: e.message } }, { toast: true });
+        return;
+      }
       // Anvil consumes a snapshot when it reverts to it: take it again, so the same point can be returned to.
       const id = await snapshot(ctx);
-      set({ savePoints: [...get().savePoints.slice(0, -1), { ...top, id }] });
+      set({ savePoints: [...get().savePoints.slice(0, -1), { ...top, id }], chainEpoch: get().chainEpoch + 1 });
       rec.record(note("anyone", "Back at the save point", "The chain is as it was when the point was taken"), { toast: true });
     });
   },
@@ -601,10 +655,17 @@ async function restoreWallet() {
   }
 }
 
-/** The activity feed: this app's attempts (including refusals) merged with the chain's events, newest first. */
-export function feed(log: Beat[], history: Beat[], limit = 50): Beat[] {
-  const sent = new Set(log.map((b) => b.hash).filter(Boolean));
-  const merged = [...log, ...history.filter((b) => !b.hash || !sent.has(b.hash))];
+/**
+ * The activity feed: this app's attempts (including refusals) merged with the chain's events, newest first. An attempt
+ * belongs to the vault it was made on, so another vault's feed does not list it. A transaction the chain shows landed
+ * replaces an app line that had given up on it ("Still pending"); otherwise the app's line, with its detail, is kept.
+ */
+export function feed(log: Beat[], history: Beat[], limit = 50, vault: string | null = useChain.getState().vault): Beat[] {
+  const here = vault ? log.filter((b) => !b.vault || b.vault.toLowerCase() === vault.toLowerCase()) : log;
+  const landed = new Set(history.map((b) => b.hash).filter(Boolean));
+  const app = here.filter((b) => b.ok || !b.hash || !landed.has(b.hash));
+  const sent = new Set(app.map((b) => b.hash).filter(Boolean));
+  const merged = [...app, ...history.filter((b) => !b.hash || !sent.has(b.hash))];
   merged.sort((a, b) => b.at - a.at || (b.block ?? 0) - (a.block ?? 0));
   return merged.slice(0, limit);
 }

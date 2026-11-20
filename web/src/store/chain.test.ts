@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { addressOf } from "@/chain/accounts";
 import type { Network, NetworkKey } from "@/chain/network";
-import { canSendAs, isHostedCopy, offeredDevNetwork, useChain } from "./chain";
+import type { Beat } from "@/chain/beat";
+import { canSendAs, feed, isHostedCopy, offeredDevNetwork, useChain } from "./chain";
 
 const list = (...n: [NetworkKey, "ready" | "offline"][]) => ({ networks: n.map(([key, state]) => ({ key, name: key, state })) });
 
@@ -71,5 +72,30 @@ describe("canSendAs: whether an action can leave this page", () => {
     expect(canSendAs("lp", pub, mine)).toBe(true);
     expect(canSendAs(mine.address.toLowerCase() as `0x${string}`, pub, mine)).toBe(true);
     expect(canSendAs(stranger, pub, mine)).toBe(false);
+  });
+});
+
+describe("feed: what the activity panel lists", () => {
+  const A = "0x00000000000000000000000000000000000000aa";
+  const B = "0x00000000000000000000000000000000000000bb";
+  const HASH = `0x${"12".repeat(32)}` as const;
+  const beat = (b: Partial<Beat> & Pick<Beat, "id" | "at">): Beat => ({ actor: "anyone", title: b.id, ok: true, source: "app", ...b });
+
+  it("lists an attempt only on the vault it was made on", () => {
+    const log = [beat({ id: "on-a", at: 2, vault: A }), beat({ id: "on-b", at: 1, vault: B }), beat({ id: "anywhere", at: 0 })];
+    expect(feed(log, [], 10, B).map((b) => b.id)).toEqual(["on-b", "anywhere"]);
+    expect(feed(log, [], 10, null).map((b) => b.id)).toEqual(["on-a", "on-b", "anywhere"]);
+  });
+
+  it("replaces a line that gave up on a transaction (still pending) with the chain's event once it lands", () => {
+    const pending = beat({ id: "pending", at: 5, ok: false, hash: HASH, vault: A });
+    const landed = beat({ id: "chain-1", at: 6, hash: HASH, source: "chain" });
+    expect(feed([pending], [landed], 10, A).map((b) => b.id)).toEqual(["chain-1"]);
+  });
+
+  it("keeps the app's own line, with its detail, over the chain's event for a send that settled", () => {
+    const settled = beat({ id: "settled", at: 5, hash: HASH, detail: "Paid 1 ETH", vault: A });
+    const event = beat({ id: "chain-1", at: 5, hash: HASH, source: "chain" });
+    expect(feed([settled], [event], 10, A).map((b) => b.id)).toEqual(["settled"]);
   });
 });

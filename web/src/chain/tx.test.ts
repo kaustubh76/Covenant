@@ -1,8 +1,8 @@
-import { type Address, type Hex, UserRejectedRequestError, WaitForTransactionReceiptTimeoutError, zeroAddress } from "viem";
+import { type Address, type Hex, RawContractError, UserRejectedRequestError, WaitForTransactionReceiptTimeoutError, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import { covenantVaultAbi } from "./abi.generated";
 import type { ChainCtx } from "./client";
-import { send } from "./tx";
+import { send, sendRetrying, untilVisible } from "./tx";
 
 const ME = "0x00000000000000000000000000000000000000a1" as Address;
 const HASH = `0x${"11".repeat(32)}` as Hex;
@@ -115,5 +115,82 @@ describe("send, when nothing is mined", () => {
     const o = await send(ctx, "holder", poke);
     expect(o.error?.name).toBe("Pending");
     expect(o.hash).toBe(HASH);
+  });
+});
+
+/** A public chain whose node refuses the first `lagging` simulations with `selector` (a node a block behind), then passes. */
+function laggingChain(lagging: number, selector: Hex, sent: unknown[]) {
+  let asked = 0;
+  return {
+    net: { key: "base-sepolia", name: "Base Sepolia", caps: { devChain: false } },
+    signer: ME,
+    walletChainId: null,
+    address: () => ME,
+    pub: {
+      simulateContract: async () => {
+        if (asked++ < lagging) throw new RawContractError({ data: selector });
+        return { result: undefined };
+      },
+      estimateContractGas: async () => 100_000n,
+      waitForTransactionReceipt: async () => ({ status: "success", transactionHash: HASH, blockNumber: 1n }),
+    },
+    wallet: () => ({ account: { address: ME }, writeContract: async (tx: unknown) => (sent.push(tx), HASH) }),
+  } as unknown as ChainCtx;
+}
+const TRANSFER_FROM_FAILED = "0x7939f424" as Hex;
+
+describe("sendRetrying: a refusal a lagging node explains", () => {
+  it("simulates again until the node has caught up, then sends once", async () => {
+    const sent: unknown[] = [];
+    const o = await sendRetrying(laggingChain(2, TRANSFER_FROM_FAILED, sent), "holder", poke, {}, { retryIf: (x) => x.error?.name === "TransferFromFailed", everyMs: 1 });
+    expect(o.ok).toBe(true);
+    expect(sent).toHaveLength(1);
+  });
+
+  it("gives up after its tries and returns the refusal, having sent nothing", async () => {
+    const sent: unknown[] = [];
+    const o = await sendRetrying(laggingChain(9, TRANSFER_FROM_FAILED, sent), "holder", poke, {}, { retryIf: (x) => x.error?.name === "TransferFromFailed", tries: 3, everyMs: 1 });
+    expect(o.ok).toBe(false);
+    expect(o.error?.name).toBe("TransferFromFailed");
+    expect(sent).toHaveLength(0);
+  });
+
+  it("does not retry a refusal it was not told to", async () => {
+    const sent: unknown[] = [];
+    const o = await sendRetrying(laggingChain(1, TRANSFER_FROM_FAILED, sent), "holder", poke, {}, { retryIf: () => false, everyMs: 1 });
+    expect(o.ok).toBe(false);
+    expect(sent).toHaveLength(0);
+  });
+});
+
+describe("untilVisible", () => {
+  const pub = { net: { caps: { devChain: false } } } as unknown as ChainCtx;
+  const dev = { net: { caps: { devChain: true } } } as unknown as ChainCtx;
+
+  it("on a public chain, asks until the answer holds", async () => {
+    let n = 0;
+    expect(await untilVisible(pub, async () => ++n >= 3, { everyMs: 1 })).toBe(true);
+    expect(n).toBe(3);
+  });
+
+  it("is bounded, and a failed read counts as no", async () => {
+    let n = 0;
+    expect(
+      await untilVisible(
+        pub,
+        async () => {
+          n++;
+          throw new Error("no answer");
+        },
+        { tries: 4, everyMs: 1 },
+      ),
+    ).toBe(false);
+    expect(n).toBe(4);
+  });
+
+  it("on a dev chain, asks once: Anvil mines on send and has one node", async () => {
+    let n = 0;
+    expect(await untilVisible(dev, async () => (n++, false))).toBe(false);
+    expect(n).toBe(1);
   });
 });

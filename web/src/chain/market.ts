@@ -7,7 +7,7 @@ import { poolSwapTestAbi, testTokenAbi } from "./abi.generated";
 import type { Actor } from "./accounts";
 import type { ChainCtx } from "./client";
 import { MAX_SQRT_PRICE, MIN_SQRT_PRICE, sqrtPriceLimitAt, sqrtX96ToFloat, tickAtSqrt, toPool, toPrice } from "./price";
-import { type Outcome, type SendOptions, must, send, simulate } from "./tx";
+import { type Outcome, type SendOptions, must, send, simulate, untilVisible } from "./tx";
 import { readSqrtPrice } from "./view";
 import type { VaultView } from "./view";
 
@@ -35,7 +35,11 @@ async function fundTokens(ctx: ChainCtx, who: Actor, token: Address, amount: big
   }
   // A real wallet approves the router for this sale only; dev chains keep the open allowance their demos rely on.
   const approval = ctx.net.caps.devChain ? maxUint256 : amount;
-  if (allowance < amount) must(await send(ctx, who, { address: token, abi: testTokenAbi, functionName: "approve", args: [router, approval] }), "approve");
+  if (allowance >= amount) return;
+  must(await send(ctx, who, { address: token, abi: testTokenAbi, functionName: "approve", args: [router, approval] }), "approve");
+  // Mined, but a public RPC's next answer can come from a node a block behind, where the sale would be refused as
+  // unapproved: wait until the allowance reads back.
+  await untilVisible(ctx, async () => (await ctx.pub.readContract({ address: token, abi: testTokenAbi, functionName: "allowance", args: [me, router] })) >= amount);
 }
 
 /** What a swap's caller pays in currency0, from the router's BalanceDelta (amount0 in the high 128 bits; negative is owed). */

@@ -82,6 +82,37 @@ describe("decodeRevert", () => {
     expect(new Set(selectors).size).toBe(selectors.length);
   });
 
+  it("says in a sentence what the launch, the auction, the pool and the token refuse with", () => {
+    // every error a Launch, Govern or Provide action can meet has a sentence, not "The call reverted."
+    const reached = [
+      "InitializerNotRegistered", "MigrationNotYetAllowed", "NoPositionsCreated", "NotGraduated", "AuctionIsNotFinalized", "TokensNotReceived",
+      "InvalidBidUnableToClear", "MpsRemainingIsZero", "BidAlreadyExited", "CannotExitBid", "CannotPartiallyExitBidBeforeGraduation",
+      "CannotPartiallyExitBidBeforeEndBlock", "BidNotExited", "NotClaimable", "PoolNotInitialized", "SwapAmountCannotBeZero",
+      "ERC20InsufficientBalance", "ERC20InsufficientAllowance", "ERC20InvalidApprover",
+    ];
+    for (const name of reached) {
+      const abi = errorAbi.filter((e) => e.name === name);
+      expect(abi, name).toHaveLength(1);
+      const args = (abi[0].inputs as readonly { type: string }[]).map((i) => (i.type === "address" ? "0x73ad52384798adadfbe19fcfd28ff09d2cc82000" : 1000n * 10n ** 18n));
+      const d = decodeRevert(new RawContractError({ data: encodeErrorResult({ abi, errorName: name, args } as never) }), { tokenSymbol: "WAB" });
+      expect(d.name, name).toBe(name);
+      expect(d.reason, name).not.toBe("The call reverted.");
+    }
+    // the one the Launch desk's adopt retry used to end on
+    const again = decodeRevert(new RawContractError({ data: encodeErrorResult({ abi: errorAbi, errorName: "InitializerNotRegistered", args: ["0xD835598BAA8927595bF1116717D28c03b605B71C"] } as never) }));
+    expect(again.reason).toMatch(/already migrated/);
+    // an approval not yet seen, as a lagging node refuses a launch's registration
+    const allowance = decodeRevert(
+      new RawContractError({ data: encodeErrorResult({ abi: errorAbi, errorName: "ERC20InsufficientAllowance", args: ["0x73ad52384798adadfbe19fcfd28ff09d2cc82000", 0n, 1000n * 10n ** 18n] } as never) }),
+      { tokenSymbol: "WAB" },
+    );
+    expect(allowance.reason).toBe("0x73ad…2000 may take 0.00 WAB from the sender and this needs 1000.00: the approval is missing or too small.");
+  });
+
+  it("tells a holder with no shares there is nothing to withdraw, whoever it is", () => {
+    expect(describeError("InsufficientShares", [0n, 1n]).reason).toBe("This address holds no vault shares, so there is nothing for it to withdraw. A curator never holds any.");
+  });
+
   it("keeps unknown errors readable", () => {
     expect(describeError("SomethingNew", [1n]).signature).toBe("SomethingNew(1)");
     expect(decodeRevert(new Error("boom")).reason).toBe("boom");

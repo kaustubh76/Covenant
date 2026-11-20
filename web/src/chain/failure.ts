@@ -21,7 +21,14 @@ export const isFailureKind = (name: string | undefined): name is FailureKind => 
 
 const failure = (name: FailureKind, signature: string, reason: string): DecodedError => ({ name, args: [], signature, rule: "Other", reason });
 
-type Err = { name?: unknown; code?: unknown; status?: unknown; message?: unknown; shortMessage?: unknown; cause?: unknown };
+type Err = { name?: unknown; code?: unknown; status?: unknown; message?: unknown; shortMessage?: unknown; details?: unknown; cause?: unknown };
+
+/**
+ * The Playground backend's refusal to let one chain grow any further (its height, held snapshots or memory): a sentence
+ * that ends by pointing at Reset. viem files its -32000 under a generic "Missing or invalid parameters", with the
+ * backend's own words in `details`.
+ */
+const PLAYGROUND_FULL = /This Playground chain .*?Reset it to start again[^.]*\./s;
 
 /**
  * What `e` is, when it is not the contract's refusal; null for a revert (decodeRevert says which) or an error nobody
@@ -32,6 +39,8 @@ export function classify(e: unknown): DecodedError | null {
     const name = typeof x.name === "string" ? x.name : "";
     const code = x.code;
     const text = `${typeof x.shortMessage === "string" ? x.shortMessage : ""} ${typeof x.message === "string" ? x.message : ""}`;
+    const full = PLAYGROUND_FULL.exec(`${text} ${typeof x.details === "string" ? x.details : ""}`);
+    if (full) return failure("NotSent", "The Playground chain is full", full[0]);
     if (name === "UserRejectedRequestError" || code === 4001 || /user (rejected|denied)|rejected the request|request rejected/i.test(text)) {
       return failure("Rejected", "Declined in the wallet", "You declined it in your wallet. Nothing was sent.");
     }

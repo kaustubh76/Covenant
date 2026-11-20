@@ -8,8 +8,9 @@ import type { ChainCtx } from "./client";
 import { classify } from "./failure";
 import { decodeRevert } from "./errors";
 import { NEVER } from "./launch";
+import { type Pool, paidIn0, swapCall } from "./market";
 import type { Preflight } from "./preflight";
-import { type Party, must, partyAddress, send } from "./tx";
+import { type Party, must, partyAddress, send, untilVisible } from "./tx";
 import type { VaultView } from "./view";
 
 /** Pay a little over the simulated cost: the vault refunds any native ETH it does not need. */
@@ -31,13 +32,70 @@ export const quoteBudget = (v: Pick<VaultView, "principal">, fraction: number, c
 };
 
 /**
- * Approve the vault to pull `amount` of the token from `who`, if it may not already. `exact` approves just that amount,
- * for a person's own wallet on a public chain, rather than leaving the vault an open-ended allowance.
+ * Approve the vault to pull `amount` of the token from `who`, if it may not already; true when an approval was sent.
+ * `exact` approves just that amount, for a person's own wallet on a public chain, rather than leaving the vault an
+ * open-ended allowance. Returns once the allowance reads back: on a public chain the next call can otherwise land on a
+ * node that has not seen the approval yet, and be refused as unapproved.
  */
-export async function ensureAllowance(ctx: ChainCtx, who: Party, v: Pick<VaultView, "address" | "token">, amount: bigint, exact = false) {
+export async function ensureAllowance(ctx: ChainCtx, who: Party, v: Pick<VaultView, "address" | "token">, amount: bigint, exact = false): Promise<boolean> {
   const owner: Address = partyAddress(ctx, who);
-  const allowance = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "allowance", args: [owner, v.address] });
-  if (allowance < amount) must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, exact ? amount : maxUint256] }), "approve");
+  const allowance = () => ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "allowance", args: [owner, v.address] });
+  if ((await allowance()) >= amount) return false;
+  must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, exact ? amount : maxUint256] }), "approve");
+  await untilVisible(ctx, async () => (await allowance()) >= amount);
+  return true;
+}
+
+/**
+ * How far a public chain's buy may push the token's price: the guard's edge less this margin, for the time-weighted
+ * price moving (and the price moving) between the buy and the deposit.
+ */
+export const GUARD_MARGIN_TICKS = 25;
+
+/** The price tick a buy stops at, so the vault's price guard still passes after it: a buy raises the token's price. */
+export const guardEdgeTick = (v: Pick<VaultView, "twap" | "terms">) => v.twap + v.terms.guardTicks - GUARD_MARGIN_TICKS;
+
+/** The tokens a swap's caller receives, from the router's BalanceDelta (positive is owed to the caller). */
+const tokensOut = (delta: bigint, quoteIs0: boolean) => BigInt.asIntN(128, quoteIs0 ? delta : delta >> 128n);
+
+/**
+ * What a buy can take from the pool before spot reaches the guard's edge (guardEdgeTick): the tokens it would receive
+ * and the ETH it would spend. One simulation of a capped buy, from a stand-in funded inside it, so it needs nothing from
+ * the wallet and sends nothing. Zero when spot is already at the edge or past it.
+ */
+export async function buyableWithinGuard(ctx: ChainCtx, v: Pool & Pick<VaultView, "twap" | "terms" | "spot">): Promise<{ tokens: bigint; spend: bigint }> {
+  const edge = guardEdgeTick(v);
+  if (v.spot >= edge) return { tokens: 0n, spend: 0n };
+  // Far more than any testnet pool can take before the limit: the price limit, not the budget, ends the swap.
+  const budget = parseEther("1000");
+  const call = swapCall(ctx, v, true, budget, edge);
+  const latest = await ctx.pub.getBlock({ blockTag: "latest" });
+  const [block] = (await ctx.pub.simulateBlocks({
+    blockNumber: latest.number,
+    blocks: [
+      {
+        blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n },
+        stateOverrides: [{ address: STAND_IN, balance: budget + parseEther("1") }],
+        calls: [{ account: STAND_IN, to: call.address, abi: call.abi as Abi, functionName: call.functionName, args: call.args, value: call.value }],
+      },
+    ],
+  } as never)) as unknown as { calls: { status: string; result?: unknown }[] }[];
+  const [swap] = block.calls;
+  if (swap.status !== "success" || typeof swap.result !== "bigint") return { tokens: 0n, spend: 0n };
+  return { tokens: tokensOut(swap.result, v.quoteIs0), spend: v.quoteIs0 ? paidIn0(swap.result) : -BigInt.asIntN(128, swap.result) };
+}
+
+/**
+ * The largest deposit, in whole percent of the vault's shares (at most `max`), whose token side the payer can cover
+ * with what it holds plus what the pool sells within the guard. The page buys a shortfall with 2% to spare and prices a
+ * deposit's token side at 1% over the vault's own holdings (provide/page.tsx), so the same margins apply here. 0 when
+ * not even 1% fits.
+ */
+export function largestDepositThatFits(o: { vaultTokens: number; held: number; buyable: number; max?: number }): number {
+  const perPercent = (o.vaultTokens / 100) * 1.01;
+  if (!(perPercent > 0)) return 0;
+  const coverable = o.held + Math.max(0, o.buyable) / 1.02;
+  return Math.max(0, Math.min(o.max ?? 25, Math.floor(coverable / perPercent + 1e-9)));
 }
 
 /** A stand-in depositor with no role, funded only inside a simulation (as the attack lab's live checks fund theirs). */

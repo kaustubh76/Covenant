@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { type DraftBid, addBid, bidProblems, draftBids, maxBids, placedPrice, placementOrder, removeBid, switchBidder } from "./bids";
+import { type DraftBid, addBid, bidProblems, bidWei, draftBids, matchPlaced, maxBids, placedPrice, placementOrder, removeBid, switchBidder } from "./bids";
 import { AUCTION_FLOOR, AUCTION_TICK } from "./launch";
 
 const GRID = { floorPrice: AUCTION_FLOOR, auctionTick: AUCTION_TICK }; // 1.0 ETH, ticks of 1/64
@@ -18,6 +18,15 @@ describe("placementOrder", () => {
 });
 
 describe("placedPrice", () => {
+  it("places a typed price that is not a number, zero or Infinity one tick above the floor, instead of crashing", () => {
+    const lowest = AUCTION_FLOOR + AUCTION_TICK;
+    expect(placedPrice(Number.NaN, GRID)).toBe(lowest);
+    expect(placedPrice(0, GRID)).toBe(lowest);
+    expect(placedPrice(Number("1e309"), GRID)).toBe(lowest);
+    // huge, but finite on the Q96 grid: the auction refuses it with its own limit
+    expect(placedPrice(1e300, GRID) > lowest).toBe(true);
+  });
+
   it("never places a bid at the floor, which the auction always refuses", () => {
     expect(placedPrice(1, GRID)).toBe(AUCTION_FLOOR + AUCTION_TICK);
     expect(placedPrice(0.5, GRID)).toBe(AUCTION_FLOOR + AUCTION_TICK);
@@ -61,5 +70,26 @@ describe("bidProblems", () => {
 
   it("warns when two bids share a grid price", () => {
     expect(bidProblems([bid("a", 1.3, 1400), bid("b", 1.3, 1400, "alice")], GRID).warning).toMatch(/share a price/);
+  });
+});
+
+describe("matchPlaced: which drafts a resumed launch already has in the auction", () => {
+  const inAuction = (b: DraftBid) => ({ maxPrice: placedPrice(b.price, GRID), amount: bidWei(b.amount) });
+
+  it("matches each bid the wallet has in the auction to one draft at the same price and amount", () => {
+    const drafts = [bid("a", 1.02, 100), bid("b", 1.1, 50), bid("c", 1.3, 10)];
+    expect(matchPlaced(drafts, [inAuction(drafts[2]), inAuction(drafts[0])], GRID)).toEqual(["a", "c"]);
+  });
+
+  it("matches two identical drafts only as often as the auction holds them", () => {
+    const drafts = [bid("a", 1.1, 50), bid("b", 1.1, 50)];
+    expect(matchPlaced(drafts, [inAuction(drafts[0])], GRID)).toEqual(["a"]);
+    expect(matchPlaced(drafts, [inAuction(drafts[0]), inAuction(drafts[1])], GRID)).toEqual(["a", "b"]);
+  });
+
+  it("matches nothing for a different amount or price", () => {
+    const drafts = [bid("a", 1.1, 50)];
+    expect(matchPlaced(drafts, [{ maxPrice: placedPrice(1.1, GRID), amount: bidWei(49) }], GRID)).toEqual([]);
+    expect(matchPlaced(drafts, [{ maxPrice: placedPrice(1.2, GRID), amount: bidWei(50) }], GRID)).toEqual([]);
   });
 });

@@ -13,7 +13,7 @@ import {
   zeroAddress,
 } from "viem";
 import { type Actor, actorOf, shortAddress } from "./accounts";
-import type { ChainCtx } from "./client";
+import { type ChainCtx, signerNeeded } from "./client";
 import { type DecodedError, type DescribeContext, decodeRevert } from "./errors";
 import { classify } from "./failure";
 
@@ -37,7 +37,9 @@ export function signerFor(ctx: ChainCtx, party: Party): { wallet: WalletClient<T
     const actor = isAddressParty(party) ? actorOf(party) : party;
     return actor ? { wallet: ctx.wallet(actor) } : { refusal: `There is no dev key for ${shortAddress(party)} on ${ctx.net.key === "playground" ? "the Playground" : "the local chain"}.` };
   }
-  if (!ctx.signer) return { refusal: `Connect a wallet to send this on ${ctx.net.name}.` };
+  if (!ctx.signer) {
+    return { refusal: ctx.walletChainId !== null && ctx.walletChainId !== undefined ? signerNeeded(ctx.net, ctx.walletChainId) : `Connect a wallet to send this on ${ctx.net.name}.` };
+  }
   if (isAddressParty(party) && party.toLowerCase() !== ctx.signer.toLowerCase()) {
     return { refusal: `Only ${shortAddress(party)} can send this. The connected wallet is ${shortAddress(ctx.signer)}.` };
   }
@@ -194,8 +196,65 @@ export async function send<const abi extends Abi, fn extends ContractFunctionNam
   return { ok: false, hash, receipt, error: { name: "Error", args: [], signature: "reverted", rule: "Other", reason: "The transaction reverted." } };
 }
 
+/**
+ * Poll `check` until it holds. A public chain's RPC balances calls over nodes, and one a block behind still answers from
+ * before a transaction just mined: an approval the next call needs, say. A dev chain mines on send and has one node, so
+ * it is asked once. Bounded: false once `tries` have all said no.
+ */
+export async function untilVisible(ctx: ChainCtx, check: () => Promise<boolean>, opts: { tries?: number; everyMs?: number } = {}): Promise<boolean> {
+  const tries = ctx.net.caps.devChain ? 1 : (opts.tries ?? 12);
+  for (let i = 0; i < tries; i++) {
+    if (await check().catch(() => false)) return true;
+    if (i < tries - 1) await new Promise((r) => setTimeout(r, opts.everyMs ?? 800));
+  }
+  return false;
+}
+
+/**
+ * `send`, simulated again while its pre-flight fails in a way `retryIf` says a lagging node explains (an approval it has
+ * not seen yet), up to `tries` sends in all, `everyMs` apart. Nothing goes out until a simulation passes, so a retry never
+ * sends twice. A gas estimate refused the same way (it runs on whichever node answers) counts as the same failure.
+ */
+export async function sendRetrying<const abi extends Abi, fn extends ContractFunctionName<abi, Mutability>>(
+  ctx: ChainCtx,
+  party: Party,
+  call: Call<abi, fn>,
+  opts: SendOptions,
+  retry: { retryIf: (o: Outcome) => boolean; tries?: number; everyMs?: number },
+): Promise<Outcome<ContractFunctionReturnType<abi, Mutability, fn>>> {
+  // A dev chain has one node, mining on send: a refusal there is the contract's, and is not asked again.
+  const tries = ctx.net.caps.devChain ? 1 : (retry.tries ?? 4);
+  for (let i = 1; ; i++) {
+    let o: Outcome<ContractFunctionReturnType<abi, Mutability, fn>>;
+    try {
+      o = await send(ctx, party, call, opts);
+    } catch (e) {
+      const error = classify(e) ?? decodeRevert(e, opts.describe);
+      if (i >= tries || !retry.retryIf({ ok: false, error })) throw e;
+      await new Promise((r) => setTimeout(r, retry.everyMs ?? 1000));
+      continue;
+    }
+    if (o.ok || o.hash || i >= tries || !retry.retryIf(o)) return o;
+    await new Promise((r) => setTimeout(r, retry.everyMs ?? 1000));
+  }
+}
+
+/**
+ * A step that must not fail, failed. Its message is the one scripts log ("approve failed: Sig(…)"); `outcome` keeps the
+ * decoded refusal or failure, so the app's toast can say what the contract or the wallet said, not just the signature.
+ */
+export class StepFailed extends Error {
+  override name = "StepFailed";
+  constructor(
+    readonly what: string,
+    readonly outcome: Outcome,
+  ) {
+    super(`${what} failed: ${outcome.error?.signature ?? "unknown error"}`);
+  }
+}
+
 /** Throw unless the outcome succeeded. For setup steps that must not fail. */
 export function must<T>(o: Outcome<T>, what: string): Outcome<T> {
-  if (!o.ok) throw new Error(`${what} failed: ${o.error?.signature ?? "unknown error"}`);
+  if (!o.ok) throw new StepFailed(what, o);
   return o;
 }

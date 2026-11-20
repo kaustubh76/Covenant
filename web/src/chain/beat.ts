@@ -19,6 +19,8 @@ export interface Beat {
   hash?: Hex;
   /** "app": done from this app, including refused attempts. "chain": read back from event logs. */
   source: "app" | "chain";
+  /** The vault an app attempt was made on: another vault's feed does not list it. */
+  vault?: string;
 }
 
 export type BeatInput = Omit<Beat, "id" | "at" | "source" | "block"> & { at?: number; block?: number };

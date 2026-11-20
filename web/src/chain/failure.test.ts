@@ -1,4 +1,4 @@
-import { ChainMismatchError, HttpRequestError, InsufficientFundsError, RpcRequestError, TimeoutError, UserRejectedRequestError, WaitForTransactionReceiptTimeoutError } from "viem";
+import { ChainMismatchError, HttpRequestError, InsufficientFundsError, InvalidInputRpcError, RpcRequestError, TimeoutError, UserRejectedRequestError, WaitForTransactionReceiptTimeoutError } from "viem";
 import { base, baseSepolia } from "viem/chains";
 import { describe, expect, it } from "vitest";
 import { classify } from "./failure";
@@ -14,6 +14,15 @@ describe("classify", () => {
     expect(classify(new HttpRequestError({ url: "https://sepolia.base.org", status: 503 }))?.name).toBe("NoAnswer");
     expect(classify(new TimeoutError({ body: {}, url: "https://sepolia.base.org" }))?.name).toBe("NoAnswer");
     expect(classify(new RpcRequestError({ body: {}, error: { code: -32007, message: "request limit reached" }, url: "https://sepolia.base.org" }))?.name).toBe("NoAnswer");
+  });
+
+  it("passes on the Playground backend's own words when a chain may grow no further", () => {
+    // uhi-11-08's backend answers -32000, which viem files as InvalidInputRpcError with a generic short message
+    const said = "This Playground chain is 3000 blocks past its seed, as far as one chain may go. Reset it to start again: the Reset button in the bar at the top of the page.";
+    const e = new InvalidInputRpcError(new RpcRequestError({ body: {}, error: { code: -32000, message: said }, url: "https://covenant-backend-tozj.onrender.com/v1/playground/x" }));
+    const d = classify(new Error("Execution failed", { cause: e }));
+    expect(d?.name).toBe("NotSent");
+    expect(d?.reason).toBe(said);
   });
 
   it("finds the cause inside viem's wrapping", () => {

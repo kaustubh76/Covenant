@@ -36,6 +36,8 @@ export interface ChainCtx {
   test: TestClient<"anvil", Transport, Chain> | null;
   /** On a public chain, the one account that signs for every role. Null on the dev chain, or with no wallet. */
   signer: Address | null;
+  /** On a public chain with no signer: the network a connected wallet is on instead, when it is on another one. */
+  walletChainId: number | null;
   wallet(actor: Actor): WalletClient<Transport, Chain, Account>;
   /** The address acting as `actor`: its dev account locally; the signer, whatever the role, on a public chain. */
   address(actor: Actor): Address;
@@ -171,7 +173,14 @@ function rateLimited(e: unknown): boolean {
   return false;
 }
 
-export function createChainCtx(net: Network, signer?: ExternalSigner): ChainCtx {
+/** What it takes to sign on `net` from here: the connect or switch a send would need, in a sentence. */
+export const signerNeeded = (net: Pick<Network, "name" | "chainId">, walletChainId: number | null) =>
+  walletChainId !== null && walletChainId !== net.chainId
+    ? `Your wallet is on another network (chain ${walletChainId}): switch it to ${net.name} to send this.`
+    : `Connect a wallet to send transactions on ${net.name}.`;
+
+/** `opts.walletChainId`: a wallet is connected, but on that network rather than `net`'s, so nothing signs here yet. */
+export function createChainCtx(net: Network, signer?: ExternalSigner, opts: { walletChainId?: number } = {}): ChainCtx {
   const chain = chainOf(net);
   const dev = net.caps.devChain;
   // Public RPCs rate-limit: batch concurrent reads into one request, retry transient failures, and back off when the
@@ -195,13 +204,15 @@ export function createChainCtx(net: Network, signer?: ExternalSigner): ChainCtx 
     !dev && signer ? createWalletClient({ chain, transport: signer.transport ?? transport, account: signer.account }) : null;
 
   const wallets = new Map<Actor, WalletClient<Transport, Chain, Account>>();
-  const noSigner = () => new Error(`Connect a wallet to send transactions on ${net.name}.`);
+  const walletChainId = !dev && !signer ? (opts.walletChainId ?? null) : null;
+  const noSigner = () => new Error(signerNeeded(net, walletChainId));
   return {
     net,
     chain,
     pub,
     test,
     signer: external ? external.account.address : null,
+    walletChainId,
     wallet(actor) {
       if (!dev) {
         if (!external) throw noSigner();

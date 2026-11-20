@@ -51,7 +51,7 @@ const REASONS: Record<string, Describer> = {
   InsufficientShares: ([have, asked]) => [
     "Access",
     n(have) === 0
-      ? "This address holds no vault shares. The curator has no withdrawal path at all."
+      ? "This address holds no vault shares, so there is nothing for it to withdraw. A curator never holds any."
       : `This address holds ${pctShares(have)} of the principal's size in shares and asked for ${pctShares(asked)}.`,
   ],
   // ---- the four promises
@@ -147,8 +147,33 @@ const REASONS: Record<string, Describer> = {
   InvalidAmount: ([amount, max]) => ["Auction", amount === undefined ? "The ETH sent must equal the bid's amount." : `${eth(amount)} is more than the ${eth(max)} allowed.`],
   NotAuthorized: ([authorized, caller]) => ["Auction", `Only ${shortAddress(String(authorized))}, the recipient the auction names, can do this. It was sent from ${shortAddress(String(caller))}.`],
   CannotSweepTokens: () => ["Auction", "The unsold tokens have already been swept to the treasury."],
+  // once it is over: leaving, and claiming what a bid bought
+  NotGraduated: () => ["Auction", "The auction did not raise what it needed to graduate: bids leave with their ETH, and there are no tokens to claim."],
+  AuctionIsNotFinalized: () => ["Auction", "The auction is not settled yet: its final checkpoint comes first."],
+  BidAlreadyExited: () => ["Auction", "This bid has already left the auction."],
+  BidNotExited: () => ["Auction", "A bid leaves the auction before it claims its tokens."],
+  CannotExitBid: () => ["Auction", "This bid cannot leave yet: one at or under the clearing price leaves once the auction is over."],
+  CannotPartiallyExitBidBeforeEndBlock: () => ["Auction", "A partly filled bid leaves once the auction is over."],
+  CannotPartiallyExitBidBeforeGraduation: () => ["Auction", "A partly filled bid leaves once the auction has graduated."],
+  NotClaimable: () => ["Auction", "The tokens are not claimable yet: claims open a few blocks after the auction ends."],
+  TokensNotReceived: () => ["Auction", "The auction has not received the tokens it is meant to sell."],
+  InvalidBidUnableToClear: () => ["Auction", "A bid at that price could never be filled: raise its price."],
+  MpsRemainingIsZero: () => ["Auction", "The auction has nothing left to sell in its remaining blocks."],
+  // ---- the launch strategy (LBPStrategy), which turns an auction into the pool and the vault's positions
+  InitializerNotRegistered: () => ["Auction", "This launch has already migrated: the strategy migrates an auction once. What is left is for the vault to adopt its positions."],
+  MigrationNotYetAllowed: ([at, now]) => ["Auction", `Migration opens at block ${n(at)}; this is block ${n(now)}.`],
+  NoPositionsCreated: () => ["Auction", "The migration would mint no pool positions, so it is refused."],
+  // ---- tokens (OpenZeppelin's ERC-20)
+  ERC20InsufficientBalance: ([, have, need], c) => ["Other", `The sender holds ${eth(have)} ${c.tokenSymbol ?? "tokens"} and this needs ${eth(need)}.`],
+  ERC20InsufficientAllowance: ([spender, have, need], c) => [
+    "Other",
+    `${shortAddress(String(spender))} may take ${eth(have)} ${c.tokenSymbol ?? "tokens"} from the sender and this needs ${eth(need)}: the approval is missing or too small.`,
+  ],
+  ERC20InvalidApprover: () => ["Other", "There is no account to approve from: connect a wallet on this network first."],
   // ---- the pool
   PriceLimitAlreadyExceeded: () => ["Pool", "The price is already past the swap's limit."],
+  PoolNotInitialized: () => ["Pool", "The pool has no price yet: it is created when the launch migrates."],
+  SwapAmountCannotBeZero: () => ["Pool", "A swap has to move some amount: this one rounds to nothing."],
   // The PoolManager keys positions by owner: removing liquidity from a range the caller never added to underflows its
   // own empty position (LiquidityMath.addDelta), so the vault's ranges are out of anyone else's reach.
   SafeCastOverflow: () => ["Access", "That position belongs to its owner: the caller holds no liquidity there to remove."],

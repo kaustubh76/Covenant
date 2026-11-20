@@ -12,6 +12,7 @@ import {
   encodeAbiParameters,
   encodePacked,
   keccak256,
+  RawContractError,
   parseEther,
   parseEventLogs,
   zeroAddress,
@@ -30,10 +31,12 @@ import {
   testTokenBytecode,
 } from "./abi.generated";
 import type { Actor } from "./accounts";
+import type { PlacedBid } from "./bids";
 import type { ChainCtx } from "./client";
+import { decodeRevert } from "./errors";
 import type { Terms } from "./terms";
 import { latest, reach } from "./time";
-import { type Party, devTxFields, must, receiptFor, send } from "./tx";
+import { type Party, devTxFields, must, receiptFor, send, sendRetrying, untilVisible } from "./tx";
 
 export const Q96 = 2n ** 96n;
 /** CCA prices are quote per token, Q96. The suite's auctions floor at 1.0 and step in 1/64ths. */
@@ -305,6 +308,10 @@ export async function registerAuction(ctx: ChainCtx, spec: LaunchSpec, token: Ad
   if (1e7 % spec.durationBlocks !== 0 || spec.durationBlocks % 2 !== 0) throw new Error("auction length must split 1e7 mps evenly over two halves");
   const total = spec.auctionSupply + spec.lpReserve;
   must(await send(ctx, spec.issuer, { address: token, abi: testTokenAbi, functionName: "approve", args: [m.lbpStrategy, total] }), "approve");
+  // Mined; but on a public chain the next answer can come from a node a block behind, where the registration would be
+  // refused for an allowance it has not seen yet.
+  const allowance = () => ctx.pub.readContract({ address: token, abi: testTokenAbi, functionName: "allowance", args: [ctx.address(spec.issuer), m.lbpStrategy] });
+  await untilVisible(ctx, async () => (await allowance()) >= total);
 
   // The registration lands in the next block; the auction opens `startDelay` blocks after that.
   const { number } = await latest(ctx);
@@ -339,12 +346,19 @@ export async function registerAuction(ctx: ChainCtx, spec: LaunchSpec, token: Ad
     lpAllocationSchedule: encodeAbiParameters(ALLOCATION_SCHEDULE, [[{ lowerThreshold: 0n, rate: spec.lpRateMps }]]),
   };
   must(
-    await send(ctx, spec.issuer, {
-      address: m.lbpStrategy,
-      abi: lbpStrategyAbi,
-      functionName: "initializeDistribution",
-      args: [token, total, encodeAbiParameters(MIGRATOR_PARAMETERS, [migratorParams, auctionParams]), zeroHash],
-    }),
+    await sendRetrying(
+      ctx,
+      spec.issuer,
+      {
+        address: m.lbpStrategy,
+        abi: lbpStrategyAbi,
+        functionName: "initializeDistribution",
+        args: [token, total, encodeAbiParameters(MIGRATOR_PARAMETERS, [migratorParams, auctionParams]), zeroHash],
+      },
+      {},
+      // the approval just above, not yet seen by the node that answered
+      { retryIf: (o) => o.error?.name === "ERC20InsufficientAllowance" },
+    ),
     "initializeDistribution",
   );
 
@@ -371,6 +385,15 @@ export function bid(ctx: ChainCtx, launch: Launch, bidder: Actor, maxPrice: bigi
     args: [maxPrice, amount, ctx.address(bidder), "0x"],
     value: amount,
   });
+}
+
+/** `owner`'s bids in the auction, as it holds them: each one's grid price and the ETH it committed. */
+export async function ownBids(ctx: ChainCtx, launch: Pick<Launch, "auction">, owner: Address): Promise<PlacedBid[]> {
+  const next = await ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "nextBidId" });
+  const all = await Promise.all(
+    Array.from({ length: Number(next) }, (_, i) => ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "bids", args: [BigInt(i)] })),
+  );
+  return all.filter((b) => b.owner.toLowerCase() === owner.toLowerCase()).map((b) => ({ maxPrice: b.maxPrice, amount: b.amountQ96 >> 96n }));
 }
 
 /** Called while a public chain is waited on: the latest block, and the one the next step needs. */
@@ -450,16 +473,32 @@ export async function migrate(ctx: ChainCtx, launch: Launch, by: Actor = "deploy
     // The strategy does not revert when it cannot build the pool: it sends the raise and the reserve to the recipient
     // and says why, so a "successful" migration can still have minted nothing.
     const failed = o.receipt ? parseEventLogs({ abi: lbpStrategyAbi, eventName: "MigrationFailed", logs: o.receipt.logs })[0] : undefined;
-    throw new Error(failed ? `migration failed inside LBPStrategy (reason ${failed.args.reason}); the funds went to the recipient` : "migration minted no LP positions");
+    // The reason is the pool creation's own revert data: say it as the app says any refusal.
+    const why = failed ? decodeRevert(new RawContractError({ data: failed.args.reason as Hex })) : null;
+    throw new Error(
+      failed
+        ? `The migration failed inside LBPStrategy: ${why?.reason ?? failed.args.reason}. The raise and the reserved tokens went to the treasury, so there is no pool for the vault to adopt. Bids can still leave the auction and claim their tokens.`
+        : "The migration minted no LP positions, so there is nothing for the vault to adopt.",
+    );
   }
   launch.lpIds = ids;
   return ids;
 }
 
-/** Step 6: anyone adopts every launcher NFT into vault-owned positions. */
+/**
+ * Step 6: anyone adopts every launcher NFT into vault-owned positions. Right after the migration a public RPC can answer
+ * from a node a block behind, where the pool is not live yet and the positions not minted: that refusal is simulated
+ * again before it is believed.
+ */
 export function adopt(ctx: ChainCtx, launch: Launch, by: Actor = "deployer") {
   if (!launch.lpIds) throw new Error("migrate first");
-  return send(ctx, by, { address: launch.vault, abi: covenantVaultAbi, functionName: "adopt", args: [launch.lpIds] });
+  return sendRetrying(
+    ctx,
+    by,
+    { address: launch.vault, abi: covenantVaultAbi, functionName: "adopt", args: [launch.lpIds] },
+    {},
+    { retryIf: (o) => o.error?.name === "PoolNotLive" || o.error?.name === "NotOwnedByVault" },
+  );
 }
 
 export interface SeedParams {
