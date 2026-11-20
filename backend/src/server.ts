@@ -1,9 +1,11 @@
-// The Covenant backend. For now: Playground chains with real writes, one private Anvil per visitor, loaded from the
-// state web/scripts/playground-seed.ts saved. Run with `npm run dev`, or `npm run build && npm start`.
+// The Covenant backend: Playground chains with real writes (one private Anvil per visitor, loaded from the state
+// web/scripts/playground-seed.ts saved), a cached read proxy for Base Sepolia, a relayer that sends a few actions for
+// visitors without a wallet, and the live end of the app's ledger. Run with `npm run dev`, or `npm run build && npm start`.
 
 import { type IncomingMessage, type ServerResponse, createServer } from "node:http";
 import { loadConfig } from "./config";
 import { Buckets, HttpError, clientIp, cors, json, readBody } from "./http";
+import { LedgerFeed } from "./ledger";
 import { CHAIN_ID, startChain } from "./playground/anvil";
 import { Playground, SESSION_ID, type Session } from "./playground/pool";
 import { readRecords } from "./playground/records";
@@ -30,6 +32,11 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
   const reads = new Buckets(40, 160);
   // Real Base Sepolia transactions for visitors without a wallet, from the backend's own key; off without one.
   const relayer = new Relayer({ key: config.relayerKey, rpc: config.baseSepoliaRpc, records: config.records, dailyEth: config.relayDailyEth, dripEth: config.dripEth, dripTokens: config.dripTokens });
+  // The newest relayed transactions and transactions to the recorded vaults, from Blockscout, cached for everyone.
+  const ledger = new LedgerFeed({ relayer: relayer.address, vaults: relayer.vaults });
+  // Status and ledger reads are cheap once cached, but each address gets a modest rate; resets restart a whole chain.
+  const looks = new Buckets(5, 20);
+  const resets = new Buckets(10 / 60, 10);
   const started = Date.now();
 
   const describe = (s: Session, resumed: boolean, expired: boolean) => ({
@@ -78,6 +85,7 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
       return json(res, 200, describe(session, resumed, expired));
     }
     const s = path.match(/^\/v1\/playground\/sessions\/([0-9a-f]{32})(\/reset)?$/);
+    if (s && (req.method === "DELETE" || s[2]) && !resets.take(ip)) throw new HttpError(429, "Too many resets from this address. Wait a minute.", { "retry-after": "60" });
     if (s && req.method === "POST" && s[2]) {
       const session = await playground.reset(s[1]);
       return json(res, 200, { ok: true, baselineSnapshot: session.chain.baseline });
@@ -86,7 +94,15 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
       await playground.close(s[1], "closed by its visitor");
       return json(res, 200, { ok: true });
     }
+    if (req.method === "GET" && (path === "/v1/relay" || path === "/v1/ledger") && !looks.take(ip)) throw new HttpError(429, "Too many requests from this address.", { "retry-after": "5" });
     if (req.method === "GET" && path === "/v1/relay") return json(res, 200, await relayer.status());
+    if (req.method === "GET" && path === "/v1/ledger") {
+      try {
+        return json(res, 200, await ledger.latest());
+      } catch (e) {
+        throw new HttpError(502, `The block explorer did not answer: ${e instanceof Error ? e.message : String(e)}`);
+      }
+    }
     const relay = path.match(/^\/v1\/relay\/([A-Za-z]+)$/);
     if (relay && req.method === "POST") {
       const body = await readBody(req, 10_000);
@@ -124,6 +140,8 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     opens.prune();
     calls.prune();
     reads.prune();
+    looks.prune();
+    resets.prune();
   }, 30_000);
   timer.unref();
 

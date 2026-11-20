@@ -83,6 +83,20 @@ describe("the relayer", () => {
     await expect(r.handle("poke", "", "8.8.8.8")).resolves.toMatchObject({ status: "success" });
   });
 
+  it("charges no quota for a request that sends nothing", async () => {
+    const c = clients({ revert: "restore" });
+    const r = relayer(c);
+    for (let i = 0; i < 12; i++) await expect(r.handle("restore", JSON.stringify({ indices: [0] }), "6.6.6.6")).rejects.toMatchObject({ status: 409 });
+    await expect(r.handle("poke", "", "6.6.6.6")).resolves.toMatchObject({ status: "success" });
+    expect(c.sent).toEqual(["poke"]);
+  });
+
+  it("names the vaults it serves in its status", async () => {
+    const s = await relayer().status();
+    expect(s).toMatchObject({ enabled: true });
+    expect((s as { vaults: string[] }).vaults.length).toBeGreaterThan(0);
+  });
+
   it("drips once a day per address and per caller", async () => {
     let t = 0;
     const r = relayer(clients(), { now: () => t });

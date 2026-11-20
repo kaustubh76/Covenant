@@ -1,4 +1,4 @@
-# The contracts and the app, on every push to main and every pull request. The same Make targets as a local checkout.
+# The contracts, the app and the backend, on every push to main and every pull request. The same Make targets as a local checkout.
 # Left out: the fork tests (make test-fork, npm run test:fork), which need Base Sepolia's RPC, and the live proof.
 name: CI
 
@@ -56,3 +56,24 @@ jobs:
           npm run lint
           npx tsc --noEmit
           npm run build
+
+  backend:
+    name: Backend (backend/)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Anvil, so the Playground tests run against real chains (they skip without it).
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: v1.1.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Types and tests (the relayer's fork test needs RELAY_FORK_TEST and Base Sepolia's RPC, and skips)
+        working-directory: backend
+        run: |
+          npm ci
+          npm run typecheck
+          npm test

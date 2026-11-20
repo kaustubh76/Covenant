@@ -152,6 +152,11 @@ export class Relayer {
     return this.roles;
   }
 
+  /** The recorded vaults this relayer acts on. */
+  get vaults(): { vault: Address; symbol: string }[] {
+    return this.launches.map((l) => ({ vault: l.vault, symbol: l.symbol }));
+  }
+
   get enabled(): boolean {
     return !!this.pub && !!this.wallet && !!this.address && !this.refusal;
   }
@@ -160,8 +165,19 @@ export class Relayer {
     return (this.o.now ?? Date.now)();
   }
 
-  /** What the app shows: whether the relayer runs, from which address, and what is left of today's budget. */
+  /** The last status answer and when it was made: the app asks on every page, and each answer reads the balance. */
+  private statusCache: { at: number; value: Awaited<ReturnType<Relayer["freshStatus"]>> } | null = null;
+
+  /** What the app shows: whether the relayer runs, from which address, for which vaults, and what is left of today's budget. */
   async status() {
+    const t = this.now();
+    if (this.statusCache && t - this.statusCache.at < 10_000) return this.statusCache.value;
+    const value = await this.freshStatus();
+    this.statusCache = { at: t, value };
+    return value;
+  }
+
+  private async freshStatus() {
     if (!this.enabled) return { enabled: false, ...(this.refusal ? { reason: this.refusal } : {}) };
     const conflict = await this.roleConflict();
     if (conflict) return { enabled: false, reason: conflict };
@@ -174,6 +190,7 @@ export class Relayer {
       spentTodayEth: Number(formatEther(this.spent.wei)),
       dailyBudgetEth: this.o.dailyEth,
       actions: RELAY_ACTIONS,
+      vaults: this.launches.map((l) => l.vault),
     };
   }
 
@@ -212,14 +229,27 @@ export class Relayer {
       }
     }
     if (!this.perIp.take(ip)) throw new HttpError(429, "Ten relayed actions an hour per address. Try again later, or connect a wallet.", { "retry-after": "600" });
-    if ((action === "sell" || action === "buy") && !this.swaps.take("all")) {
+    const trade = action === "sell" || action === "buy";
+    if (trade && !this.swaps.take("all")) {
+      this.perIp.refund(ip);
       throw new HttpError(429, "Relayed trades are capped at 20 an hour across everyone, since each moves the shared vault. Try again later.", { "retry-after": "600" });
     }
-    const conflict = await this.roleConflict();
-    if (conflict) throw new HttpError(503, conflict);
-
-    const steps = await this.steps(action as RelayAction, launch, body);
-    const balance = await this.pub!.getBalance({ address: this.address! });
+    // A request that sends nothing (refused by a check or by the contract's simulation) costs its caller no quota.
+    const refund = () => {
+      this.perIp.refund(ip);
+      if (trade) this.swaps.refund("all");
+    };
+    let steps: Step[];
+    let balance: bigint;
+    try {
+      const conflict = await this.roleConflict();
+      if (conflict) throw new HttpError(503, conflict);
+      steps = await this.steps(action as RelayAction, launch, body);
+      balance = await this.pub!.getBalance({ address: this.address! });
+    } catch (e) {
+      refund();
+      throw e;
+    }
 
     // From here to the reservation nothing awaits, so two requests cannot both pass the same check. The budget and the
     // drip are reserved now and settled to what was really spent once the steps have run (or refunded if nothing was).
@@ -228,11 +258,18 @@ export class Relayer {
     const keys = action === "drip" ? [`a:${String(body.to).toLowerCase()}`, `i:${ip}`] : [];
     const t = this.now();
     if (keys.some((k) => this.dripped.has(k) && t - this.dripped.get(k)! < 24 * 3600_000)) {
+      refund();
       throw new HttpError(429, "Test funds go once a day per address. Try again tomorrow.", { "retry-after": "3600" });
     }
-    if (this.spent.wei + outlay > parseEther(String(this.o.dailyEth))) throw new HttpError(503, "The relayer has spent today's budget. Connect a wallet, or try the Playground.");
+    if (this.spent.wei + outlay > parseEther(String(this.o.dailyEth))) {
+      refund();
+      throw new HttpError(503, "The relayer has spent today's budget. Connect a wallet, or try the Playground.");
+    }
     // The real cap is what the key holds (the budget above lives in memory and restarts with the service): keep a floor.
-    if (balance - this.inFlight < outlay + parseEther("0.005")) throw new HttpError(503, "The relayer is nearly out of funds. Connect a wallet, or try the Playground.");
+    if (balance - this.inFlight < outlay + parseEther("0.005")) {
+      refund();
+      throw new HttpError(503, "The relayer is nearly out of funds. Connect a wallet, or try the Playground.");
+    }
     this.spent.wei += outlay;
     this.inFlight += outlay;
     const reservedOn = this.spent.day;
@@ -254,7 +291,10 @@ export class Relayer {
     } catch (e) {
       const cost = (e as { cost?: bigint }).cost ?? 0n;
       settle(cost);
-      if (cost === 0n) for (const k of keys) this.dripped.delete(k);
+      if (cost === 0n) {
+        for (const k of keys) this.dripped.delete(k);
+        refund();
+      }
       throw e;
     }
   }

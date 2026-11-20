@@ -92,6 +92,11 @@ export class Buckets {
     this.buckets.set(key, b);
     return ok;
   }
+  /** Give back `n` tokens `take` spent, for a request that turned out to do nothing. */
+  refund(key: string, n = 1): void {
+    const b = this.buckets.get(key);
+    if (b) b.tokens = Math.min(this.burst, b.tokens + n);
+  }
   /** Forget buckets that have refilled completely, so the map does not grow without bound. */
   prune(): void {
     const t = this.now();
