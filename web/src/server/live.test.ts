@@ -11,7 +11,7 @@ const read = (f: string) => {
     return "";
   }
 };
-const onRecord = ["84532.json", "84532.runtime.json", "84532.proof.json", "84532-lp.proof.json", "84532-manage.proof.json"].map(read).join("\n");
+const onRecord = ["84532.json", "84532.runtime.json", "84532.proof.json", "84532-lp.proof.json", "84532-manage.proof.json", "84532-refusals.proof.json", "84532-lifecycle.proof.json"].map(read).join("\n");
 
 afterEach(() => {
   delete process.env.COVENANT_DEPLOYMENTS_DIR;

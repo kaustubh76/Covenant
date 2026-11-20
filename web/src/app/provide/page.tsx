@@ -9,11 +9,12 @@ import { NEVER } from "@/chain/launch";
 import { swap } from "@/chain/market";
 import { type ActionCall, type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
 import { priceAt } from "@/chain/price";
-import { depositCall, ensureAllowance, quoteBudget, withSlack } from "@/chain/provide";
+import { depositCall, ensureAllowance, quoteBudget, standInDeposit, withSlack } from "@/chain/provide";
 import { type Party, isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { ShapeChart } from "@/components/covenant/ShapeChart";
+import { OnRecord } from "@/components/covenant/OnRecord";
 import { VaultPicker } from "@/components/covenant/VaultPicker";
 import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
@@ -108,13 +109,16 @@ export default function ProvidePage() {
   useEffect(() => {
     if (!ctx || !v || newShares === 0n) return;
     let live = true;
-    preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v))
+    // With no wallet on a public chain the role acts from address zero, which holds nothing: the deposit is priced from
+    // a stand-in funded inside the simulation instead, so the cost shown is still the contract's own.
+    const previewing = publicChain && !wallet;
+    (previewing ? standInDeposit(ctx, v, newShares, addPct / 100) : preflight(ctx, party, depositCall(v, newShares, quoteBudget(v, addPct / 100, cap)), v, approveFirst(v)))
       .catch(failedPreflight)
       .then((p) => live && setDep(p));
     return () => {
       live = false;
     };
-  }, [ctx, v, party, addPct, newShares, cap]);
+  }, [ctx, v, party, addPct, newShares, cap, publicChain, wallet]);
   useEffect(() => {
     if (!ctx || !v || burn === 0n) {
       setOut(null);
@@ -244,7 +248,7 @@ export default function ProvidePage() {
             <Row label="You pay">
               {cost
                 ? `${amt(eth(cost[0]))} ETH + ${amt(eth(cost[1]))} ${sym}`
-                : dep && !dep.ok && tokenShort > 0
+                : dep && !dep.ok && (tokenShort > 0 || dep.error?.name === "NoPreview")
                   ? `about ${amt(v.principal.quote * (addPct / 100))} ETH + ${amt(tokenNeed)} ${sym}`
                   : dep && !dep.ok
                     ? "—"
@@ -252,7 +256,7 @@ export default function ProvidePage() {
             </Row>
             <Row label="You will own">{pct((addPct / (100 + addPct)) * 1e4)} of the vault</Row>
             <Row label={`${name} wallet`}>
-              <span className={canPay || !cost ? "" : "text-breach"}>{bal ? `${amt(bal.quote)} ETH · ${amt(bal.token)} ${sym}` : publicChain && !wallet ? "Connect a wallet" : "…"}</span>
+              <span className={canPay || !cost || (publicChain && !wallet) ? "" : "text-breach"}>{bal ? `${amt(bal.quote)} ETH · ${amt(bal.token)} ${sym}` : publicChain && !wallet ? "Connect a wallet" : "…"}</span>
             </Row>
           </div>
           {tokenShort > 0 && mayAct && !isAddressParty(party) && (
@@ -273,9 +277,12 @@ export default function ProvidePage() {
               : tokenShort > 0
                 ? `The deposit takes ${sym} too, in proportion: buy the difference, then deposit.`
                 : publicChain
-                  ? `Simulated against the vault first, approval included: the cost shown is exactly what the contract will take. A first deposit asks your wallet to approve ${sym}, then to deposit.`
+                  ? !wallet
+                    ? `Priced by the live contract, simulated from a stand-in funded inside the simulation: nothing is sent. Connect a wallet to deposit, or try it on the Playground.`
+                    : `Simulated against the vault first, approval included: the cost shown is exactly what the contract will take. A first deposit asks your wallet to approve ${sym}, then to deposit.`
                   : "Simulated against the vault first: the cost shown is exactly what the contract will take."}
           </p>
+          <OnRecord fn="deposit" className="mt-2 text-center" />
         </Panel>
 
         <Panel
@@ -330,6 +337,7 @@ export default function ProvidePage() {
                     ? `Simulated as ${shortAddress(posParty)}. Only that wallet can send it.`
                     : "Outside LPs are never locked, and an exit is never blocked by the price guard."}
                 </p>
+                <OnRecord fn={["withdraw", "claimFees"]} className="mt-2 text-center" />
               </>
             ) : (
               <p className="py-6 text-center text-[13px] leading-relaxed text-muted">
@@ -368,6 +376,7 @@ export default function ProvidePage() {
                 {publicChain && !mayAct && v.raw.principalWithdrawable > 0n ? "Only the issuer's wallet can withdraw" : v.raw.principalWithdrawable > 0n ? "Withdraw principal" : "Try to withdraw early"}
               </Button>
               <p className="mt-2 text-center text-xs text-faint">The issuer&apos;s principal is locked. Only the vested share can leave, and only to the treasury.</p>
+              <OnRecord fn="withdrawPrincipal" className="mt-2 text-center" />
             </div>
           </div>
         </Panel>

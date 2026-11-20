@@ -23,6 +23,7 @@ import { actorFor, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { RelayButton } from "@/components/controls/RelayButton";
+import { OnRecord } from "@/components/covenant/OnRecord";
 import { useRelay } from "@/lib/useRelay";
 
 const fallPct = (ticks: number) => `${((1 - Math.exp(-ticks * LN_BASE)) * 100).toFixed(0)}%`;
@@ -234,6 +235,7 @@ export default function KeepPage() {
                   ? "Open to any address. No permission needed."
                   : (plan?.pre.error?.reason ?? "It will revert and pay nothing. The bounty cannot be farmed.")}
             </p>
+            <OnRecord fn="restore" className="mt-3 text-center" />
           </Panel>
 
           {!lapsed && publicChain && (
@@ -279,10 +281,12 @@ export default function KeepPage() {
             <p className="text-[13px] leading-relaxed text-muted">
               The Anchor only climbs while someone syncs it, at most one band per epoch. Every vault action syncs it; a keeper can too, for free.
             </p>
-            <Button className="mt-4 w-full" variant="ghost" onClick={poke} disabled={!!busy}>
+            {/* Open to anyone: the connected wallet sends it, or with none the backend's relayer. */}
+            <SendButton verb="poke" className="mt-4 w-full" variant={relayLeads ? "ghost" : "secondary"} onClick={poke} disabled={!!busy}>
               Call poke()
-            </Button>
-            <RelayButton action="poke" title="Sync the Anchor (poke)" className="mt-2 w-full" />
+            </SendButton>
+            <RelayButton action="poke" title="Sync the Anchor (poke)" className="mt-2 w-full" prominent={relayLeads} />
+            <OnRecord fn="poke" className="mt-3 text-center" refusal={false} />
           </Panel>
         </div>
       </div>

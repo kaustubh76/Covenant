@@ -5,30 +5,18 @@ import { ShieldCheck } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ATTACKS, type AttackRun, runAttacks } from "@/chain/scenarios/attacks";
 import { runLiveChecks } from "@/chain/scenarios/livechecks";
+import { ATTACK_TXS } from "@/chain/scenarios/onchain";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { BeatList } from "@/components/covenant/Verdict";
 import { shortHash } from "@/components/landing/Live";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
 import { recorded } from "@/fixtures";
-import type { LiveDeployment, LiveStory } from "@/server/live";
+import type { LiveDeployment, LiveStep, LiveStory } from "@/server/live";
 import { offeredDevNetwork, useChain } from "@/store/chain";
 
 /** The suite's attacks as `npm run record` captured them from the contracts on the local chain. */
 const RECORDED = recorded.attacks as unknown as Record<string, AttackRun>;
 
-/**
- * Attacks a recorded proof on the public chain has already played out for real, transaction and all (server/live.ts):
- * the card links to it.
- */
-const ON_CHAIN: Record<string, [story: LiveStory["key"], step: string]> = {
-  softrug: ["covenant", "rug"],
-  "big-dump": ["covenant", "crash"],
-  "dust-restore": ["covenant", "restore"],
-  "colluding-curator": ["manage", "chase"],
-  pace: ["manage", "overpace"],
-  "cheap-shares": ["lp", "join"],
-  "lp-exit": ["lp", "leave"],
-};
 const nf = new Intl.NumberFormat("en-US");
 
 /** `deployment` is Base Sepolia's, with its proofs (server/live.ts): the cards it has a transaction for link to it. */
@@ -53,12 +41,17 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const results = live ? ownResults : { ...RECORDED, ...checked };
   // the proofs are Base Sepolia's own transactions: shown there only, not on a fork or the local chain
   const onBaseSepolia = useChain((s) => s.net?.key === "base-sepolia");
-  const onChain = (id: string) => {
-    const m = ON_CHAIN[id];
-    const story = m && onBaseSepolia ? deployment?.stories.find((s) => s.key === m[0]) : undefined;
-    const step = story?.steps.find((x) => x.key === m[1]);
-    return story && step ? { story, step } : null;
-  };
+  // Every attack has also been played for real on Base Sepolia, by the recorded proofs (scenarios/onchain.ts): the card
+  // links each of its transactions, on whichever vault it ran.
+  const onChain = (id: string): { story: LiveStory; step: LiveStep }[] =>
+    onBaseSepolia
+      ? (ATTACK_TXS[id] ?? []).flatMap(([key, stepKey]) => {
+          const story = deployment?.stories.find((s) => s.key === key);
+          const step = story?.steps.find((x) => x.key === stepKey);
+          return story && step ? [{ story, step }] : [];
+        })
+      : [];
+  const linked = ATTACKS.filter((a) => onChain(a.id).length).length;
   const liveIds = Object.keys(checked);
   const vaultAddress = view?.address;
   useEffect(() => {
@@ -109,8 +102,8 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
         title={`${ATTACKS.length} ways to take the liquidity. Run them.`}
         lead={
           live
-            ? "Each card replays an attack from the contracts' adversarial test suite as real transactions, against a fresh vault on the local chain, inside a snapshot that is rolled back afterwards. Nothing on this page is pre-written: every outcome is what the contracts returned."
-            : `Cards marked Live were just run against the ${view?.tokenSymbol ?? ""} vault on ${netName ?? "this chain"} as it is now, in simulated blocks on top of the chain's head. Its real curator and issuer act as themselves, stand-ins with no role are funded inside the simulation, and blocks hours or days later let the setup epoch, the curator timelock and a TWAP window pass. Nothing is sent: every refusal is the deployed contracts' own. Cards still marked Recorded need days of chain time, or a layout this vault does not have, so they show the suite's run against the same contracts on the local chain.`
+            ? `Each card replays an attack from the contracts' adversarial test suite as real transactions, against a fresh vault on ${netName ?? "this chain"}, inside a snapshot that is rolled back afterwards. Nothing on this page is pre-written: every outcome is what the contracts returned.`
+            : `Cards marked Checked live were just run against the ${view?.tokenSymbol ?? ""} vault on ${netName ?? "this chain"} as it is now, in simulated blocks on top of the chain's head: its real curator and issuer act as themselves, stand-ins with no role are funded inside the simulation, and nothing is sent. Cards marked Recorded need days of chain time or a layout this vault does not have, so they show the suite's run on the local chain.${linked ? ` And ${linked === ATTACKS.length ? "every attack has" : `${linked} of the attacks have`} also been played for real on ${netName ?? "this chain"}: each card links the transactions, refused or settled by the deployed contracts.` : ""}`
         }
         aside={
           <div className="flex items-center gap-4">
@@ -146,7 +139,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {ATTACKS.map((a) => {
           const r = results[a.id];
-          const proof = onChain(a.id);
+          const proofs = onChain(a.id);
           return (
             <article key={`${a.id}:${arrivals[a.id] ?? 0}`} className={clsx("flex flex-col rounded-lg border bg-surface p-5 transition-colors duration-500", r ? (r.blocked ? "refuse border-pass/40" : "border-breach/60") : "border-line")}>
               <div className="flex items-start justify-between gap-3">
@@ -163,25 +156,28 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <p className={clsx("mt-2 text-[13px] font-medium", r.blocked ? "text-pass" : "text-breach")}>{r.summary}</p>
                 </div>
               )}
-              {proof && deployment && (
-                <a
-                  href={`${deployment.explorer}/tx/${proof.step.hash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="mt-3 flex items-start gap-2.5 rounded-md border border-line bg-bg/40 px-3 py-2.5 transition-colors hover:border-line-strong"
-                >
-                  <span className={clsx("mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full", proof.step.status === "reverted" ? "bg-breach" : "bg-pass")} />
-                  <span className="min-w-0 text-[12.5px] leading-snug">
-                    <span className="eyebrow block text-[10.5px]">Also on chain, for real · {proof.story.symbol}</span>
-                    <span className="mt-1 block text-ink">
-                      {proof.step.title}
-                      {proof.step.error && <span className="num text-breach"> · {proof.step.error}</span>}
-                    </span>
-                    <span className="num mt-1 block truncate text-faint">
-                      block {nf.format(proof.step.block)} · {shortHash(proof.step.hash)} ↗
-                    </span>
-                  </span>
-                </a>
+              {proofs.length > 0 && deployment && (
+                <div className="mt-3 rounded-md border border-line bg-bg/40 px-3 py-2.5">
+                  <span className="eyebrow block text-[10.5px]">Played for real on {netName}</span>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {proofs.map(({ story, step }) => (
+                      <li key={`${story.key}:${step.key}`}>
+                        <a href={`${deployment.explorer}/tx/${step.hash}`} target="_blank" rel="noreferrer" className="group flex items-start gap-2.5 text-[12.5px] leading-snug">
+                          <span className={clsx("mt-[5px] h-1.5 w-1.5 shrink-0 rounded-full", step.status === "reverted" ? "bg-breach" : "bg-pass")} />
+                          <span className="min-w-0">
+                            <span className="block text-ink group-hover:underline">
+                              {step.title}
+                              {step.error && <span className="num text-breach"> · {step.error.split("(")[0]}</span>}
+                            </span>
+                            <span className="num block truncate text-faint">
+                              {story.symbol} · block {nf.format(step.block)} · {shortHash(step.hash)} ↗
+                            </span>
+                          </span>
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
               <div className="mt-auto flex items-center justify-between gap-3 pt-4">
                 <span className="num truncate text-xs text-faint" title={a.test}>
@@ -192,7 +188,9 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                     {r ? "Run again" : a.slow ? "Attempt (slow)" : "Attempt"}
                   </Button>
                 ) : liveIds.includes(a.id) ? (
-                  <Tag tone="accent">Live on {netName}</Tag>
+                  <span title={`Simulated against the live vault just now; nothing was sent`}>
+                    <Tag tone="accent">Checked live</Tag>
+                  </span>
                 ) : (
                   <Tag>Recorded</Tag>
                 )}
@@ -208,7 +206,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
           <div>
             <div className="text-[15px] font-medium text-ink">
               All {ran} attacks were blocked by the deployed contracts
-              {live ? "" : ` (${liveIds.length} just now on ${netName}, the other ${ran - liveIds.length} recorded on the local chain)`}.
+              {live ? "" : ` (${liveIds.length} checked live just now on ${netName}, the other ${ran - liveIds.length} recorded on the local chain)`}.
             </div>
             <div className="text-[13.5px] text-muted">
               The successful steps inside a card are what an attacker is allowed to do, such as trading or proposing a curator. The step that would have taken value is the one the contract refused, or the

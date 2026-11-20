@@ -16,6 +16,7 @@ import { isAddressParty, send } from "@/chain/tx";
 import type { VaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { type ShapeSource, ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/ShapeChart";
+import { OnRecord } from "@/components/covenant/OnRecord";
 import { ReshapeVerdict } from "@/components/covenant/Verdict";
 import { Button, PageHeader, Panel, Tag } from "@/components/ui";
 import { amt, axisPrice, duration, pct } from "@/lib/format";
@@ -518,6 +519,7 @@ export default function CuratePage() {
                     : "It will be mined and revert. Nothing will change."
                   : "One transaction. Liquidity never leaves the pool."}
             </p>
+            <OnRecord fn="reshape" className="mt-3 text-center" />
           </Panel>
         </div>
       </div>

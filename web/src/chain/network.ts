@@ -142,6 +142,8 @@ export interface Network {
   rpcUrl: string;
   /** Covenant's backend (backend/), which runs the Playground's chains. Set for the Playground only. */
   backend?: string;
+  /** Covenant's backend for its relayer, on Base Sepolia: set whenever a backend is configured, read cache or not. */
+  relay?: string;
   manifest: Manifest;
   runtime: Runtime | null;
   caps: Capabilities;

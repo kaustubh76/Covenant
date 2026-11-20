@@ -48,6 +48,14 @@ export function Dock() {
   const wallet = useChain((s) => s.wallet);
   const relayer = useRelay();
   const viaRelay = !wallet && relayer.enabled;
+  // No wallet and no relayer (off, or still waking): a trade can only start by connecting one.
+  const connectFirst = !wallet && !viaRelay;
+  const connect = () => {
+    const { wallets, connectWallet } = useChain.getState();
+    if (wallets[0]) void connectWallet(wallets[0].id);
+    else useChain.getState().record({ actor: "anyone", title: "No wallet in this browser", ok: false, error: { name: "NotSent", args: [], signature: "Not sent", rule: "Other", reason: "Install a browser wallet to trade on Base Sepolia, or open the Playground, which needs none." } }, { toast: true });
+  };
+  const tradeTitle = viaRelay ? "Sent by Covenant's backend: no wallet needed" : connectFirst ? (relayer.waking ? "Covenant's backend is waking up. Or connect a wallet to trade" : "Connect a wallet to trade") : undefined;
   const [size, setSize] = useState("5");
   const [open, setOpen] = useState(false);
   useEffect(() => {
@@ -137,10 +145,10 @@ export function Dock() {
           >
             <Seg>
               {/* With no wallet, the backend's relayer makes these two small trades when it is on. */}
-              <Btn onClick={() => (viaRelay ? void relayer.send("sell", `Market sells 1 ${sym}`) : sell(1))} title={viaRelay ? "Sent by Covenant's backend: no wallet needed" : undefined}>
+              <Btn onClick={() => (viaRelay ? void relayer.send("sell", `Market sells 1 ${sym}`) : connectFirst ? connect() : sell(1))} title={tradeTitle}>
                 Sell 1
               </Btn>
-              <Btn onClick={() => (viaRelay ? void relayer.send("buy", `Market buys ${sym} up 1%`) : move(1))} title={viaRelay ? "Sent by Covenant's backend: no wallet needed" : undefined}>
+              <Btn onClick={() => (viaRelay ? void relayer.send("buy", `Market buys ${sym} up 1%`) : connectFirst ? connect() : move(1))} title={tradeTitle}>
                 Buy +1%
               </Btn>
             </Seg>

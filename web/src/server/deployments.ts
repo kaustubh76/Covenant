@@ -134,8 +134,9 @@ export async function chainStatus(key: NetworkKey): Promise<ChainStatus> {
   const network = networkOf(key, rpcUrl, manifest, runtime);
   // Base Sepolia's reads go through the backend's shared cache when there is one (the browser falls back to the public
   // endpoint whenever it does not answer). COVENANT_READ_CACHE=off keeps every read direct.
-  const backend = key === "base-sepolia" && process.env.COVENANT_READ_CACHE !== "off" ? backendUrl() : null;
-  return { state: "ready", network: backend ? { ...network, backend } : network };
+  const relay = key === "base-sepolia" ? backendUrl() : null;
+  const backend = relay && process.env.COVENANT_READ_CACHE !== "off" ? relay : null;
+  return { state: "ready", network: { ...network, ...(backend ? { backend } : {}), ...(relay ? { relay } : {}) } };
 }
 
 /** The local chain, as the reset route needs it. */

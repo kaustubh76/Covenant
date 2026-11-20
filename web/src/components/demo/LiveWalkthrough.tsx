@@ -69,7 +69,8 @@ const NOTES: Record<string, { rule: string; text: string }> = {
 
 /** The guided demo on a public chain: the live proof, step by step, each a real transaction on the explorer. */
 export function LiveWalkthrough({ live }: { live: LiveDeployment }) {
-  const stories: LiveStory[] = live.stories.length ? live.stories : [{ key: "covenant", title: "", vault: live.vault, symbol: live.symbol, steps: live.steps }];
+  const told = live.stories.filter((s) => s.listed !== false);
+  const stories: LiveStory[] = told.length ? told : [{ key: "covenant", title: "", vault: live.vault, symbol: live.symbol, steps: live.steps }];
   const [si, setSi] = useState(0);
   const story = stories[Math.min(si, stories.length - 1)];
   const steps = story.steps;

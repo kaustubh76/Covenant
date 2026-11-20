@@ -29,7 +29,16 @@ export function RelayButton({
   const relay = useRelay();
   const wallet = useChain((s) => s.wallet);
   const busy = useChain((s) => s.busy);
-  if (!relay.enabled || wallet) return null;
+  if (wallet) return null;
+  if (relay.waking) {
+    return (
+      <Button size="sm" variant="secondary" className={className} disabled title="Covenant's backend sleeps when nobody has used it for a while, and takes about a minute to wake">
+        <Send size={13} strokeWidth={1.8} className="animate-pulse text-faint" />
+        Backend waking up…
+      </Button>
+    );
+  }
+  if (!relay.enabled) return null;
   return (
     <Button
       size="sm"

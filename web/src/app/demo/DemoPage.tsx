@@ -307,8 +307,9 @@ function NeedsLocalChain({ name }: { name: string }) {
       <Panel eyebrow="Guided demo" title="The ten steps run on the local chain">
         <p className="text-[14px] leading-relaxed text-muted">
           The demo walks a launch from its auction to its release, which takes months of chain time: vesting, the curator timelock, a sell-off held for a whole
-          TWAP window. On the local chain the app moves the clock forward and can rewind every step. {name} keeps real time, so the demo cannot run here. The
-          vault, curate, keep, provide and govern pages all work on {name} with your wallet.
+          TWAP window. On the local chain the app moves the clock forward and can rewind every step. {name} keeps real time, so the demo cannot run here. On{" "}
+          {name} the provide and keep pages act with your wallet (or, without one, the backend&apos;s relayer), curate and govern show the curator&apos;s and
+          issuer&apos;s calls as the contract would answer them, and the ledger links every function and attack to its real transactions.
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
           {devNet && (

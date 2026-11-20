@@ -100,6 +100,9 @@ function Contracts({ live }: { live: LiveDeployment }) {
         <a href={`${live.explorer}/address/${live.vault}`} target="_blank" rel="noreferrer">
           <Button>Vault on Basescan ↗</Button>
         </a>
+        <Link href="/ledger">
+          <Button variant="ghost">Every transaction on record</Button>
+        </Link>
       </div>
     </div>
   );
@@ -107,7 +110,8 @@ function Contracts({ live }: { live: LiveDeployment }) {
 
 /** The real deployment: the contracts' addresses and the live proof's transactions, each linked to the explorer. */
 export function LiveSection({ live }: { live: LiveDeployment }) {
-  const stories = live.stories.length ? live.stories : live.steps.length ? [{ key: "covenant" as const, title: "", vault: live.vault, symbol: live.symbol, steps: live.steps }] : [];
+  const told = live.stories.filter((s) => s.listed !== false);
+  const stories = told.length ? told : live.steps.length ? [{ key: "covenant" as const, title: "", vault: live.vault, symbol: live.symbol, steps: live.steps }] : [];
   const [pick, setPick] = useState(0);
   const story = stories[Math.min(pick, stories.length - 1)];
   const proven = stories.length > 0;

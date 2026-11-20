@@ -330,7 +330,7 @@ export function RuleExplorer() {
                 <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 text-[13px]">
                   <span className={result.blocked ? "text-pass" : "text-breach"}>{result.summary}</span>
                   <Link href="/attacks" className="text-accent underline-offset-4 hover:underline">
-                    Run it live in the attack lab →
+                    See it on chain in the attack lab →
                   </Link>
                 </div>
               </motion.div>

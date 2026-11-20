@@ -15,6 +15,7 @@ import { ROLES, type Role, useChain } from "@/store/chain";
 import { Dock } from "@/components/dock/Dock";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
+import { rememberSent } from "@/lib/sentTxs";
 import { useRelay } from "@/lib/useRelay";
 
 const NAV = [
@@ -311,7 +312,8 @@ function Toast() {
   const net = useChain((s) => s.net);
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(dismiss, toast.ok ? 3200 : 7000);
+    // A settled transaction's toast carries its link: long enough to click. The activity drawer keeps it after that.
+    const t = setTimeout(dismiss, toast.ok ? (toast.hash ? 6500 : 3200) : 7000);
     return () => clearTimeout(t);
   }, [toast, dismiss]);
   // Only the contract's own refusal is "Reverted". A declined wallet request, a wallet on another network, a node that
@@ -376,8 +378,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const { netKey, setNetwork } = useChain.getState();
     if (netKey && isNetworkKey(wanted) && wanted !== netKey) void setNetwork(wanted);
   }, [path]);
-  // Not on the landing (recorded data), nor the guided demo and the attack lab, which keep their own snapshots.
-  const showDock = path !== "/" && path !== "/demo" && path !== "/attacks";
+  // What this browser sends on a public chain is kept, with its hash, beyond this visit (the ledger's "Yours").
+  useEffect(
+    () =>
+      useChain.subscribe((s, prev) => {
+        if (s.log === prev.log || !s.net || s.net.caps.devChain) return;
+        const before = new Set(prev.log.map((b) => b.id));
+        rememberSent(s.net.chainId, s.log.filter((b) => !before.has(b.id)));
+      }),
+    [],
+  );
+  // Not on the landing (recorded data), nor the guided demo and the attack lab, which keep their own snapshots, nor the
+  // ledger, which is the record rather than a place to act.
+  const showDock = path !== "/" && path !== "/demo" && path !== "/attacks" && path !== "/ledger";
   return (
     <MotionConfig reducedMotion="user">
       <TopBar />

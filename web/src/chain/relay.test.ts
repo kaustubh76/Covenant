@@ -21,6 +21,16 @@ describe("the relayer client", () => {
     await expect(relay("https://backend.example", "drip", { to: "0x00000000000000000000000000000000000000b2" })).resolves.toMatchObject({ ok: false, status: 429, revert: undefined });
     vi.stubGlobal("fetch", vi.fn(async () => { throw new TypeError("fetch failed"); }));
     await expect(relay("https://backend.example", "poke")).resolves.toMatchObject({ ok: false, status: 0 });
-    await expect(relayStatus("https://backend.example")).resolves.toEqual({ enabled: false });
+    // asleep or unreachable is "not yet", which the app retries; an answer saying off is "off"
+    await expect(relayStatus("https://backend.example")).resolves.toBeNull();
+    vi.stubGlobal("fetch", answer(200, { enabled: false, reason: "RELAYER_PRIVATE_KEY is not set." }));
+    await expect(relayStatus("https://backend.example")).resolves.toEqual({ enabled: false, reason: "RELAYER_PRIVATE_KEY is not set." });
+  });
+
+  it("keeps every hash of a multi-step action, the approval's too", async () => {
+    const a = `0x${"aa".repeat(32)}`;
+    const b = `0x${"bb".repeat(32)}`;
+    vi.stubGlobal("fetch", answer(200, { hash: b, hashes: [a, b], status: "success", title: "Approve, then sell" }));
+    await expect(relay("https://backend.example", "sell")).resolves.toMatchObject({ ok: true, hash: b, hashes: [a, b] });
   });
 });

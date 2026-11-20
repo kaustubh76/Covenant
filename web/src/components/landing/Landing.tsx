@@ -114,7 +114,7 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
             { big: <CountUp to={proof.ratio} dp={1} suffix="×" />, small: "less price impact from the same sell order" },
             {
               big: <><CountUp to={proof.blocked} /> of {proof.total}</>,
-              small: live ? `attacks from the contracts' test suite, blocked; the attack lab re-runs most of them live against ${live.network}` : "attacks from the contracts' test suite, blocked on-chain",
+              small: live ? `attacks from the contracts' test suite, blocked, and every one also played for real on ${live.network}: the attack lab links the transactions` : "attacks from the contracts' test suite, blocked on-chain",
             },
             { big: "0", small: "functions that let a curator withdraw" },
           ].map((s, i) => (

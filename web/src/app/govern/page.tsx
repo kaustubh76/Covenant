@@ -16,6 +16,7 @@ import { actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { RelayButton } from "@/components/controls/RelayButton";
 import { AddressInput, parseAddress } from "@/components/controls/AddressInput";
+import { OnRecord } from "@/components/covenant/OnRecord";
 
 const POWERS: [string, boolean[]][] = [
   ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
@@ -190,9 +191,9 @@ export default function GovernPage() {
           )}
           <div className="mt-4 grid grid-cols-2 gap-3">
             {pending ? (
-              <Button disabled={!!busy} onClick={() => call("Cancel the curator change", "cancelCuratorProposal", [], () => "The current curator stays")}>
-                Cancel change
-              </Button>
+              <SendButton verb="cancel" disabled={!!busy || (publicChain && !mine(v.people.issuer))} onClick={() => call("Cancel the curator change", "cancelCuratorProposal", [], () => "The current curator stays")}>
+                {publicChain && !mine(v.people.issuer) ? "Only the issuer can cancel" : "Cancel change"}
+              </SendButton>
             ) : (
               <SendButton
                 verb="propose"
@@ -204,14 +205,23 @@ export default function GovernPage() {
                 {customTarget ? `Propose ${shortAddress(customTarget)}` : publicChain ? "Propose your wallet as curator" : candidate === "newCurator" ? "Propose a new curator" : "Propose the original curator"}
               </SendButton>
             )}
-            <Button variant={pending && left <= 0 ? "primary" : "secondary"} disabled={!!busy} onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules", open, openLabel)}>
-              Accept change
-            </Button>
+            {/* Open to anyone once the timelock has run. On a public chain nothing is offered before then: the contract would
+                only refuse it, at the sender's cost. */}
+            <SendButton
+              verb="accept"
+              gate={!publicChain || (!!pending && left <= 0)}
+              variant={pending && left <= 0 ? "primary" : "secondary"}
+              disabled={!!busy || (publicChain && (!pending || left > 0))}
+              onClick={() => call("Accept the curator change", "acceptCurator", [], () => "New curator in place, bound by the same rules", open, openLabel)}
+            >
+              {publicChain && pending && left > 0 ? `Accept in ${duration(left)}` : publicChain && !pending ? "Nothing to accept" : "Accept change"}
+            </SendButton>
           </div>
           <p className="mt-3 text-xs leading-relaxed text-faint">
             Only the issuer can propose or cancel. Anyone can accept once the timelock has run.{" "}
             {publicChain ? (mine(v.people.issuer) ? "Your wallet is the issuer." : `On ${net?.name} that is ${shortAddress(v.people.issuer)}'s wallet; the timelock runs in real time.`) : "Move time forward in the bar below."}
           </p>
+          <OnRecord fn={["proposeCurator", "cancelCuratorProposal", "acceptCurator"]} className="mt-2" />
         </Panel>
 
         <Panel eyebrow="Income" title="Fees are income, never principal">
@@ -240,15 +250,15 @@ export default function GovernPage() {
             </span>
           </Row>
           <div className="mt-5 grid grid-cols-3 gap-3">
-            <Button disabled={!!busy} onClick={collect}>
+            <SendButton verb="collect" disabled={!!busy} onClick={collect}>
               Collect fees
-            </Button>
-            <Button disabled={!!busy || !bountyOk} onClick={fund}>
+            </SendButton>
+            <SendButton verb="fund" disabled={!!busy || !bountyOk} onClick={fund}>
               Fund {bountyOk ? bounty : "…"}
-            </Button>
-            <Button disabled={!!busy} onClick={() => claimCurator(curatorParty, v.people.curator, "Claim curator fees")}>
-              Curator claims
-            </Button>
+            </SendButton>
+            <SendButton verb="claim" disabled={!!busy || (publicChain && !mine(curatorParty))} onClick={() => claimCurator(curatorParty, v.people.curator, "Claim curator fees")}>
+              {publicChain && !mine(curatorParty) ? "Curator only" : "Curator claims"}
+            </SendButton>
           </div>
           <RelayButton action="collectFees" title="Collect fees" className="mt-3" />
           {earlier.length > 0 && (
@@ -277,6 +287,7 @@ export default function GovernPage() {
             </div>
           )}
           <p className="mt-3 text-xs leading-relaxed text-faint">Fees are realized whenever a range is touched. Trade in the bar below, then collect, to see them arrive.</p>
+          <OnRecord fn={["collectFees", "fundBounty", "claimCuratorFees"]} className="mt-2" />
         </Panel>
       </div>
 
@@ -289,13 +300,16 @@ export default function GovernPage() {
               Transfer to the holder account
             </Button>
           )}
-          <Button
+          <SendButton
+            verb="accept"
+            gate={!publicChain || !!v.people.pendingIssuer}
             disabled={!!busy || !v.people.pendingIssuer || (publicChain && !mine(pendingIssuerParty))}
             onClick={() => call("Accept the issuer role", "acceptIssuer", [], () => "The issuer role has moved", pendingIssuerParty, "holder")}
           >
-            Accept as the pending issuer
-          </Button>
+            {publicChain && !v.people.pendingIssuer ? "No transfer pending" : "Accept as the pending issuer"}
+          </SendButton>
         </div>
+        <OnRecord fn={["transferIssuer", "acceptIssuer"]} className="mt-3" />
       </Panel>
 
       <Panel className="mt-6" eyebrow="Powers" title="Who can do what" flush>

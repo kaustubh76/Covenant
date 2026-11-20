@@ -3,6 +3,7 @@
 
 import type { Address, Hex } from "viem";
 import { BASE_SEPOLIA_CHAIN_ID, NETWORKS, type Runtime, parseManifest } from "@/chain/network";
+import type { StoryKey } from "@/chain/scenarios/onchain";
 import { readJson, recordFile } from "./deployments";
 
 export interface LiveContract {
@@ -24,7 +25,9 @@ export interface LiveStep {
 
 /** One recorded run on the live chain: a vault and the transactions that prove something about it. */
 export interface LiveStory {
-  key: "covenant" | "lp" | "manage";
+  key: StoryKey;
+  /** False for the records that back the attack lab and the ledger but are not told as a walkthrough of their own. */
+  listed?: boolean;
   title: string;
   vault: Address;
   symbol: string;
@@ -51,10 +54,30 @@ export interface LiveDeployment {
  * Each proof's story, in order. Gas and token top-ups are plumbing and left out. A proof file's name is
  * `<records><suffix>.proof.json`, written by web/scripts/lib/{proof,lpproof}.ts.
  */
-const STORIES: { key: LiveStory["key"]; suffix: string; title: string; order: string[] }[] = [
+const STORIES: { key: LiveStory["key"]; suffix: string; title: string; order: string[]; listed?: false }[] = [
   { key: "covenant", suffix: "", title: "A soft rug refused, support restored by a stranger", order: ["rug", "deepen", "crash", "restore", "fees", "refill"] },
   { key: "lp", suffix: "-lp", title: "An outside LP joins, earns and leaves, in kind", order: ["join", "buy", "sell", "collect", "claim", "leave"] },
   { key: "manage", suffix: "-manage", title: "Managed through a pump: what the curator may and may not do", order: ["pump", "chase", "recentre", "overpace"] },
+  {
+    key: "refusals",
+    suffix: "-refusals",
+    title: "The attack lab's one-call attacks, refused on chain",
+    order: ["curatorWithdraw", "skim", "fragment", "issuerExit", "farm", "outsider", "vaultPays", "poke", "curatorFees"],
+    listed: false,
+  },
+  {
+    key: "lifecycle",
+    suffix: "-lifecycle",
+    title: "Every power used for real: handovers, the lock, the guard and the pump-ratchet",
+    order: [
+      ...["lockedEarly", "propose1", "cancel", "propose", "acceptEarly", "transferIssuer", "strangerIssuer", "acceptIssuer", "transferBack", "issuerBack"],
+      ...["flashSell", "flashBuy", "flashCheck", "accept", "newCuratorRug", "curatorShares", "curatorPrincipal"],
+      ...["principalOut", "lpJoin", "dump", "guardReshape", "guardDeposit", "guardRestore", "lpExitTripped", "buyBack"],
+      ...["pump", "quickRestore", ...Array.from({ length: 14 }, (_, i) => `poke${i + 1}`), "patientRestore", "sellBack"],
+      ...["curatorFees", "collect", "lpClaim"],
+    ],
+    listed: false,
+  },
 ];
 const STORY = STORIES[0].order;
 
@@ -95,7 +118,7 @@ export async function liveDeployment(): Promise<LiveDeployment | null> {
     const l = p && runtime.launches.find((x) => same(p.vault, x.vault));
     if (!p || !l || !p.finishedAtBlock) continue;
     const s = stepsOf(p, def.order);
-    if (s.length) stories.push({ key: def.key, title: def.title, vault: l.vault, symbol: l.symbol, steps: s });
+    if (s.length) stories.push({ key: def.key, title: def.title, vault: l.vault, symbol: l.symbol, steps: s, ...(def.listed === false ? { listed: false } : {}) });
   }
   const others = runtime.launches.filter((l) => l.adopted && !same(l.vault, launch.vault));
 

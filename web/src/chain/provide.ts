@@ -2,10 +2,13 @@
 // depositor's own address, then pay what the simulation says plus a little slack. The vault refunds native ETH it does
 // not need, and takes tokens only up to the cap the call names.
 
-import { type Address, maxUint256, parseEther } from "viem";
+import { type Abi, type Address, maxUint256, parseEther } from "viem";
 import { covenantVaultAbi, testTokenAbi } from "./abi.generated";
 import type { ChainCtx } from "./client";
+import { classify } from "./failure";
+import { decodeRevert } from "./errors";
 import { NEVER } from "./launch";
+import type { Preflight } from "./preflight";
 import { type Party, must, partyAddress, send } from "./tx";
 import type { VaultView } from "./view";
 
@@ -35,4 +38,43 @@ export async function ensureAllowance(ctx: ChainCtx, who: Party, v: Pick<VaultVi
   const owner: Address = partyAddress(ctx, who);
   const allowance = await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "allowance", args: [owner, v.address] });
   if (allowance < amount) must(await send(ctx, who, { address: v.token, abi: testTokenAbi, functionName: "approve", args: [v.address, exact ? amount : maxUint256] }), "approve");
+}
+
+/** A stand-in depositor with no role, funded only inside a simulation (as the attack lab's live checks fund theirs). */
+const STAND_IN: Address = "0x0000000000000000000000000000000000001a1f";
+
+/**
+ * A deposit's exact cost for a visitor with no wallet on a public chain: simulated from a stand-in given ETH by state
+ * override and the tokens by a transfer from the issuer, in one block on top of the head. Nothing is sent. Fails, with
+ * the contract's reason, when the vault refuses the deposit (the setup epoch, the guard), or when the issuer holds too
+ * few tokens to fund the stand-in.
+ */
+export async function standInDeposit(ctx: ChainCtx, v: Pick<VaultView, "address" | "token" | "principal" | "people" | "time" | "tokenSymbol">, shares: bigint, fraction: number): Promise<Preflight> {
+  const describe = { now: v.time + 1, tokenSymbol: v.tokenSymbol };
+  const tokens = parseEther((v.principal.token * fraction * 1.2 + 1e-6).toFixed(18));
+  const value = quoteBudget(v, fraction);
+  try {
+    const latest = await ctx.pub.getBlock({ blockTag: "latest" });
+    const [block] = (await ctx.pub.simulateBlocks({
+      blockNumber: latest.number,
+      blocks: [
+        {
+          blockOverrides: { number: latest.number + 1n, time: latest.timestamp + 1n },
+          stateOverrides: [{ address: STAND_IN, balance: value + parseEther("1") }],
+          calls: [
+            { account: v.people.issuer, to: v.token, abi: testTokenAbi as Abi, functionName: "transfer", args: [STAND_IN, tokens] },
+            { account: STAND_IN, to: v.token, abi: testTokenAbi as Abi, functionName: "approve", args: [v.address, maxUint256] },
+            { account: STAND_IN, to: v.address, abi: covenantVaultAbi as Abi, functionName: "deposit", args: [shares, maxUint256, maxUint256, NEVER], value },
+          ],
+        },
+      ],
+    } as never)) as unknown as { calls: { status: string; result?: unknown; error?: unknown }[] }[];
+    const [fund, , deposit] = block.calls;
+    // The issuer could not lend the stand-in enough tokens: no exact figure, rather than a wrong one.
+    if (fund.status !== "success") return { ok: false, error: { name: "NoPreview", args: [], signature: "No preview", rule: "Other", reason: "Connect a wallet to price this deposit exactly." }, events: [] };
+    if (deposit.status !== "success") return { ok: false, error: decodeRevert(deposit.error, describe), events: [] };
+    return { ok: true, value: deposit.result, events: [] };
+  } catch (e) {
+    return { ok: false, error: classify(e) ?? decodeRevert(e, describe), events: [] };
+  }
 }

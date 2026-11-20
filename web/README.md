@@ -112,8 +112,9 @@ The local-chain tools need a clock that can jump: time travel, the attack lab an
 The app is live at **https://covenant-uhi11.vercel.app**, reading Base Sepolia. Without a wallet it shows everything,
 and Curate's pre-flight still gives the contract's exact verdict. Connect a wallet to act.
 
-- **One network.** `COVENANT_NETWORKS=base-sepolia` (a server env, comma-separated) limits the networks the server
-  offers. Unset, it offers all three. A link to a network it does not offer opens the first one it does.
+- **Networks.** `COVENANT_NETWORKS` (a server env, comma-separated) limits the networks the server offers; the hosted
+  copy sets `base-sepolia,playground`. Unset, it offers every one it has records for. A link to a network it does not
+  offer opens the first one it does.
 - **Records in the bundle.** The API routes read `deployments/` beside `web/`, so `outputFileTracingRoot` is the
   repository root and Next.js traces Base Sepolia's records into the functions.
 - **What is uploaded.** The repository-root `.vercelignore` lets through `web/` and `deployments/84532*.json` only:
