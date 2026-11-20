@@ -1,7 +1,7 @@
 // The live ledger feed, with a stand-in for Blockscout: nothing here touches a network.
 
 import { describe, expect, it } from "vitest";
-import { LedgerFeed } from "../src/ledger";
+import { LedgerFeed, methodName } from "../src/ledger";
 
 const RELAYER = "0x00000000000000000000000000000000000000a1";
 const VAULT = "0x00000000000000000000000000000000000000b1";
@@ -57,5 +57,16 @@ describe("the ledger feed", () => {
   it("fails when the explorer has never answered", async () => {
     const feed = new LedgerFeed({ relayer: null, vaults: [{ vault: VAULT, symbol: "CVNT" }], fetch: blockscout({}).fetch });
     await expect(feed.latest()).rejects.toThrow(/500/);
+  });
+
+  it("names a call to a vault, which the explorer shows as a raw selector, from the vault's own ABI", async () => {
+    expect(methodName("0x18178358")).toBe("poke");
+    expect(methodName("0xc8796572")).toBe("collectFees");
+    expect(methodName("swap")).toBe("swap");
+    expect(methodName("0xdeadbeef")).toBe("0xdeadbeef");
+    expect(methodName(null)).toBeNull();
+    const b = blockscout({ [`${VAULT}/transactions?filter=to`]: [tx("0x09", 10, RELAYER, VAULT, "ok", "0x18178358")] });
+    const { txs } = await new LedgerFeed({ relayer: null, vaults: [{ vault: VAULT, symbol: "CVNT" }], fetch: b.fetch }).latest();
+    expect(txs[0]).toMatchObject({ hash: "0x09", method: "poke" });
   });
 });

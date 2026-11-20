@@ -2,7 +2,17 @@
 // recorded vaults, read from Blockscout's public API and cached for everyone. The committed record of the project's own
 // keys (deployments/84532.ledger.json, `npm run ledger`) covers the past; this covers what visitors are doing now.
 
-import type { Address, Hex } from "viem";
+import { type AbiFunction, type Address, type Hex, toFunctionSelector } from "viem";
+import { covenantVaultAbi } from "../../web/src/chain/abi.generated";
+
+/**
+ * Blockscout names most calls, but not those to a vault: each vault is a minimal clone, so a call to it comes back as
+ * its raw selector ("0x18178358"). The vault's own ABI names them: poke, collectFees, restore and the rest.
+ */
+const VAULT_FUNCTIONS = new Map(
+  (covenantVaultAbi as readonly { type: string }[]).filter((x): x is AbiFunction => x.type === "function").map((f) => [toFunctionSelector(f).toLowerCase(), f.name]),
+);
+export const methodName = (m: string | null): string | null => (m && /^0x[0-9a-fA-F]{8}$/.test(m) ? (VAULT_FUNCTIONS.get(m.toLowerCase()) ?? m) : m);
 
 export interface FeedTx {
   hash: Hex;
@@ -95,7 +105,7 @@ export class LedgerFeed {
         time: t.timestamp ?? "",
         from: t.from.hash,
         to: t.to?.hash ?? null,
-        method: t.method,
+        method: methodName(t.method),
         status,
         ...(status === "reverted" ? { error: t.revert_reason?.method_call?.split("(")[0] ?? "reverted" } : {}),
         relayed: t.from.hash.toLowerCase() === relayer,
