@@ -1,4 +1,4 @@
-import { RawContractError, encodeErrorResult } from "viem";
+import { RawContractError, encodeErrorResult, toFunctionSelector } from "viem";
 import { describe, expect, it } from "vitest";
 import { errorAbi } from "./abi.generated";
 import { decodeRevert, describeError } from "./errors";
@@ -59,6 +59,27 @@ describe("decodeRevert", () => {
       decodeRevert(new RawContractError({ data: encodeErrorResult({ abi: shapes.filter((e) => e.inputs.length === inputs), errorName: "InvalidAmount", args } as never) }));
     expect(of(0, []).reason).toBe("The ETH sent must equal the bid's amount.");
     expect(of(2, [2n * 10n ** 18n, 10n ** 18n]).reason).toBe("2.00 is more than the 1.00 allowed.");
+  });
+
+  it("says why the vault could not take a depositor's tokens, from the bare selector Solady reverts with", () => {
+    // Exactly what the vault returns for a depositor holding too few tokens: SafeTransferLib drops the token's own error.
+    const d = decodeRevert(new RawContractError({ data: "0x7939f424" }), { tokenSymbol: "CVNT" });
+    expect(d.name).toBe("TransferFromFailed");
+    expect(d.signature).toBe("TransferFromFailed()");
+    expect(d.rule).toBe("Other");
+    expect(d.reason).toBe("The vault could not take the CVNT it is owed: the sender holds too few, or has not approved the vault for that many.");
+    // and the refund of a deposit's unused ETH, to an address that refuses it
+    const refund = decodeRevert(new RawContractError({ data: "0xb12d13eb" }));
+    expect(refund.name).toBe("ETHTransferFailed");
+    expect(refund.reason).toContain("does not accept ETH");
+  });
+
+  it("gives every error a selector of its own, so none decodes as another", () => {
+    type Param = { type: string; components?: readonly Param[] };
+    const typeOf = (p: Param): string => (p.components ? `(${p.components.map(typeOf).join(",")})${p.type.slice(5)}` : p.type);
+    const selectors = errorAbi.map((e) => toFunctionSelector(`${e.name}(${(e.inputs as readonly Param[]).map(typeOf).join(",")})`));
+    expect(selectors).toContain("0x7939f424");
+    expect(new Set(selectors).size).toBe(selectors.length);
   });
 
   it("keeps unknown errors readable", () => {

@@ -109,6 +109,11 @@ const REASONS: Record<string, Describer> = {
   SinkStraddlesPrice: ([i]) => ["Shape", `Leg ${n(i)} takes the remainder but straddles the price, so it would need both currencies.`],
   // ---- money in, money out
   InsufficientPayment: ([owed, paid]) => ["Other", `The deposit costs ${eth(owed)} ETH but ${eth(paid)} ETH was sent. The vault never pays for a depositor.`],
+  // Solady's SafeTransferLib, which the vault takes a depositor's tokens with, drops the token's own reason: a short
+  // balance and a missing approval both arrive as this one error.
+  TransferFromFailed: (_, c) => ["Other", `The vault could not take the ${c.tokenSymbol ?? "tokens"} it is owed: the sender holds too few, or has not approved the vault for that many.`],
+  // The same library sends a deposit's unused ETH back to the sender.
+  ETHTransferFailed: () => ["Other", "The vault could not send back the ETH this call did not use: the sender's address does not accept ETH."],
   Slippage: () => ["Other", "The amounts moved past the limits set for this call."],
   ZeroShares: () => ["Other", "The amount of shares must be above zero."],
   Expired: () => ["Other", "The deadline for this call has passed."],

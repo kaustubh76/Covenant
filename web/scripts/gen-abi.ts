@@ -121,6 +121,9 @@ const ERROR_SOURCES = [
   "TickStorage.sol/TickStorage.json",
   "StepStorage.sol/StepStorage.json",
   "draft-IERC6093.sol/IERC20Errors.json",
+  // Solady's, which the vault takes a depositor's tokens and refunds unused ETH with. It raises its errors from assembly,
+  // so no caller's ABI lists them.
+  "SafeTransferLib.sol/SafeTransferLib.json",
 ];
 
 function load(artifact: string): { abi: AbiItem[]; bytecode?: { object: string } } {

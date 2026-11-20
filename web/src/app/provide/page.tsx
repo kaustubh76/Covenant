@@ -166,7 +166,7 @@ export default function ProvidePage() {
       const [a0, a1] = p.value as readonly [bigint, bigint];
       // A real wallet approves exactly what this deposit may take; dev chains keep the open allowance their demos rely on.
       await ensureAllowance(c, party, v, withSlack(a1), !c.net.caps.devChain);
-      const o = await send(c, party, { ...depositCall(v, newShares, withSlack(a0)), args: [newShares, withSlack(a0), withSlack(a1), NEVER] as const }, { force: true });
+      const o = await send(c, party, { ...depositCall(v, newShares, withSlack(a0)), args: [newShares, withSlack(a0), withSlack(a1), NEVER] as const }, { force: true, describe: { now: v.time, tokenSymbol: sym } });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Deposited");
       rec.record(
         beatOf(o, actor, `Deposit for ${addPct}% new shares`, () =>
