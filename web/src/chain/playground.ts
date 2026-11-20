@@ -6,7 +6,7 @@
 // chain while it is running; one that stopped (idle for ten minutes, or the backend restarted) is replaced by a fresh one.
 
 import type { Hex } from "viem";
-import type { Network } from "./network";
+import { type Network, type Runtime, parseManifest } from "./network";
 
 const SESSION_KEY = "covenant.playground.session";
 /** How long to keep trying while the backend wakes up. */
@@ -25,14 +25,17 @@ export interface PlaygroundSession {
 
 export type Opened = { ok: true; net: Network; session: PlaygroundSession } | { ok: false; reason: string; retryMs: number };
 
+// Also kept in memory: with storage blocked (some private windows), Reset still finds this page's chain.
+let remembered: string | null = null;
 function load(): string | null {
   try {
-    return localStorage.getItem(SESSION_KEY);
+    return localStorage.getItem(SESSION_KEY) ?? remembered;
   } catch {
-    return null;
+    return remembered;
   }
 }
 function save(id: string | null) {
+  remembered = id;
   try {
     if (id) localStorage.setItem(SESSION_KEY, id);
     else localStorage.removeItem(SESSION_KEY);
@@ -65,10 +68,9 @@ export async function openPlayground(net: Network, onWait: (why: string) => void
       res = null; // asleep, waking, or unreachable
     }
     if (res?.ok) {
-      const session = (await res.json()) as PlaygroundSession;
+      const session = (await res.json()) as PlaygroundSession & { manifest?: unknown };
       save(session.id);
-      const runtime = net.runtime ? { ...net.runtime, baselineSnapshot: session.runtime.baselineSnapshot } : null;
-      return { ok: true, session, net: { ...net, rpcUrl: `${net.backend}${session.rpcPath}`, runtime } };
+      return { ok: true, session, net: { ...net, rpcUrl: `${net.backend}${session.rpcPath}`, ...seededAs(net, session) } };
     }
     if (res && (res.status === 503 || res.status === 429)) {
       const wait = Number(res.headers.get("retry-after")) || 30;
@@ -85,6 +87,29 @@ export async function openPlayground(net: Network, onWait: (why: string) => void
     );
     await sleep(Math.min(5_000, 1_000 * (attempt + 1)));
   }
+}
+
+/**
+ * The addresses and launches of the chain the backend opened: the records it seeded that chain from. The app's own copy
+ * (Vercel's bundle) updates only when the app is redeployed, so after a re-seed on the backend it could name contracts
+ * this chain does not have. Records that do not parse leave the app's copy in place.
+ */
+function seededAs(net: Network, session: PlaygroundSession & { manifest?: unknown }): Pick<Network, "manifest" | "runtime"> {
+  let manifest = net.manifest;
+  try {
+    if (session.manifest) manifest = parseManifest(session.manifest);
+  } catch {
+    /* keep the app's */
+  }
+  const theirs = session.runtime as Partial<Runtime> | undefined;
+  const baselineSnapshot = theirs?.baselineSnapshot;
+  const runtime: Runtime | null =
+    theirs?.defaultVault && Array.isArray(theirs.launches)
+      ? { rpcUrl: net.runtime?.rpcUrl ?? "", defaultVault: theirs.defaultVault, launches: theirs.launches, seededAt: theirs.seededAt ?? net.runtime?.seededAt ?? 0, baselineSnapshot }
+      : net.runtime
+        ? { ...net.runtime, baselineSnapshot }
+        : null;
+  return { manifest, runtime };
 }
 
 /** Put this browser's Playground chain back to the seed. Returns the new baseline snapshot. */

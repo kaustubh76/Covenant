@@ -38,6 +38,18 @@ export function RelayButton({
       </Button>
     );
   }
+  // Off (switched off, out of today's budget, or not answering): said where the button would be, not left out unexplained.
+  if (relay.off) {
+    return (
+      <div className={className}>
+        <Button size="sm" variant="secondary" className="w-full" disabled title={relay.off}>
+          <Send size={13} strokeWidth={1.8} className="text-faint" />
+          Backend relay off
+        </Button>
+        <p className="mt-1 text-center text-[11.5px] leading-snug text-faint">{relay.off}</p>
+      </div>
+    );
+  }
   if (!relay.enabled) return null;
   return (
     <Button
