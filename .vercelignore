@@ -10,6 +10,9 @@
 !/deployments/84532.proof.json
 !/deployments/84532-lp.proof.json
 !/deployments/84532-manage.proof.json
+!/deployments/84532-refusals.proof.json
+!/deployments/84532-lifecycle.proof.json
+!/deployments/84532.ledger.json
 !/deployments/playground.json
 !/deployments/playground.runtime.json
 /web/node_modules
