@@ -51,6 +51,25 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   const snaps = useRef<Hex[]>([]);
   const states = useRef<DemoState[]>([emptyDemo()]);
 
+  // The chain the steps and their snapshots belong to. A reset Playground (a new baseline) or a replaced one (a new
+  // session) has none of them: the demo starts again from step 1 there, rather than rewinding to snapshots that are gone.
+  // A moment offline (no network) is not a new chain: only a chain that is there can replace the one before.
+  const chainKey = net ? `${net.key}|${net.rpcUrl}|${net.runtime?.baselineSnapshot ?? ""}` : null;
+  const onChain = useRef(chainKey);
+  useEffect(() => {
+    if (chainKey === null) return;
+    if (onChain.current === null) {
+      onChain.current = chainKey;
+      return;
+    }
+    if (onChain.current === chainKey) return;
+    onChain.current = chainKey;
+    snaps.current = [];
+    states.current = [emptyDemo()];
+    setRecords([]);
+    setAt(0);
+  }, [chainKey]);
+
   const step = DEMO_STEPS[at];
   const rec = records[at];
   const prev = at > 0 ? records[at - 1] : undefined;
@@ -63,7 +82,15 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
         async (ctx, r) => {
           if (snaps.current[i]) {
             // Running a step again: rewind the chain to just before it (Anvil consumes the snapshot, so take it again).
-            await revertTo(ctx, snaps.current[i]);
+            // If the snapshot is gone (the chain was reset under the demo), start the demo over and say so.
+            await revertTo(ctx, snaps.current[i]).catch((e: unknown) => {
+              if ((e as { name?: string })?.name !== "SnapshotGone") throw e;
+              snaps.current = [];
+              states.current = [emptyDemo()];
+              setRecords([]);
+              setAt(0);
+              throw new Error("This chain was reset since the demo ran that step, so the demo starts again from step 1.");
+            });
             snaps.current[i] = await snapshot(ctx);
             snaps.current.length = i + 1;
           } else {
@@ -110,9 +137,15 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   }, [busy, rec, canRun, runStep, at]);
   const back = useCallback(() => setAt((a) => Math.max(0, a - 1)), []);
 
+  // The arrows run the steps only where the steps run: a ready dev chain. On a public chain the live walkthrough below
+  // has arrows of its own, and these would try to run step 1 there. A focused field or control keeps its own keys.
+  const keys = status === "ready" && !!net?.caps.devChain;
   useEffect(() => {
+    if (!keys) return;
     const onKey = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === "INPUT") return;
+      const t = e.target as HTMLElement | null;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"].includes(t.tagName))) return;
       if (e.key === "ArrowRight" || e.key === " ") {
         e.preventDefault();
         forward();
@@ -120,7 +153,7 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [forward, back]);
+  }, [keys, forward, back]);
 
   if (status !== "ready") return <NeedsChain what="the guided demo" />;
   // Every step runs from a snapshot and most move the clock (vesting, timelocks, the TWAP): local chain only.
@@ -283,6 +316,7 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
 /** Above the live proofs: where the ten steps themselves can run, when this copy of the app offers such a chain. */
 function RunItYourself({ name }: { name: string }) {
   const setNetwork = useChain((s) => s.setNetwork);
+  const busy = useChain((s) => s.busy);
   const devNet = useChain(offeredDevNetwork);
   if (!devNet) return null;
   return (
@@ -291,7 +325,7 @@ function RunItYourself({ name }: { name: string }) {
         These are the proofs, as real transactions on {name}. The guided demo&apos;s ten steps need a clock that can jump months:
         {devNet === "playground" ? " run them yourself on a Playground chain, with no wallet." : " run them on the local chain."}
       </p>
-      <Button variant="primary" size="sm" onClick={() => void setNetwork(devNet)}>
+      <Button variant="primary" size="sm" disabled={!!busy} onClick={() => void setNetwork(devNet)} title={busy ? `Wait for "${busy}" to finish` : undefined}>
         {devNet === "playground" ? "Run the ten steps on the Playground" : "Switch to the local chain"}
       </Button>
     </div>
@@ -301,6 +335,7 @@ function RunItYourself({ name }: { name: string }) {
 /** On a public chain: the demo's ten steps need a chain whose clock can jump and whose state can be rewound. */
 function NeedsLocalChain({ name }: { name: string }) {
   const setNetwork = useChain((s) => s.setNetwork);
+  const busy = useChain((s) => s.busy);
   const devNet = useChain(offeredDevNetwork);
   return (
     <div className="mx-auto max-w-2xl py-16">
@@ -313,7 +348,7 @@ function NeedsLocalChain({ name }: { name: string }) {
         </p>
         <div className="mt-5 flex flex-wrap gap-3">
           {devNet && (
-            <Button variant="primary" onClick={() => void setNetwork(devNet)}>
+            <Button variant="primary" disabled={!!busy} onClick={() => void setNetwork(devNet)} title={busy ? `Wait for "${busy}" to finish` : undefined}>
               {devNet === "playground" ? "Open the Playground" : "Switch to the local chain"}
             </Button>
           )}

@@ -4,6 +4,7 @@
 // pressed without a wallet; on the Playground it says what the chain is, and offers a reset and the way back.
 
 import { ArrowLeft, ArrowRight, FlaskConical, RotateCcw } from "lucide-react";
+import { note } from "@/chain/beat";
 import { Button } from "@/components/ui";
 import { useChain } from "@/store/chain";
 
@@ -30,12 +31,21 @@ export function PlaygroundBar() {
           </>
         }
       >
-        <Button size="xs" variant="ghost" disabled={!!busy || status !== "ready"} onClick={() => void reset()} title="Put this chain back to the seeded launch" aria-label="Reset the Playground">
+        <Button
+          size="xs"
+          variant="ghost"
+          disabled={!!busy || status !== "ready"}
+          onClick={() =>
+            void reset().then((done) => done && useChain.getState().record(note("anyone", "The Playground is back at its seeded launch", "Every save point and the guided demo start again from here"), { toast: true }))
+          }
+          title={busy ? `Wait for "${busy}" to finish` : status !== "ready" ? "The Playground is still connecting" : "Put this chain back to the seeded launch"}
+          aria-label="Reset the Playground"
+        >
           <RotateCcw size={13} strokeWidth={1.8} />
           <span className="hidden sm:inline">Reset</span>
         </Button>
         {live && (
-          <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void setNetwork("base-sepolia")} title="Leave the Playground for the live deployment">
+          <Button size="xs" variant="ghost" disabled={!!busy} onClick={() => void setNetwork("base-sepolia")} title={busy ? `Wait for "${busy}" to finish` : "Leave the Playground for the live deployment"}>
             <ArrowLeft size={13} strokeWidth={1.8} />
             <span className="hidden sm:inline">Back to</span> Base Sepolia
           </Button>

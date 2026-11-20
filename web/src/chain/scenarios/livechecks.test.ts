@@ -88,11 +88,12 @@ describe("live attack checks", () => {
     expect(got["vault-pays"]).toBe(false);
   });
 
-  it("shows nothing for a check whose scene could not be set", async () => {
+  it("shows nothing for a check whose scene could not be set, and says why a check could not run", async () => {
     const { ctx } = fakeCtx();
-    const seen: string[] = [];
-    await runLiveChecks(ctx, view(4), (id) => seen.push(id), [{ id: "x", run: async () => null }, { id: "y", run: async () => Promise.reject(new Error("no eth_simulateV1")) }]);
-    expect(seen).toEqual([]);
+    const seen: Record<string, string | undefined> = {};
+    await runLiveChecks(ctx, view(4), (id, r) => (seen[id] = r.noVerdict), [{ id: "x", run: async () => null }, { id: "y", run: async () => Promise.reject(new Error("no eth_simulateV1")) }]);
+    // no scene: nothing to show. A check that threw: no verdict, with the reason, so its card keeps the recorded run.
+    expect(seen).toEqual({ y: "This check could not run: no eth_simulateV1" });
   });
 });
 

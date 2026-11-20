@@ -147,6 +147,19 @@ function WalletControl() {
   const ctx = useChain((s) => s.ctx);
   const busy = useChain((s) => s.busy);
   const relay = useRelay();
+  // A wallet that could not connect or switch says why where everyone sees it, a phone included: a hover title alone
+  // reads as a button that does nothing.
+  useEffect(() => {
+    if (!walletError) return;
+    useChain.getState().record({ actor: "anyone", title: "The wallet did not connect", ok: false, error: { name: "NotSent", args: [], signature: "Not connected", rule: "Other", reason: walletError } }, { toast: true });
+  }, [walletError]);
+  const connect = () => {
+    if (wallets[0]) return void connectWallet(wallets[0].id);
+    useChain.getState().record(
+      { actor: "anyone", title: "No wallet in this browser", ok: false, error: { name: "NotSent", args: [], signature: "Not connected", rule: "Other", reason: "Install a browser wallet (MetaMask, Rabby or Coinbase Wallet) to sign on Base Sepolia, or open the Playground, which needs none." } },
+      { toast: true },
+    );
+  };
   // A wallet on Base Sepolia with almost no ETH can ask the backend for test funds (the relayer's drip).
   const [low, setLow] = useState(false);
   useEffect(() => {
@@ -167,7 +180,7 @@ function WalletControl() {
   if (!netKey || NETWORKS[netKey].caps.devChain) return null;
   if (!wallet) {
     return (
-      <Button size="sm" variant="secondary" onClick={() => void connectWallet(wallets[0]?.id)} title={walletError ?? (wallets.length ? `Connect ${wallets.map((w) => w.name).join(" or ")}` : "No browser wallet found")}>
+      <Button size="sm" variant="secondary" onClick={connect} title={walletError ?? (wallets.length ? `Connect ${wallets.map((w) => w.name).join(" or ")}` : "No browser wallet found")}>
         <Wallet size={14} /> Connect wallet
       </Button>
     );
@@ -187,7 +200,8 @@ function WalletControl() {
           size="sm"
           variant="secondary"
           disabled={!!busy}
-          onClick={() => void relay.send("drip", "Test funds for your wallet", { to: wallet.address }).then(() => setLow(false))}
+          // hidden only once the funds have landed: a refused drip (one a day) leaves the offer, and its toast says why
+          onClick={() => void relay.send("drip", "Test funds for your wallet", { to: wallet.address }).then((sent) => sent && setLow(false))}
           title="Covenant's backend sends this wallet a little Base Sepolia ETH and some of the vault's token, once a day"
           aria-label="Get test funds"
         >
@@ -221,9 +235,10 @@ function ChainStatus() {
       <span className="block max-w-[220px] truncate">{text}</span>
     </span>
   );
+  // From a phone up: below sm only the icon, so a greyed-out page still shows that an action is running.
   if (busy) {
     return (
-      <span className="hidden items-center gap-1.5 text-[12px] text-muted sm:flex" aria-live="polite" title={busy}>
+      <span className="flex items-center gap-1.5 text-[12px] text-muted" aria-live="polite" title={busy}>
         <Loader2 size={13} className="shrink-0 animate-spin" />
         {words(busy)}
       </span>
@@ -239,7 +254,7 @@ function ChainStatus() {
     );
   }
   return (
-    <span className="hidden sm:inline-flex" title={reason ?? "Offline"}>
+    <span className="inline-flex" title={reason ?? "Offline"}>
       <Tag tone="breach">
         <Dot tone="breach" />
         {words("Offline")}

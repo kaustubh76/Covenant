@@ -79,6 +79,7 @@ export function LiveWalkthrough({ live }: { live: LiveDeployment }) {
   const selectVault = useChain((s) => s.selectVault);
   const offersLocal = useChain((s) => s.networks.some((n) => n.key === "local"));
   const setNetwork = useChain((s) => s.setNetwork);
+  const busy = useChain((s) => s.busy);
   const s: LiveStep = steps[Math.min(at, steps.length - 1)];
   const note = NOTES[s.key];
   const ours = view && view.address.toLowerCase() === story.vault.toLowerCase() ? view : null;
@@ -224,7 +225,7 @@ export function LiveWalkthrough({ live }: { live: LiveDeployment }) {
       {offersLocal && (
         <p className="mt-6 text-center text-[13px] text-faint">
           The ten scripted steps, with the clock moved for you, run on the local chain.{" "}
-          <button type="button" onClick={() => void setNetwork("local")} className="text-muted underline-offset-2 hover:text-ink hover:underline">
+          <button type="button" disabled={!!busy} onClick={() => void setNetwork("local")} className="text-muted underline-offset-2 hover:text-ink hover:underline disabled:cursor-not-allowed disabled:opacity-50">
             Switch to it
           </button>
         </p>

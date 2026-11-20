@@ -2,12 +2,13 @@
 
 import clsx from "clsx";
 import { ShieldCheck } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ATTACKS, type AttackRun, runAttacks } from "@/chain/scenarios/attacks";
 import { runLiveChecks } from "@/chain/scenarios/livechecks";
 import { ATTACK_TXS } from "@/chain/scenarios/onchain";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { BeatList } from "@/components/covenant/Verdict";
+import { note } from "@/chain/beat";
 import { shortHash } from "@/components/landing/Live";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
 import { recorded } from "@/fixtures";
@@ -36,8 +37,16 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const [ownResults, setResults] = useState<Record<string, AttackRun>>({});
   // On a public chain: the single-call attacks, checked against the live vault (nothing sent); the rest as recorded.
   const [checked, setChecked] = useState<Record<string, AttackRun>>({});
+  // Checks the network did not answer: their cards keep the recorded run and say why.
+  const [notChecked, setNotChecked] = useState<Record<string, string>>({});
+  // The checks as a whole could not start (the network did not answer the first reads).
+  const [checkError, setCheckError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [checkedAt, setCheckedAt] = useState(0);
+  // A run of the attacks can be stopped between attacks.
+  const [running, setRunning] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stopRun = useRef(false);
   const results = live ? ownResults : { ...RECORDED, ...checked };
   // the proofs are Base Sepolia's own transactions: shown there only, not on a fork or the local chain
   const onBaseSepolia = useChain((s) => s.net?.key === "base-sepolia");
@@ -58,13 +67,16 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
     if (live || !ctx || !view) return;
     let on = true;
     setChecked({});
+    setNotChecked({});
+    setCheckError(null);
     setChecking(true);
     runLiveChecks(ctx, view, (id, r) => {
       if (!on) return;
-      setChecked((prev) => ({ ...prev, [id]: r }));
+      if (r.noVerdict) setNotChecked((prev) => ({ ...prev, [id]: r.noVerdict! }));
+      else setChecked((prev) => ({ ...prev, [id]: r }));
       setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
     })
-      .catch((e: unknown) => console.warn("live attack checks stopped:", e instanceof Error ? e.message : e))
+      .catch((e: unknown) => on && setCheckError(e instanceof Error ? e.message.split("\n")[0] : String(e)))
       .finally(() => on && setChecking(false));
     return () => {
       on = false;
@@ -74,14 +86,19 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   }, [live, ctx, vaultAddress, checkedAt]);
   // how many times each card's result has landed, so the card can react every time
   const [arrivals, setArrivals] = useState<Record<string, number>>({});
-  const ran = Object.keys(results).length;
-  const blocked = Object.values(results).filter((r) => r.blocked).length;
+  // Only runs with a verdict count: one the network or the script cut short is neither blocked nor through.
+  const verdicts = Object.values(results).filter((r) => !r.noVerdict);
+  const ran = verdicts.length;
+  const blocked = verdicts.filter((r) => r.blocked).length;
 
-  const attempt = (ids: string[]) =>
-    run(
+  const attempt = (ids: string[]) => {
+    stopRun.current = false;
+    setStopping(false);
+    setRunning(true);
+    return run(
       ids.length > 1 ? `Running ${ids.length} attacks` : "Running the attack",
       async (ctx, rec) => {
-        await runAttacks(
+        const { ran: done } = await runAttacks(
           ctx,
           ATTACKS.filter((a) => ids.includes(a.id)),
           (id, r) => {
@@ -89,10 +106,13 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
             setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
           },
           rec.progress,
+          () => stopRun.current,
         );
+        if (done < ids.length) rec.record(note("anyone", "Attack run stopped", `Stopped after ${done} of ${ids.length}. The chain is back where it was.`), { toast: true });
       },
       { quiet: true },
-    );
+    ).finally(() => setRunning(false));
+  };
 
   if (status !== "ready") return <NeedsChain what="the attack lab" />;
   return (
@@ -117,16 +137,34 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
               </div>
             )}
             {live ? (
-              <Button variant="primary" disabled={!!busy} onClick={() => attempt(ATTACKS.map((a) => a.id))}>
-                Run all {ATTACKS.length}
-              </Button>
+              <div className="flex flex-col items-end gap-1.5">
+                {running ? (
+                  <Button
+                    variant="danger"
+                    disabled={stopping}
+                    onClick={() => {
+                      stopRun.current = true;
+                      setStopping(true);
+                    }}
+                    title="Stops after the attack running now; the chain is then put back as it was"
+                  >
+                    {stopping ? "Stopping after this attack…" : "Stop"}
+                  </Button>
+                ) : (
+                  <Button variant="primary" disabled={!!busy} onClick={() => void attempt(ATTACKS.map((a) => a.id))} title={busy ? "Wait for the action running now to finish" : undefined}>
+                    Run all {ATTACKS.length}
+                  </Button>
+                )}
+                {/* said before it starts: one attack alone pokes the vault through four days of chain time */}
+                <span className="text-right text-[11.5px] text-faint">Takes a few minutes; you can stop between attacks.</span>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <Button variant="primary" disabled={checking || !view} onClick={() => setCheckedAt(Date.now())}>
                   {checking ? "Checking the live vault…" : "Check again, live"}
                 </Button>
                 {devNet && (
-                  <Button variant="ghost" onClick={() => void setNetwork(devNet)}>
+                  <Button variant="ghost" disabled={!!busy} onClick={() => void setNetwork(devNet)} title={busy ? "Wait for the action running now to finish" : undefined}>
                     {devNet === "local" ? "Run all on the local chain" : "Run all on the Playground"}
                   </Button>
                 )}
@@ -136,24 +174,32 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
         }
       />
 
+      {checkError && !live && (
+        <p className="mb-4 rounded-md border border-line bg-surface px-4 py-3 text-[13px] text-muted">
+          The live checks could not start: {checkError}. The cards show the runs recorded on the local chain; check again in a moment.
+        </p>
+      )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {ATTACKS.map((a) => {
           const r = results[a.id];
           const proofs = onChain(a.id);
           return (
-            <article key={`${a.id}:${arrivals[a.id] ?? 0}`} className={clsx("flex flex-col rounded-lg border bg-surface p-5 transition-colors duration-500", r ? (r.blocked ? "refuse border-pass/40" : "border-breach/60") : "border-line")}>
+            <article
+              key={`${a.id}:${arrivals[a.id] ?? 0}`}
+              className={clsx("flex flex-col rounded-lg border bg-surface p-5 transition-colors duration-500", r && !r.noVerdict ? (r.blocked ? "refuse border-pass/40" : "border-breach/60") : "border-line")}
+            >
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="eyebrow">{a.who}</div>
                   <h2 className="mt-1 text-[17px] font-medium leading-snug text-ink">{a.title}</h2>
                 </div>
-                <Tag tone={r ? (r.blocked ? "pass" : "breach") : "neutral"}>{r ? (r.blocked ? "Blocked" : "Got through") : a.rule}</Tag>
+                <Tag tone={r ? (r.noVerdict ? "warn" : r.blocked ? "pass" : "breach") : "neutral"}>{r ? (r.noVerdict ? "Could not run" : r.blocked ? "Blocked" : "Got through") : a.rule}</Tag>
               </div>
               <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{a.story}</p>
               {r && (
                 <div className="mt-3 border-t border-line">
                   <BeatList beats={r.beats} compact stagger={0.12} />
-                  <p className={clsx("mt-2 text-[13px] font-medium", r.blocked ? "text-pass" : "text-breach")}>{r.summary}</p>
+                  <p className={clsx("mt-2 text-[13px] font-medium", r.noVerdict ? "text-muted" : r.blocked ? "text-pass" : "text-breach")}>{r.summary}</p>
                 </div>
               )}
               {proofs.length > 0 && deployment && (
@@ -190,6 +236,12 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                 ) : liveIds.includes(a.id) ? (
                   <span title={`Simulated against the live vault just now; nothing was sent`}>
                     <Tag tone="accent">Checked live</Tag>
+                  </span>
+                ) : notChecked[a.id] ? (
+                  // said on the card, not only in a tooltip: the live check got no answer, so this is the recorded run
+                  <span className="flex items-center gap-2 text-right text-[11.5px] text-faint">
+                    {notChecked[a.id]}
+                    <Tag>Recorded</Tag>
                   </span>
                 ) : (
                   <Tag>Recorded</Tag>

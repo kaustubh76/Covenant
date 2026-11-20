@@ -6,6 +6,7 @@ import { Check, Minus, X } from "lucide-react";
 import { ACTOR_LABEL } from "@/chain/accounts";
 import type { Beat } from "@/chain/beat";
 import type { DecodedError } from "@/chain/errors";
+import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import type { Preflight } from "@/chain/preflight";
 import { priceAt } from "@/chain/price";
 import type { VaultView } from "@/chain/view";
@@ -62,8 +63,10 @@ const n = (v: unknown) => (typeof v === "bigint" ? Number(v) : Number(v ?? 0));
 export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultView; pre: Preflight | null; moved: number; loading?: boolean }) {
   const failed = pre && !pre.ok ? CHECK_OF[pre.error?.name ?? ""] : undefined;
   const failedAt = failed ? ORDER.indexOf(failed) : -1;
+  // The network did not answer (or the wallet, or the node refused it): no check was reached, and none failed.
+  const unanswered = !!pre && !pre.ok && isFailureKind(pre.error?.name);
   const state = (k: CheckKey): State => {
-    if (!pre || loading) return "pending";
+    if (!pre || loading || unanswered) return "pending";
     if (pre.ok) return "pass";
     if (failedAt < 0) return "skip";
     const i = ORDER.indexOf(k);
@@ -140,11 +143,16 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
           )}
         </Line>
       </ul>
-      <div className={clsx("mt-3 rounded-md border px-3.5 py-3", !pre || loading ? "border-line" : pre.ok ? "border-pass/40 bg-pass/5" : "border-breach/50 bg-breach/5")}>
+      <div className={clsx("mt-3 rounded-md border px-3.5 py-3", !pre || loading || unanswered ? "border-line" : pre.ok ? "border-pass/40 bg-pass/5" : "border-breach/50 bg-breach/5")}>
         {!pre || loading ? (
           <>
             <div className="eyebrow">Asking the contract</div>
             <div className="mt-1 text-[13px] text-muted">Simulating this exact reshape in the next block…</div>
+          </>
+        ) : unanswered && pre.error ? (
+          <>
+            <div className="eyebrow">{FAILURE_LABEL[pre.error.name as keyof typeof FAILURE_LABEL]}</div>
+            <div className="mt-1 text-[13px] text-muted">{pre.error.reason} The next block checks again.</div>
           </>
         ) : pre.ok ? (
           <>

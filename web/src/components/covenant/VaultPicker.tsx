@@ -9,6 +9,8 @@ export function VaultPicker() {
   const launches = useChain((s) => s.launches).filter((l) => l.adopted);
   const vault = useChain((s) => s.vault);
   const select = useChain((s) => s.selectVault);
+  // Not mid-action: switching vaults under a running send would read the result from the wrong vault.
+  const busy = useChain((s) => s.busy);
   if (launches.length < 2) return null;
   return (
     <label className="flex items-center gap-2 text-[13px] text-muted">
@@ -16,6 +18,8 @@ export function VaultPicker() {
       <select
         aria-label="Vault"
         value={vault ?? ""}
+        disabled={!!busy}
+        title={busy ? `Wait for "${busy}" to finish` : undefined}
         onChange={(e) => void select(e.target.value as Address)}
         className="h-8 rounded-md border border-line-strong bg-surface px-2 text-ink"
       >

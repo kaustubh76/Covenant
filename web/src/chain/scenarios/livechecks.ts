@@ -19,6 +19,7 @@ import { type ActionCall, preflight } from "../preflight";
 import type { Party } from "../tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "../view";
 import { MAX_RANGES, curatorWithdrawCall, farmCall, fragmentCall, issuerExitCall, outsiderCall, overTheCap, skimCall, softRugCall, vaultCall } from "./attackcalls";
+import { isFailureKind } from "../failure";
 import type { AttackRun } from "./attacks";
 import { restoreCandidates } from "./restore";
 
@@ -484,19 +485,42 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
 ];
 
-/** Each check that applies to `v`, in turn. Results arrive one by one; checks with nothing to show are left out. */
-export async function runLiveChecks(ctx: ChainCtx, v: VaultView, onResult: (id: string, r: AttackRun) => void, checks: LiveCheck[] = LIVE_CHECKS): Promise<void> {
+/** How long one check may take before it is given up as unanswered: a hung call to a public RPC would hold every check after it. */
+export const CHECK_TIMEOUT_MS = 45_000;
+
+/** A check that gave no verdict, with the reason: its card keeps the recorded run and says why it was not checked live. */
+const unanswered = (why: string): AttackRun => ({ blocked: false, summary: why, beats: [], noVerdict: why });
+
+/**
+ * Each check that applies to `v`, in turn. Results arrive one by one; checks with nothing to show are left out. A check
+ * whose simulation the network did not answer is not a verdict either way: it arrives with `noVerdict`, never as blocked.
+ */
+export async function runLiveChecks(
+  ctx: ChainCtx,
+  v: VaultView,
+  onResult: (id: string, r: AttackRun) => void,
+  checks: LiveCheck[] = LIVE_CHECKS,
+  timeoutMs = CHECK_TIMEOUT_MS,
+): Promise<void> {
   const head = await ctx.pub.getBlock({ blockTag: "latest" });
   const issuerTokens = (await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "balanceOf", args: [v.people.issuer] })) as bigint;
   const scene: Scene = { ctx, v, base: { number: head.number, timestamp: head.timestamp }, issuerTokens };
   for (const c of checks) {
     if (c.skip?.(v)) continue;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const r = await c.run(scene);
-      if (r) onResult(c.id, r);
+      const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), timeoutMs)));
+      const r = await Promise.race([c.run(scene), late]);
+      if (r === "late") onResult(c.id, unanswered(`The network did not answer this check within ${Math.round(timeoutMs / 1000)} seconds.`));
+      else if (r) {
+        const lost = r.beats.find((b) => !b.ok && isFailureKind(b.error?.name));
+        onResult(c.id, lost?.error ? unanswered(lost.error.reason) : r);
+      }
     } catch (e) {
-      // one check that cannot run (an RPC without eth_simulateV1, say) leaves its card recorded; the rest go on
-      console.warn(`live check ${c.id}:`, e instanceof Error ? e.message.split("\n")[0] : e);
+      // one check that cannot run (an RPC without eth_simulateV1, say) keeps its recorded card, and says why
+      onResult(c.id, unanswered(`This check could not run: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
+    } finally {
+      clearTimeout(timer);
     }
   }
 }

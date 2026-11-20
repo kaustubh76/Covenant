@@ -259,9 +259,10 @@ function LiveFeed({ backend, explorer }: { backend: string | null; explorer: str
         timer = setTimeout(() => void load(0), 30_000);
       } catch {
         if (!live) return;
-        // Asleep: a free backend takes about a minute to wake.
-        setState(tries < 6 ? "waking" : "off");
-        if (tries < 6) timer = setTimeout(() => void load(tries + 1), 10_000 * (tries + 1));
+        // Asleep: a free backend takes about a minute to wake. A list already shown stays shown (one missed poll is not
+        // news), and the next poll comes as usual; with nothing shown yet, say it is waking.
+        setState((was) => (was === "ok" ? "ok" : tries < 6 ? "waking" : "off"));
+        timer = setTimeout(() => void load(tries + 1), tries < 6 ? 10_000 * (tries + 1) : 60_000);
       }
     };
     void load(0);

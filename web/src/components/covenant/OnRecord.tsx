@@ -16,11 +16,16 @@ interface Coverage {
   coverage: { contract: string; fn: string; settled: { hash: Hex; vault?: Address }[]; refused: { hash: Hex; error: string; vault?: Address }[] }[];
 }
 
+// Fetched once per visit when it answers. A failed fetch is not kept: the next page that shows a line asks again.
 let once: Promise<Coverage | null> | null = null;
 const load = () =>
   (once ??= fetch("/api/ledger")
     .then((r) => (r.ok ? (r.json() as Promise<Coverage>) : null))
-    .catch(() => null));
+    .catch(() => null)
+    .then((c) => {
+      if (!c) once = null;
+      return c;
+    }));
 
 /**
  * `fn` is a CovenantVault function, e.g. "reshape", or several for one line. `refusal` shows each one's latest refusal

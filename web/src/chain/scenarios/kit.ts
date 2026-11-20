@@ -85,7 +85,17 @@ export async function sameBlock(k: Kit, senders: (() => Promise<Hex>)[]): Promis
       if (r.status !== "success") throw new Error(`same-block transaction ${hash} reverted`);
     }
   } finally {
-    await test.setAutomine(true);
+    // Automine back on, whatever happened: a chain left with it off mines nothing more, and every later send waits
+    // forever. A dropped call is tried again before giving up loudly.
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await test.setAutomine(true);
+        break;
+      } catch (e) {
+        if (attempt >= 3) throw new Error(`Could not turn automine back on: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}. Reset the chain.`);
+        await new Promise((r) => setTimeout(r, 500 * attempt));
+      }
+    }
   }
 }
 

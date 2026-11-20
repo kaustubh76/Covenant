@@ -1,6 +1,7 @@
 "use client";
 
-import { Panel } from "@/components/ui";
+import Link from "next/link";
+import { Button, Panel } from "@/components/ui";
 import type { NetworkKey } from "@/chain/network";
 import { isHostedCopy, useChain } from "@/store/chain";
 
@@ -29,13 +30,15 @@ export function NeedsChain({ what = "this page" }: { what?: string }) {
   const reason = useChain((s) => s.reason);
   const netKey = useChain((s) => s.netKey) ?? "local";
   const served = useChain((s) => s.networks);
+  const vault = useChain((s) => s.vault);
   const start = START[netKey];
   // A hosted copy offers no local chain, and its public network is deployed: offline there means the RPC or the app
   // server did not answer, which retries on its own. Deploy commands would only be noise to a visitor.
   const hosted = isHostedCopy(served, typeof window === "undefined" ? null : window.location.hostname);
   const rpcTrouble = netKey !== "local" && !!reason && /not answering|is chain|429|rate/i.test(reason);
   // The Playground's backend sleeps when idle and wakes in about a minute; busy and waking both retry on their own.
-  if (netKey === "playground" && status !== "ready" && (status === "connecting" || /busy|in use|not answering|Waking|stopped|redeploy/i.test(reason ?? ""))) {
+  // "Lost Playground." is the chain dropping out for a moment (idle, or the backend restarting): it reconnects on its own.
+  if (netKey === "playground" && status !== "ready" && (status === "connecting" || /busy|in use|not answering|Waking|stopped|redeploy|Lost|many/i.test(reason ?? ""))) {
     return (
       <div className="mx-auto max-w-2xl py-16">
         <Panel eyebrow={status === "connecting" ? "Opening the Playground" : "Playground"} title={`${what[0].toUpperCase()}${what.slice(1)}, on a chain of your own`}>
@@ -63,11 +66,30 @@ export function NeedsChain({ what = "this page" }: { what?: string }) {
       </div>
     );
   }
+  // Connected, but no launch on this chain has become a vault yet: say so, rather than read forever.
+  if (status === "ready" && !vault) {
+    return (
+      <div className="mx-auto max-w-2xl py-16">
+        <Panel eyebrow="No vault yet" title={`${what[0].toUpperCase()}${what.slice(1)} needs a Covenant vault`}>
+          <p className="text-[14px] leading-relaxed text-muted">
+            No launch on this chain has been adopted into a Covenant vault yet. Make one on the Launch page: create the vault, run its auction, migrate and adopt.
+          </p>
+          <Link href="/launch" className="mt-5 inline-block">
+            <Button variant="primary">Open Launch</Button>
+          </Link>
+        </Panel>
+      </div>
+    );
+  }
   if (status === "connecting" || status === "ready") {
     return (
       <div className="py-24 text-center">
         <div className="eyebrow">Connecting</div>
         <p className="mt-2 text-[15px] text-muted">Reading the vault from the chain…</p>
+        {/* a read that keeps failing says why, and that it is trying again, instead of spinning in silence */}
+        {status === "ready" && reason && (
+          <p className="mx-auto mt-2 max-w-lg text-[13px] text-faint">The last read did not succeed: {reason.split("\n")[0]} Trying again with the next block.</p>
+        )}
       </div>
     );
   }

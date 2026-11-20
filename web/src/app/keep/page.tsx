@@ -3,14 +3,15 @@
 import { useEffect, useState } from "react";
 import { type Abi, formatEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
+import type { Who } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
 import { type CrashSim, findCrash } from "@/chain/crashsim";
 import { NEVER } from "@/chain/launch";
 import { deepenReserve } from "@/chain/plans";
-import { type Preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
+import { type Preflight, vaultEvents, failedPreflight, preflight } from "@/chain/preflight";
 import { LN_BASE } from "@/chain/price";
 import { crash, findLapsingCrash, planRestore, restoreCall } from "@/chain/scenarios/restore";
-import { send } from "@/chain/tx";
+import { type Party, send } from "@/chain/tx";
 import { readVaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { RuleRail } from "@/components/covenant/RuleRail";
@@ -19,7 +20,7 @@ import { Button, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
 import { describeRange } from "@/lib/ranges";
 import { useBalances } from "@/lib/useBalances";
-import { actorFor, partyFor, useChain } from "@/store/chain";
+import { actorFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { RelayButton } from "@/components/controls/RelayButton";
@@ -40,21 +41,25 @@ export default function KeepPage() {
   const busy = useChain((s) => s.busy);
   const net = useChain((s) => s.net);
   const wallet = useChain((s) => s.wallet);
-  const actor = actorFor(role, v);
-  // Restore and poke are open to anyone: on a public chain that is the connected wallet (see partyFor).
-  const party = partyFor(role, v, net);
   const publicChain = !!net && !net.caps.devChain;
+  // Restore and poke are open to anyone. On a public chain that is the connected wallet, whichever role the top bar
+  // shows: as the curator or issuer (partyFor), a stranger's wallet would be refused with "only 0x… can send this".
+  // On a dev chain, the role chosen sends with its own key.
+  const roleActor = actorFor(role, v);
+  const actor: Who = publicChain ? "anyone" : roleActor;
+  const party: Party = publicChain ? "holder" : roleActor;
   // With no wallet and the relayer on, "Have the backend send it" is the live way to restore: it leads, and the send
   // button (which can only ask for a wallet then) steps back.
   const relayLeads = useRelay().enabled && !wallet;
-  const bal = useBalances(actor);
+  // on a public chain every role reads the connected wallet's balance (useBalances)
+  const bal = useBalances(roleActor);
   // Each result is kept with the vault it was worked out for: switching vaults never draws one vault's plan on another's
   // ranges, and a simulation's answer goes with it.
   const [planFor, setPlanFor] = useState<{ vault: string; plan: { indices: number[]; pre: Preflight } | null } | null>(null);
-  const [simFor, setSimFor] = useState<{ vault: string; state: "running" | { result: CrashSim | null; deepened: boolean; error?: string } } | null>(null);
+  const [simFor, setSimFor] = useState<{ vault: string; state: "running" | { result: CrashSim | null; deepened: boolean; noDeeper?: string; error?: string } } | null>(null);
   const plan = v && planFor?.vault === v.address ? planFor.plan : null;
   const sim = v && simFor?.vault === v.address ? simFor.state : null;
-  const setSim = (state: "running" | { result: CrashSim | null; deepened: boolean; error?: string }) => v && setSimFor({ vault: v.address, state });
+  const setSim = (state: "running" | { result: CrashSim | null; deepened: boolean; noDeeper?: string; error?: string }) => v && setSimFor({ vault: v.address, state });
 
   useEffect(() => {
     if (!ctx || !v) return;
@@ -133,13 +138,20 @@ export default function KeepPage() {
     try {
       let result = await findCrash(ctx, v, v.people.issuer, keeper);
       let deepened = false;
+      let noDeeper: string | undefined;
       if (!result) {
         const d = deepenReserve(v);
-        const prelude = [{ account: v.people.curator, to: v.address, abi: covenantVaultAbi as Abi, functionName: "reshape", args: [d.cuts, d.legs, NEVER] }];
-        result = await findCrash(ctx, v, v.people.issuer, keeper, prelude);
-        deepened = !!result;
+        // Only a deeper reserve the curator could really place is worth trying: if the reshape itself would be refused
+        // (Pace, the guard), say so rather than claim the deeper layout was tried.
+        const reshape = { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [d.cuts, d.legs, NEVER] } as const;
+        const can = await preflight(ctx, v.people.curator, reshape, v).catch(failedPreflight);
+        if (can.ok) {
+          const prelude = [{ account: v.people.curator, to: v.address, abi: covenantVaultAbi as Abi, functionName: "reshape", args: [d.cuts, d.legs, NEVER] }];
+          result = await findCrash(ctx, v, v.people.issuer, keeper, prelude);
+          deepened = !!result;
+        } else noDeeper = can.error?.reason ?? "the curator's reshape would be refused";
       }
-      setSim({ result, deepened });
+      setSim({ result, deepened, noDeeper });
     } catch (e) {
       setSim({ result: null, deepened: false, error: e instanceof Error ? e.message.split("\n")[0] : String(e) });
     }
@@ -159,8 +171,8 @@ export default function KeepPage() {
         lead="Support is measured in a band under the time-weighted price. A lasting sell-off drags the band down and can leave the vault's reserve beneath it. Restore is open to every address and pays a bounty, so it never depends on the curator showing up. A rally cannot lapse it: asks the vault sold count as support."
         aside={
           <div className="flex flex-wrap items-center justify-end gap-2">
-            {role !== "keeper" && (
-              <Button size="sm" onClick={() => setRole("keeper")}>
+            {role !== "keeper" && !publicChain && (
+              <Button size="sm" onClick={() => setRole("keeper")} disabled={!!busy} title={busy ? "Wait for the action running now to finish" : undefined}>
                 Act as keeper
               </Button>
             )}
@@ -224,9 +236,15 @@ export default function KeepPage() {
                 ? "Call restore"
                 : plan && isFailureKind(plan.pre.error?.name)
                   ? `${FAILURE_LABEL[plan.pre.error.name]}: checking again`
-                  : publicChain
-                    ? "Nothing to restore"
-                    : "Call restore anyway"}
+                  : !plan
+                    ? "Checking restore…"
+                    : publicChain
+                      ? lapsed
+                        ? !g.ok
+                          ? "The guard holds restore"
+                          : "Restore would revert"
+                        : "Nothing to restore"
+                      : "Call restore anyway"}
             </SendButton>
             <p className="mt-2 text-center text-xs text-faint">
               {!g.ok
@@ -260,7 +278,9 @@ export default function KeepPage() {
               {sim && sim !== "running" && sim.error && <p className="mt-3 text-xs text-faint">Could not simulate: {sim.error}</p>}
               {sim && sim !== "running" && !sim.error && !sim.result?.restore?.ok && (
                 <p className="mt-3 text-xs text-faint">
-                  No sell-off of the issuer&apos;s tokens strands support here, even with the reserve spread deeper: every bid stays within reach of the price.
+                  {sim.noDeeper
+                    ? `No sell-off of the issuer's tokens strands support with the vault laid out as it is: every bid stays within reach of the price. A deeper reserve could not be tried, because the curator's reshape would be refused now: ${sim.noDeeper}`
+                    : "No sell-off of the issuer's tokens strands support here, even with the reserve spread deeper: every bid stays within reach of the price."}
                 </p>
               )}
             </Panel>

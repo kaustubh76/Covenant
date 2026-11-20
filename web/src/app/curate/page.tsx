@@ -7,6 +7,7 @@ import { covenantVaultAbi } from "@/chain/abi.generated";
 import { shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
 import { pushTo } from "@/chain/market";
+import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
 import { NEVER } from "@/chain/launch";
 import { type Leg, SINK, askFloor, askLeg, bidCeiling, bidLeg, bidTop, cut, reserveIndex, supportIndex } from "@/chain/plans";
 import { type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain/preflight";
@@ -241,18 +242,32 @@ export default function CuratePage() {
   const publicChain = !!net && !net.caps.devChain;
   const mayAct = canSendAs(party, net, wallet);
 
-  // Pre-flight the exact transaction whenever the plan changes.
+  // Which plan the verdict is for. A named preset is rebuilt from every block, the same plan re-priced, so a newer check
+  // of it answers for it; a hand edit, or another sender, is a new plan, and the verdict before it no longer applies.
+  const plan = useRef(0);
+  const shown = useRef(0);
+  const handEdit = preset ? null : ed;
+  useEffect(() => {
+    plan.current++;
+    setPre(null);
+  }, [preset, party, handEdit]);
+
+  // Pre-flight the exact transaction whenever the plan or the chain changes. Every block starts a check, so on a slow
+  // RPC the newest check may never finish before the next one starts: a result lands unless a newer one already has,
+  // and the verdict on screen stays until the next one replaces it.
   useEffect(() => {
     if (!ctx || !v || !ed) return;
     const id = ++req.current;
+    const asked = plan.current;
     setChecking(true);
     const t = setTimeout(async () => {
       // Never left waiting: a check that could not be made says why, and the next block checks again.
       const r = await preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(failedPreflight);
-      if (id === req.current) {
+      if (asked === plan.current && id > shown.current) {
+        shown.current = id;
         setPre(r);
-        setChecking(false);
       }
+      if (id === req.current) setChecking(false);
     }, 150);
     return () => clearTimeout(t);
   }, [ctx, v, ed, cuts, legs, party]);
@@ -260,6 +275,8 @@ export default function CuratePage() {
   if (!v || !ed) return <NeedsChain what="the curator's desk" />;
 
   const b = bounds(v);
+  // A simulation the network did not answer is not the contract's refusal: say so, and do not call it one.
+  const noAnswer = !!pre && !pre.ok && isFailureKind(pre.error?.name);
   const freed = freedBy(v, ed.rm);
   const sum = (asset: Draft["asset"]) => ed.drafts.filter((x) => x.asset === asset).reduce((s, x) => s + x.share, 0);
   const moved = (pre?.events.find((e) => e.name === "Reshaped")?.args.movedFraction as bigint | undefined) ?? undefined;
@@ -319,7 +336,7 @@ export default function CuratePage() {
           role === "curator" ? (
             <Tag tone="accent">Acting as curator</Tag>
           ) : (
-            <Button size="sm" onClick={() => setRole("curator")}>
+            <Button size="sm" onClick={() => setRole("curator")} disabled={!!busy} title={busy ? `Wait for "${busy}" to finish` : undefined}>
               Act as curator
             </Button>
           )
@@ -500,20 +517,30 @@ export default function CuratePage() {
 
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel eyebrow="Pre-flight" title="What the contract will say">
-            <ReshapeVerdict before={v} pre={pre} moved={movedNow} loading={checking} />
+            <ReshapeVerdict before={v} pre={pre} moved={movedNow} loading={checking && !pre} />
             <SendButton
               verb="submit"
-              variant={pre && !pre.ok ? "danger" : "primary"}
+              variant={pre && !pre.ok && !noAnswer ? "danger" : "primary"}
               className="mt-4 w-full"
               onClick={submit}
               disabled={!!busy || (publicChain && (!mayAct || (!!pre && !pre.ok)))}
             >
-              {publicChain && !mayAct ? "Only the curator's wallet can submit" : pre && !pre.ok ? (publicChain ? "The contract refuses this" : "Submit anyway") : "Submit reshape"}
+              {publicChain && !mayAct
+                ? "Only the curator's wallet can submit"
+                : noAnswer && pre?.error
+                  ? `${FAILURE_LABEL[pre.error.name as keyof typeof FAILURE_LABEL]}: checking again`
+                  : pre && !pre.ok
+                    ? publicChain
+                      ? "The contract refuses this"
+                      : "Submit anyway"
+                    : "Submit reshape"}
             </SendButton>
             <p className="mt-2 text-center text-xs text-faint">
               {publicChain && !mayAct && isAddressParty(party)
                 ? `Simulated as the curator, ${shortAddress(party)}. Only that wallet can send it.`
-                : pre && !pre.ok
+                : noAnswer
+                  ? "The network did not answer the simulation just now, so nothing was decided. The next block checks again."
+                  : pre && !pre.ok
                   ? publicChain
                     ? "Nothing is sent: on a public chain a refused transaction would only cost gas."
                     : "It will be mined and revert. Nothing will change."

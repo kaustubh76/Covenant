@@ -1,7 +1,7 @@
 "use client";
 
 import clsx from "clsx";
-import { ArrowRight, Check, Copy } from "lucide-react";
+import { ArrowRight, Check, Copy, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { shortAddress } from "@/chain/accounts";
@@ -19,21 +19,23 @@ export const tidy = (s: LiveStep) =>
     .replace(/\b\d+\.\d{8,}\b/g, (n) => (Number(n) < 1 ? Number(n).toPrecision(3) : Number(n).toFixed(4)));
 
 function CopyAddress({ value }: { value: string }) {
-  const [done, setDone] = useState(false);
+  // "copied", or "failed" when the browser refused (no clipboard access): said, rather than a click that does nothing
+  const [done, setDone] = useState<false | "copied" | "failed">(false);
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setDone(false), 1500);
+    const t = setTimeout(() => setDone(false), done === "failed" ? 3000 : 1500);
     return () => clearTimeout(t);
   }, [done]);
+  const label = done === "copied" ? "Copied" : done === "failed" ? "This browser did not allow copying: select the address to copy it" : "Copy address";
   return (
     <button
       type="button"
-      aria-label={done ? "Copied" : "Copy address"}
-      title={done ? "Copied" : "Copy address"}
-      onClick={() => navigator.clipboard?.writeText(value).then(() => setDone(true), () => {})}
+      aria-label={label}
+      title={label}
+      onClick={() => (navigator.clipboard ? navigator.clipboard.writeText(value).then(() => setDone("copied"), () => setDone("failed")) : setDone("failed"))}
       className="grid h-7 w-7 place-items-center rounded-md text-faint transition-colors hover:bg-raised hover:text-ink"
     >
-      {done ? <Check size={13} className="text-pass" /> : <Copy size={13} />}
+      {done === "copied" ? <Check size={13} className="text-pass" /> : done === "failed" ? <X size={13} className="text-breach" /> : <Copy size={13} />}
     </button>
   );
 }

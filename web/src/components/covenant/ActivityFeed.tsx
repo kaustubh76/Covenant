@@ -17,7 +17,7 @@ export function ActivityFeed({ limit = 8 }: { limit?: number }) {
   const net = useChain((s) => s.net);
   const items = useMemo(() => feed(log, history, limit), [log, history, limit]);
   if (!items.length) {
-    return <p className="py-6 text-center text-[13px] text-muted">Nothing has happened yet. Use the controls at the bottom of the screen to move the market, or pick a role and act.</p>;
+    return <p className="py-6 text-center text-[13px] text-muted">Nothing has happened yet. What you send here, and what the chain records for this vault, appears in this list.</p>;
   }
   const when = (at: number) => (launched && at ? `${at >= launched ? "T+" : "T−"}${duration(Math.abs(at - launched))}` : "");
   return (

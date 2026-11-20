@@ -46,6 +46,9 @@ export function Dock() {
   const backToSavePoint = useChain((s) => s.backToSavePoint);
   const dev = useChain((s) => s.net?.caps.devChain ?? true);
   const wallet = useChain((s) => s.wallet);
+  const netChainId = useChain((s) => s.net?.chainId);
+  const netName = useChain((s) => s.net?.name);
+  const switchWalletChain = useChain((s) => s.switchWalletChain);
   const relayer = useRelay();
   const viaRelay = !wallet && relayer.enabled;
   // No wallet and no relayer (off, or still waking): a trade can only start by connecting one.
@@ -131,8 +134,24 @@ export function Dock() {
   );
 
   // A public chain's vault is shared: a trade that moved spot past the guard would hold every curator's and
-  // depositor's action until the TWAP caught up. These stay well inside it.
+  // depositor's action until the TWAP caught up. These stay well inside it, and stop, by wallet or by relayer, once
+  // spot is half a guard from its average: the relayer's own rule (backend/src/relay/relayer.ts), so a few clicks in a
+  // row can never trip the guard for everyone.
   if (!dev) {
+    const drift = Math.round(view.guard.diff);
+    const held = drift > view.terms.guardTicks / 2;
+    const wrongChain = !!wallet && netChainId !== undefined && wallet.chainId !== netChainId;
+    const trade = (action: "sell" | "buy", title: string, byWallet: () => unknown) => () => {
+      if (wrongChain) return void switchWalletChain();
+      if (viaRelay) return void relayer.send(action, title);
+      if (connectFirst) return connect();
+      void byWallet();
+    };
+    const title = held
+      ? `The guard allows ${view.terms.guardTicks} ticks between spot and its average. Trades from here wait until spot is back within ${view.terms.guardTicks / 2}.`
+      : wrongChain
+        ? `${wallet?.name ?? "The wallet"} is on chain ${wallet?.chainId}: press to switch it to ${netName ?? "this network"}`
+        : tradeTitle;
     return (
       <Shell>
         <Bar>
@@ -140,15 +159,15 @@ export function Dock() {
           <Divider />
           <Labeled
             // said on the face, not only in a tooltip a touch screen never shows
-            label={viaRelay ? "Market · via backend" : "Market"}
+            label={held ? `Market · held: spot is ${drift} ticks from its average` : wrongChain ? `Market · switch your wallet to ${netName ?? "this network"}` : viaRelay ? "Market · via backend" : "Market"}
             title={`Small on purpose: this vault is shared, and moving spot more than the guard (${view.terms.guardTicks} ticks) from its average would hold everyone's reshapes and deposits until it settles.`}
           >
             <Seg>
               {/* With no wallet, the backend's relayer makes these two small trades when it is on. */}
-              <Btn onClick={() => (viaRelay ? void relayer.send("sell", `Market sells 1 ${sym}`) : connectFirst ? connect() : sell(1))} title={tradeTitle}>
+              <Btn disabled={held || !!busy} onClick={trade("sell", `Market sells 1 ${sym}`, () => sell(1))} title={title}>
                 Sell 1
               </Btn>
-              <Btn onClick={() => (viaRelay ? void relayer.send("buy", `Market buys ${sym} up 1%`) : connectFirst ? connect() : move(1))} title={tradeTitle}>
+              <Btn disabled={held || !!busy} onClick={trade("buy", `Market buys ${sym} up 1%`, () => move(1))} title={title}>
                 Buy +1%
               </Btn>
             </Seg>

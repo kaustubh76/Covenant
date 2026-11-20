@@ -28,6 +28,11 @@ export interface AttackOutcome {
   /** True when the attack failed to take value, as the Solidity test asserts. */
   blocked: boolean;
   summary: string;
+  /**
+   * Why this run gave no verdict, when it gave none: the network did not answer, or the script could not finish. Such a
+   * run is neither blocked nor through, and is never counted as either.
+   */
+  noVerdict?: string;
 }
 
 export interface Attack {
@@ -485,16 +490,50 @@ export interface AttackRun extends AttackOutcome {
  * Run `attacks` against one fresh fixture, each in its own sandbox, then put the chain back exactly as it was. Results
  * arrive one by one through `onResult`.
  */
-export async function runAttacks(ctx: ChainCtx, attacks: Attack[], onResult: (id: string, r: AttackRun) => void, progress: (label: string) => void = () => {}) {
+export async function runAttacks(
+  ctx: ChainCtx,
+  attacks: Attack[],
+  onResult: (id: string, r: AttackRun) => void,
+  progress: (label: string) => void = () => {},
+  stop: () => boolean = () => false,
+): Promise<{ ran: number }> {
+  let ran = 0;
   await sandbox(ctx, async () => {
     progress("Launching a fresh vault for the attack lab");
     const f = await attackFixture(ctx);
-    for (const a of attacks) {
-      progress(`Attempting: ${a.title}`);
-      const kit = collectingKit(ctx, progress);
-      const r = await sandbox(ctx, () => a.run(kit, f)).catch((e: unknown) => ({ blocked: false, summary: `The script failed: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}` }));
-      onResult(a.id, { ...r, beats: kit.beats });
-    }
+    ran = await eachAttack(
+      attacks,
+      async (a) => {
+        progress(`Attempting: ${a.title}`);
+        const kit = collectingKit(ctx, progress);
+        const r = await sandbox(ctx, () => a.run(kit, f)).catch(scriptFailed);
+        return { ...r, beats: kit.beats };
+      },
+      onResult,
+      stop,
+    );
   });
+  return { ran };
+}
+
+/** Each attack in turn, its result as soon as it is in; asked to stop, between attacks, never inside one. */
+export async function eachAttack<A extends { id: string }>(attacks: A[], one: (a: A) => Promise<AttackRun>, onResult: (id: string, r: AttackRun) => void, stop: () => boolean = () => false): Promise<number> {
+  let ran = 0;
+  for (const a of attacks) {
+    if (stop()) break;
+    onResult(a.id, await one(a));
+    ran++;
+  }
+  return ran;
+}
+
+/**
+ * An attack script that could not finish: a run with no verdict, never "got through". A chain reset or replaced under
+ * the run (its snapshot is gone) ends the whole run instead, since nothing after it could be trusted.
+ */
+export function scriptFailed(e: unknown): AttackOutcome {
+  if ((e as { name?: string })?.name === "SnapshotGone") throw e;
+  const why = e instanceof Error ? e.message.split("\n")[0] : String(e);
+  return { blocked: false, summary: `The script could not finish: ${why}`, noVerdict: why };
 }
 
