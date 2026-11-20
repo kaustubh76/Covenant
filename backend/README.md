@@ -64,9 +64,23 @@ with its own key, `RELAYER_PRIVATE_KEY`; without one, `/v1/relay` reports it off
 ## Safety
 
 - **One private Anvil per session.** The session id (128 random bits) is the only key to a chain, and it is never logged.
-- **JSON-RPC allowlist:** the reads, `eth_sendRawTransaction`, and the dev controls the app uses (snapshots, mining,
-  the clock, `anvil_setBalance`). Everything else is refused, including `anvil_reset` and `anvil_setRpcUrl`, which would
-  make Anvil fetch any URL, and `anvil_loadState`, `anvil_dumpState`, impersonation, and debug or trace calls.
+- **JSON-RPC allowlist:** the reads (`anvil_metadata` among them), `eth_sendRawTransaction`, and the dev controls the
+  app uses (snapshots, mining, the clock, `anvil_setBalance`). Everything else is refused, including `anvil_reset` and
+  `anvil_setRpcUrl`, which would make Anvil fetch any URL, and `anvil_loadState`, `anvil_dumpState`, impersonation, and
+  debug or trace calls.
+- **Reverts reach Anvil only for a snapshot the chain still holds.** Anvil 1.1.0 (and 1.7.1) mishandles a revert to
+  any other id:
+  - **A stale id,** one that a revert to an earlier snapshot already dropped: Anvil still lists it in `anvil_metadata`.
+    A revert to it takes the blocks and the clock back but leaves the state, or leaves the head on a block that is no
+    longer there.
+  - **An id already consumed:** Anvil drops every later snapshot, a reset's new baseline included.
+
+  So the proxy tracks the snapshots each chain holds. A revert to any other id, the backend's own baseline included, is
+  answered `false` without reaching Anvil, as Anvil itself answers for a missing id.
+
+  The tracking is exact because three kinds of call take turns on each chain: requests that take or revert a snapshot,
+  and resets. Within such a request, each snapshot or revert is sent on its own, in the batch's order, with the calls
+  between them together. Anvil runs a batch's calls concurrently, so this is the only way the batch's order holds.
 - **Limits:**
   - `MAX_CHAINS` chains run at once; one idle for two minutes is handed on when all are taken;
   - each address holds at most `CHAINS_PER_IP`;

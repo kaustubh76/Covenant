@@ -23,6 +23,8 @@ describe.skipIf(!hasAnvil)("Playground chains", () => {
     return { status: res.status, body: (await res.json()) as Record<string, any> };
   };
   const call = async (rpcPath: string, method: string, params: unknown[] = []) => (await post(rpcPath, { jsonrpc: "2.0", id: 1, method, params })).body;
+  // An address may open six chains a minute, which the tests above use up; the stale-revert test reuses the reset test's.
+  let reused: { id: string; rpcPath: string } | undefined;
 
   beforeAll(async () => {
     await new Promise<void>((resolve) => backend.server.listen(0, "127.0.0.1", () => resolve()));
@@ -58,18 +60,49 @@ describe.skipIf(!hasAnvil)("Playground chains", () => {
     expect(again.body.id).toBe(body.id);
   });
 
-  it("resets to the seed, even after the baseline snapshot was reverted away", async () => {
+  it("resets to the seed; a visitor's own revert to the baseline is refused, so a reset always has it", async () => {
     const { body } = await post("/v1/playground/sessions");
     await call(body.rpcPath, "anvil_mine", ["0x5"]);
     expect(Number((await call(body.rpcPath, "eth_blockNumber")).result)).toBe(143);
     expect((await post(`/v1/playground/sessions/${body.id}/reset`)).status).toBe(200);
     expect(Number((await call(body.rpcPath, "eth_blockNumber")).result)).toBe(138);
-    // A visitor reverting the baseline themselves leaves nothing to revert to: the chain is replaced from the seed.
     const { body: s } = await post("/v1/playground/sessions", { id: body.id });
-    await call(s.rpcPath, "evm_revert", [s.runtime.baselineSnapshot]);
     await call(s.rpcPath, "anvil_mine", ["0x2"]);
+    expect((await call(s.rpcPath, "evm_revert", [s.runtime.baselineSnapshot])).result).toBe(false);
+    expect(Number((await call(s.rpcPath, "eth_blockNumber")).result)).toBe(140);
     expect((await post(`/v1/playground/sessions/${body.id}/reset`)).status).toBe(200);
     expect(Number((await call(body.rpcPath, "eth_blockNumber")).result)).toBe(138);
+    reused = { id: body.id, rpcPath: body.rpcPath };
+  });
+
+  it("answers false for a revert to a snapshot an earlier revert made stale, and the chain stays whole", async () => {
+    expect(reused).toBeDefined();
+    const body = reused!;
+    const x = "0x00000000000000000000000000000000000000a1";
+    const balance = async () => BigInt((await call(body.rpcPath, "eth_getBalance", [x, "latest"])).result);
+    const s1 = (await call(body.rpcPath, "evm_snapshot")).result;
+    const s2 = (await call(body.rpcPath, "evm_snapshot")).result;
+    expect((await call(body.rpcPath, "evm_revert", [s1])).result).toBe(true);
+    // Anvil still lists S2 (anvil_metadata), though its state went with S1
+    expect(Object.keys((await call(body.rpcPath, "anvil_metadata")).result.snapshots)).toContain(s2);
+    await call(body.rpcPath, "anvil_setBalance", [x, "0x5"]);
+    await call(body.rpcPath, "evm_increaseTime", [3600]);
+    await call(body.rpcPath, "anvil_mine", ["0x3"]);
+    const before = (await call(body.rpcPath, "eth_getBlockByNumber", ["latest", false])).result;
+    // Sent to Anvil, this would take the blocks and the clock back to S2 and leave the balance at 5
+    expect((await call(body.rpcPath, "evm_revert", [s2])).result).toBe(false);
+    const after = (await call(body.rpcPath, "eth_getBlockByNumber", ["latest", false])).result;
+    expect(after.hash).toBe(before.hash);
+    expect(after.timestamp).toBe(before.timestamp);
+    expect(await balance()).toBe(5n);
+    // the chain goes on as before: a new snapshot reverts, and a reset takes it back to the seed
+    const s3 = (await call(body.rpcPath, "evm_snapshot")).result;
+    await call(body.rpcPath, "anvil_mine", ["0x2"]);
+    expect((await call(body.rpcPath, "evm_revert", [s3])).result).toBe(true);
+    expect((await call(body.rpcPath, "eth_getBlockByNumber", ["latest", false])).result.hash).toBe(before.hash);
+    expect((await post(`/v1/playground/sessions/${body.id}/reset`)).status).toBe(200);
+    expect(Number((await call(body.rpcPath, "eth_blockNumber")).result)).toBe(138);
+    expect(await balance()).toBe(0n);
   });
 
   it("answers 410 for a chain that is gone, and 503 when every chain is busy", async () => {

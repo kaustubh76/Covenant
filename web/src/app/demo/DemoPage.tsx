@@ -6,7 +6,7 @@ import { ArrowLeft, ArrowRight, Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Address, Hex } from "viem";
-import type { BeatInput } from "@/chain/beat";
+import { type BeatInput, note } from "@/chain/beat";
 import { DEMO_BIDS, DEMO_STEPS, DUMP_SIZE, type DemoState, bidPrice, emptyDemo } from "@/chain/scenarios/demo";
 import { PRESETS } from "@/chain/terms";
 import { revertTo, snapshot } from "@/chain/time";
@@ -33,6 +33,24 @@ interface StepRecord {
 
 const CURVE_BIDS = DEMO_BIDS.map((b) => ({ id: b.id, bidder: b.bidder === "bob" ? "Bob" : "Alice", maxPrice: bidPrice(b), amount: b.amount }));
 
+/** Why a step found its snapshot gone. */
+const GONE = "This chain was reset, or taken back past this step, since the demo ran it: the demo starts again from step 1.";
+const TORN = " The chain may have moved partway, so reset it to start clean.";
+
+/**
+ * Revert to `id`: "back" when the chain went back to it; "gone" when the snapshot is gone and nothing moved, "torn" when
+ * it is gone and the chain may have moved (SnapshotGone either way). Anything else throws.
+ */
+async function rewind(ctx: Parameters<typeof revertTo>[0], id: Hex): Promise<"back" | "gone" | "torn"> {
+  try {
+    await revertTo(ctx, id);
+    return "back";
+  } catch (e) {
+    if ((e as { name?: string })?.name !== "SnapshotGone") throw e;
+    return (e as { why?: string }).why === "torn" ? "torn" : "gone";
+  }
+}
+
 /** `live` is the real Base Sepolia deployment and its proof (server/live.ts), walked through on a public chain. */
 export function DemoPage({ live }: { live: LiveDeployment | null }) {
   const status = useChain((s) => s.status);
@@ -50,6 +68,12 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   // snaps[i]: the chain just before step i. states[i]: the demo's own state just before step i.
   const snaps = useRef<Hex[]>([]);
   const states = useRef<DemoState[]>([emptyDemo()]);
+  const forget = useCallback(() => {
+    snaps.current = [];
+    states.current = [emptyDemo()];
+    setRecords([]);
+    setAt(0);
+  }, []);
 
   // The chain the steps and their snapshots belong to. A reset Playground (a new baseline) or a replaced one (a new
   // session) has none of them: the demo starts again from step 1 there, rather than rewinding to snapshots that are gone.
@@ -64,11 +88,8 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
     }
     if (onChain.current === chainKey) return;
     onChain.current = chainKey;
-    snaps.current = [];
-    states.current = [emptyDemo()];
-    setRecords([]);
-    setAt(0);
-  }, [chainKey]);
+    forget();
+  }, [chainKey, forget]);
 
   const step = DEMO_STEPS[at];
   const rec = records[at];
@@ -77,20 +98,19 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
 
   const runStep = useCallback(
     async (i: number) => {
+      const title = `Demo step ${i + 1}: ${DEMO_STEPS[i].title}`;
       const vault = await run(
-        `Demo step ${i + 1}: ${DEMO_STEPS[i].title}`,
+        title,
         async (ctx, r) => {
           if (snaps.current[i]) {
             // Running a step again: rewind the chain to just before it (Anvil consumes the snapshot, so take it again).
-            // If the snapshot is gone (the chain was reset under the demo), start the demo over and say so.
-            await revertTo(ctx, snaps.current[i]).catch((e: unknown) => {
-              if ((e as { name?: string })?.name !== "SnapshotGone") throw e;
-              snaps.current = [];
-              states.current = [emptyDemo()];
-              setRecords([]);
-              setAt(0);
-              throw new Error("This chain was reset since the demo ran that step, so the demo starts again from step 1.");
-            });
+            // If the snapshot is gone, start the demo over and say so: nothing was sent.
+            const went = await rewind(ctx, snaps.current[i]);
+            if (went !== "back") {
+              forget();
+              r.record({ actor: "anyone", title, ok: false, error: { name: "NotSent", args: [], signature: "Step gone", rule: "Other", reason: GONE + (went === "torn" ? TORN : "") } }, { toast: true });
+              return null;
+            }
             snaps.current[i] = await snapshot(ctx);
             snaps.current.length = i + 1;
           } else {
@@ -117,16 +137,15 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
       // keep the rest of the app on the vault the demo is showing
       if (vault) await selectVault(vault as Address);
     },
-    [run, selectVault],
+    [run, selectVault, forget],
   );
 
   const startOver = () =>
-    run("Starting the demo over", async (ctx) => {
-      if (snaps.current[0]) await revertTo(ctx, snaps.current[0]).catch(() => undefined);
-      snaps.current = [];
-      states.current = [emptyDemo()];
-      setRecords([]);
-      setAt(0);
+    run("Starting the demo over", async (ctx, r) => {
+      // Any other failure leaves the demo as it was, to try again.
+      const went = snaps.current[0] ? await rewind(ctx, snaps.current[0]) : "back";
+      forget();
+      if (went !== "back") r.record(note("anyone", "The demo starts over from here", `The chain was reset, or taken back past step 1, since the demo ran it, so there was nothing to rewind to.${went === "torn" ? TORN : ""}`), { toast: true });
     }).then(() => net?.runtime && selectVault(net.runtime.defaultVault));
 
   const forward = useCallback(() => {

@@ -13,6 +13,8 @@ export const ALLOWED_METHODS: ReadonlySet<string> = new Set([
   "eth_getTransactionReceipt", "eth_getLogs", "eth_simulateV1", "eth_accounts", "eth_fillTransaction", "eth_blobBaseFee",
   "eth_syncing", "eth_getProof", "eth_getBlockTransactionCountByNumber", "eth_getBlockTransactionCountByHash",
   "eth_getTransactionByBlockNumberAndIndex", "eth_getBlockReceipts",
+  // the chain's instance id and the snapshots it lists, for the app's save points: nothing about the host
+  "anvil_metadata",
   "eth_newBlockFilter", "eth_newFilter", "eth_getFilterChanges", "eth_getFilterLogs", "eth_uninstallFilter",
   // writes, signed in the browser with the chain's dev keys
   "eth_sendRawTransaction",
@@ -40,11 +42,17 @@ export interface Meter {
   height: () => Promise<number>;
   /** The chain's resident memory in MB, or null where it cannot be read. */
   memoryMb?: () => number | null;
-  /** The snapshots the visitor holds, by id, oldest first: taken by evm_snapshot, given back by an evm_revert. */
+  /**
+   * The snapshots the chain still holds for the visitor, by id, oldest first: taken by evm_snapshot, given back by an
+   * evm_revert. Exact for the calls that come through here (`exclusive` keeps them in order), so a revert to any other
+   * id is answered here and never reaches Anvil. The baseline a reset reverts to is not among them.
+   */
   usage: { held: bigint[] };
   limits: { height: number; snapshots: number; memoryMb?: number };
-  /** Told of each call refused for going past a limit, for the log. */
+  /** Told of each call refused, for the log. */
   onRefuse?: (why: string) => void;
+  /** Runs calls that take or revert a snapshot one at a time on this chain, and with its resets. */
+  exclusive?: <T>(job: () => Promise<T>) => Promise<T>;
 }
 
 /** How many blocks a call mines: anvil_mine's count, evm_mine's (a count in its options object, else one), one per raw transaction. Null when the count is not a number. */
@@ -128,7 +136,7 @@ export async function hold(forward: Request[], refused: Map<number, Reply>, size
   for (let i = 0; i < size; i++) if (!refused.has(i)) at.push(i);
   const mines = forward.some((r) => (blocksOf(String(r.method), r.params) ?? 0) > 0);
   const grows = mines || forward.some((r) => r.method === "evm_snapshot");
-  let height = mines ? await meter.height() : 0;
+  let height = mines && Number.isFinite(meter.limits.height) ? await meter.height() : 0;
   let held = meter.usage.held.length;
   // Memory is what takes the instance down: past the limit, nothing that grows the chain goes on until it is reset.
   const mb = grows && meter.limits.memoryMb !== undefined ? (meter.memoryMb?.() ?? null) : null;
@@ -158,53 +166,131 @@ export async function hold(forward: Request[], refused: Map<number, Reply>, size
   forward.splice(0, forward.length, ...keep);
 }
 
-/** Keep the held snapshots in step with what the chain answered: a new id for each snapshot, and a revert gives back its own and every later one. */
-export function track(meter: Meter, req: Request, reply: Reply): void {
-  try {
-    if (req.method === "evm_snapshot" && typeof reply.result === "string") meter.usage.held.push(BigInt(reply.result));
-    if (req.method === "evm_revert" && reply.result === true) {
-      const id = BigInt((req.params as unknown[])[0] as string);
-      meter.usage.held = meter.usage.held.filter((h) => h < id);
-    }
-  } catch {
-    /* an id that is not a number: nothing to track */
-  }
+/**
+ * A snapshot id as Anvil reads it: a hex string or a whole number. Null for anything else, which is then never sent: an
+ * id read one way here and another way by Anvil could revert to a snapshot that was never checked.
+ */
+export function snapshotId(v: unknown): bigint | null {
+  if (typeof v === "string" && /^0x[0-9a-f]{1,64}$/i.test(v)) return BigInt(v);
+  if (typeof v === "number" && Number.isSafeInteger(v) && v >= 0) return BigInt(v);
+  return null;
 }
 
-/** Forward the allowed calls to `url` and answer every call, in the order it was asked. */
-export async function proxy(url: string, body: string, timeoutMs = 120_000, meter?: Meter): Promise<unknown> {
-  const { batch, forward, refused, size } = screen(body);
-  if (meter && forward.length) await hold(forward, refused, size, meter);
-  let answers: Reply[] = [];
-  if (forward.length) {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(forward),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const got = (await res.json()) as Reply | Reply[];
-    answers = Array.isArray(got) ? got : [got];
+const takesOrReverts = (r: Request) => r.method === "evm_snapshot" || r.method === "evm_revert";
+
+/**
+ * After any revert Anvil ran, whatever it answered, the chain holds none of the snapshots from that id on. A revert
+ * consumes its own snapshot, and Anvil's state store drops every later one even when it answers false.
+ */
+function giveBack(meter: Meter, req: Request): void {
+  const id = snapshotId((req.params as unknown[] | undefined)?.[0]);
+  if (id !== null) meter.usage.held = meter.usage.held.filter((h) => h < id);
+}
+
+/** Keep the held snapshots in step with what the chain answered: a new id for each snapshot, and a revert gives back its own and every later one. */
+export function track(meter: Meter, req: Request, reply: Reply): void {
+  if (req.method === "evm_snapshot") {
+    const id = snapshotId(reply.result);
+    if (id !== null) meter.usage.held.push(id);
   }
+  if (req.method === "evm_revert") giveBack(meter, req);
+}
+
+/**
+ * Split the calls into pieces sent one after another: each snapshot or revert alone, the calls between them together.
+ * Anvil runs a batch's calls concurrently, so only between pieces does a batch's order hold on the chain. Then the held
+ * snapshots follow the chain, and a read before a snapshot sees the chain before it, a read after, after.
+ */
+export function pieces(calls: Request[]): Request[][] {
+  const out: Request[][] = [];
+  let cur: Request[] = [];
+  for (const r of calls) {
+    if (!takesOrReverts(r)) {
+      cur.push(r);
+      continue;
+    }
+    if (cur.length) out.push(cur);
+    out.push([r]);
+    cur = [];
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+async function send(url: string, calls: Request[], timeoutMs: number): Promise<Reply[]> {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(calls),
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+  const got = (await res.json()) as Reply | Reply[];
   // Anvil answers a batch in order; match by id all the same, since ids need not be unique or present.
   const byId = new Map<string, Reply[]>();
-  for (const a of answers) {
+  for (const a of Array.isArray(got) ? got : [got]) {
     const k = JSON.stringify(a.id ?? null);
     byId.set(k, [...(byId.get(k) ?? []), a]);
   }
-  const out: Reply[] = [];
-  let f = 0;
-  for (let i = 0; i < size; i++) {
-    const r = refused.get(i);
-    if (r) {
-      out.push(r);
-      continue;
+  return calls.map((c) => byId.get(JSON.stringify(c.id ?? null))?.shift() ?? refuse(c.id, -32603, "No answer from the chain"));
+}
+
+/**
+ * Answer the calls in order, piece by piece. A revert goes to Anvil only if the chain still holds its snapshot, checked
+ * just before its piece is sent. Anvil handles a revert to any other id badly. To an id that a revert to an earlier one
+ * made stale, it takes the blocks and the clock back but not the state, or leaves its head on a block it no longer has.
+ * To an id already consumed, it drops every later snapshot. Either way it answers false, as it does here.
+ */
+async function answer(url: string, forward: Request[], timeoutMs: number, meter?: Meter): Promise<Reply[]> {
+  if (!meter) return forward.length ? send(url, forward, timeoutMs) : [];
+  const replies: Reply[] = [];
+  for (const piece of pieces(forward)) {
+    const here = new Map<Request, Reply>();
+    for (const r of piece) {
+      if (r.method !== "evm_revert") continue;
+      const id = snapshotId((r.params as unknown[] | undefined)?.[0]);
+      if (id !== null && meter.usage.held.includes(id)) continue;
+      here.set(r, { jsonrpc: "2.0", id: r.id ?? null, result: false });
+      meter.onRefuse?.(`evm_revert(${String((r.params as unknown[] | undefined)?.[0]).slice(0, 24)}): not a snapshot this chain holds`);
     }
-    const req = forward[f++];
-    const queue = byId.get(JSON.stringify(req.id ?? null));
-    const reply = queue?.shift() ?? refuse(req.id, -32603, "No answer from the chain");
-    if (meter) track(meter, req, reply);
-    out.push(reply);
+    const go = piece.filter((r) => !here.has(r));
+    let got: Reply[] = [];
+    if (go.length) {
+      try {
+        got = await send(url, go, timeoutMs);
+      } catch (e) {
+        // No answer: the revert may have run, so its snapshots are given back as if it had.
+        for (const r of go) if (r.method === "evm_revert") giveBack(meter, r);
+        throw e;
+      }
+    }
+    let g = 0;
+    for (const r of piece) {
+      const mine = here.get(r);
+      if (mine) {
+        replies.push(mine);
+        continue;
+      }
+      const reply = got[g++];
+      track(meter, r, reply);
+      replies.push(reply);
+    }
   }
-  return batch ? out : out[0];
+  return replies;
+}
+
+/**
+ * Forward the allowed calls to the chain at `url` and answer every call, in the order it was asked. `url` may be read
+ * late: a call that waited for a reset to finish goes to the chain the reset left.
+ */
+export async function proxy(url: string | (() => string), body: string, timeoutMs = 120_000, meter?: Meter): Promise<unknown> {
+  const { batch, forward, refused, size } = screen(body);
+  const run = async (): Promise<unknown> => {
+    if (meter && forward.length) await hold(forward, refused, size, meter);
+    const replies = await answer(typeof url === "function" ? url() : url, forward, timeoutMs, meter);
+    const out: Reply[] = [];
+    let f = 0;
+    for (let i = 0; i < size; i++) out.push(refused.get(i) ?? replies[f++]);
+    return batch ? out : out[0];
+  };
+  return meter?.exclusive && forward.some(takesOrReverts) ? meter.exclusive(run) : run();
 }

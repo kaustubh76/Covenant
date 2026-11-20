@@ -119,11 +119,14 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     }
     const r = path.match(/^\/rpc\/play\/([0-9a-f]{32})$/);
     if (r && req.method === "POST") {
-      const session = playground.get(r[1]);
-      if (!session) throw new HttpError(410, "This Playground chain has stopped: it sat idle, or the backend restarted. Open a new one.");
+      const gone = "This Playground chain has stopped: it sat idle, or the backend restarted. Open a new one.";
+      if (!playground.get(r[1])) throw new HttpError(410, gone);
       const body = await readBody(req, config.maxBodyBytes);
       if (!calls.take(r[1])) throw new HttpError(429, "Too many calls to this chain at once.", { "retry-after": "1" });
-      return json(res, 200, await proxy(session.chain.url, body, 120_000, playground.meter(session)));
+      // A reset that restarts the chain holds calls until the new one is up.
+      const session = await playground.ready(r[1]);
+      if (!session) throw new HttpError(410, gone);
+      return json(res, 200, await proxy(() => session.chain.url, body, 120_000, playground.meter(session)));
     }
     throw new HttpError(404, "Not found");
   }

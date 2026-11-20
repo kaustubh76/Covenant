@@ -98,17 +98,23 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
     return run(
       ids.length > 1 ? `Running ${ids.length} attacks` : "Running the attack",
       async (ctx, rec) => {
-        const { ran: done } = await runAttacks(
-          ctx,
-          ATTACKS.filter((a) => ids.includes(a.id)),
-          (id, r) => {
-            setResults((prev) => ({ ...prev, [id]: r }));
-            setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
-          },
-          rec.progress,
-          () => stopRun.current,
-        );
-        if (done < ids.length) rec.record(note("anyone", "Attack run stopped", `Stopped after ${done} of ${ids.length}. The chain is back where it was.`), { toast: true });
+        try {
+          const { ran: done } = await runAttacks(
+            ctx,
+            ATTACKS.filter((a) => ids.includes(a.id)),
+            (id, r) => {
+              setResults((prev) => ({ ...prev, [id]: r }));
+              setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
+            },
+            rec.progress,
+            () => stopRun.current,
+          );
+          if (done < ids.length) rec.record(note("anyone", "Attack run stopped", `Stopped after ${done} of ${ids.length}. The chain is back where it was.`), { toast: true });
+        } catch (e) {
+          // The run's snapshot went from under it: another tab reset the chain, or took it back past the run's start.
+          if ((e as { name?: string })?.name !== "SnapshotGone") throw e;
+          rec.record(note("anyone", "Attack run stopped", "The chain was reset, or taken back in another tab, during the run. The results before that are shown; the chain may hold part of the last attack, so Reset the Playground to start clean."), { toast: true });
+        }
       },
       { quiet: true },
     ).finally(() => setRunning(false));
