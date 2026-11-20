@@ -22,10 +22,13 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
   const ih = height - padT - padB;
   const levels = [...new Map(bids.filter((b) => b.amount > 0).map((b) => [b.maxPrice, 0])).keys()].sort((a, b) => a - b);
   const byLevel = levels.map((p) => ({ price: p, amount: bids.filter((b) => b.maxPrice === p).reduce((s, b) => s + b.amount, 0), who: [...new Set(bids.filter((b) => b.maxPrice === p).map((b) => b.bidder))].join(", ") }));
-  const pMin = Math.min(...levels, result?.floorPrice ?? 1) * 0.985;
-  const pMax = Math.max(...levels, result?.clearingPrice ?? 1) * 1.03;
+  // The axes fit the bids (and the result, once there is one) at any scale: a testnet launch's prices and amounts are
+  // thousands of times smaller than a local one's, and a fixed 1 at either end would squeeze every bar into a corner.
+  const lo = Math.min(...levels, result?.floorPrice ?? Infinity);
+  const hi = Math.max(...levels, result?.clearingPrice ?? -Infinity);
+  const [pMin, pMax] = Number.isFinite(lo) && Number.isFinite(hi) && lo > 0 ? (hi > lo ? [lo * 0.985, hi * 1.03] : [lo * 0.95, lo * 1.05]) : [0, 1];
   const x = (p: number) => padL + ((p - pMin) / (pMax - pMin)) * iw;
-  const maxA = Math.max(1, ...byLevel.map((l) => l.amount));
+  const maxA = Math.max(Number.MIN_VALUE, ...byLevel.map((l) => l.amount));
   const base = padT + ih;
   const bw = Math.max(18, Math.min(44, iw / 12));
   const cp = result?.clearingPrice;
