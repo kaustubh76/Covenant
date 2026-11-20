@@ -1,0 +1,337 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+  "token": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+  "signer": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+  "keeper": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+  "lp": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+  "curator2": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+  "issuer2": "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1",
+  "attacker": "0x64428A5EFb02A7384b70f257dfb205a071A8236D",
+  "startedAtBlock": 60939041,
+  "steps": {
+    "gas": {
+      "title": "Gas money for the helpers",
+      "status": "success",
+      "hash": "0x71f58c867921dc722ce108b87ae4dc6e84c2101ca41887bb3a85b1deb7563e34",
+      "block": 60939072,
+      "detail": "0.0015 ETH each to 0xD570E1dAd01264178b5218246E74e0A961b0900c, 0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1"
+    },
+    "lockedEarly": {
+      "title": "The issuer takes all its principal, before it has vested",
+      "status": "reverted",
+      "hash": "0xa1a9f6b3376f41867c0499ec6ee01c07f29d6f9b5de49a633c33cca0cfe262a6",
+      "block": 60939099,
+      "error": "Locked(0, 1000000000000000000)",
+      "detail": "Locked(0, 1000000000000000000): Only 0.00% of the issuer's principal is withdrawable now. This asks for 100.00%."
+    },
+    "propose1": {
+      "title": "The issuer proposes a new curator",
+      "status": "success",
+      "hash": "0x676d7bd55d6fab606086580dd2b4935bc622c7315cfe4a901e8b1a9d1b649478",
+      "block": 60939123,
+      "detail": "the timelock starts: 15 minutes, in public"
+    },
+    "cancel": {
+      "title": "The issuer withdraws the proposal",
+      "status": "success",
+      "hash": "0xb890fed66c77604e626f413d8f1dff858c7866d3a37a752d0bee825333a81ded",
+      "block": 60939137,
+      "detail": "nothing changes: the curator stays"
+    },
+    "propose": {
+      "title": "The issuer proposes the new curator again",
+      "status": "success",
+      "hash": "0x006ff79d13c401ca177fe93692283355c435f5f9fce6b878a524340430aee709",
+      "block": 60939153,
+      "detail": "0xD570E1dAd01264178b5218246E74e0A961b0900c may take over from 17:49 UTC, 15 minutes on"
+    },
+    "acceptEarly": {
+      "title": "A stranger accepts the change at once",
+      "status": "reverted",
+      "hash": "0xf423e195d2d720470730e19f20cc45f215e2a09a3982e12c208666aa679c33dc",
+      "block": 60939182,
+      "error": "TimelockActive(1795110599)",
+      "detail": "TimelockActive(1795110599): The curator change is still inside its timelock: 14m to go. Holders have this window to react."
+    },
+    "transferIssuer": {
+      "title": "The issuer hands its role to a second key",
+      "status": "success",
+      "hash": "0x76e9ff1ee2edc9dc67a40e226642e5d668514f37825cb1e6237a3f15290660b8",
+      "block": 60939208,
+      "detail": "pending until 0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1 accepts"
+    },
+    "strangerIssuer": {
+      "title": "A stranger tries to take the issuer role",
+      "status": "reverted",
+      "hash": "0x7bd40464360957e543f2c47587e8e5a14c71cfed169cb84957324e9637fd6e13",
+      "block": 60939224,
+      "error": "NotPendingIssuer()",
+      "detail": "NotPendingIssuer(): Only the proposed issuer can accept the issuer role."
+    },
+    "acceptIssuer": {
+      "title": "The second key accepts the issuer role",
+      "status": "success",
+      "hash": "0x84fb7fd368ccb0fddd2e75c70b66c953a2a3db876e3099020ab6509c06371fff",
+      "block": 60939240,
+      "detail": "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1 is the issuer"
+    },
+    "transferBack": {
+      "title": "It hands the role back",
+      "status": "success",
+      "hash": "0xea61f5c772fde71c1152d07ad9064e7d52c21960bc01f742fad7d40d5d4b54b0",
+      "block": 60939258,
+      "detail": "pending until 0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1 accepts"
+    },
+    "issuerBack": {
+      "title": "The original issuer accepts it back",
+      "status": "success",
+      "hash": "0xdbcbafe7e9ad507a3fb5968576ea0b5844777ca1e7ec209b1418efbab2f8da14",
+      "block": 60939274,
+      "detail": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1 is the issuer again"
+    },
+    "flashSell": {
+      "title": "Dump 5,000 ticks…",
+      "status": "success",
+      "hash": "0x3a52fcf6d2b3bb2df14b7bf781aec7648557b48ac3d6d09ade0f3e103f905d00",
+      "block": 60939818,
+      "detail": "502 CVQ offered, spot -87513 → -92513 at most, in the same block"
+    },
+    "flashBuy": {
+      "title": "…and buy it straight back",
+      "status": "success",
+      "hash": "0x6994bea91cf44a81e005b0796b52e038e68896e3efa61a0867636f2c65b28b3f",
+      "block": 60939818,
+      "detail": "0.0152 ETH, spot back to -87512; TWAP before -87513, after -87513"
+    },
+    "flashCheck": {
+      "title": "The curator reshapes: is the guard fooled?",
+      "status": "success",
+      "hash": "0x7f02d788e9b9808c0078e6afd8cd5a1ff657b24fd6692ebcdc0ae443caee6aeb",
+      "block": 60939860,
+      "detail": "the guard passes: as far as the average is concerned nothing happened (TWAP -87512)"
+    },
+    "accept": {
+      "title": "A stranger accepts once the timelock has run",
+      "status": "success",
+      "hash": "0x0896f5513822ece11405b49501ac0cb7e785b4478970d7357c3bb6e79bf1d5ab",
+      "block": 60943714,
+      "detail": "0xD570E1dAd01264178b5218246E74e0A961b0900c is the curator"
+    },
+    "newCuratorRug": {
+      "title": "The new curator moves the support away",
+      "status": "reverted",
+      "hash": "0xcf1eaa81a8029cd0f3f46d3df691b7b84d7b332cf125c13eb43acf8612bb3202",
+      "block": 60943755,
+      "error": "SupportBroken(280, 4000)",
+      "detail": "SupportBroken(280, 4000): support would have been 2.8%, the covenant needs 40.0%. A new curator is bound by the same rules"
+    },
+    "curatorShares": {
+      "title": "The new curator withdraws shares it does not hold",
+      "status": "reverted",
+      "hash": "0xebfd91968f66455850c640b77cc97feb606d60459408e58fe80af21c19f69d16",
+      "block": 60943788,
+      "error": "InsufficientShares(0, 10000000000000000)",
+      "detail": "InsufficientShares(0, 10000000000000000): This address holds no vault shares. The curator has no withdrawal path at all."
+    },
+    "curatorPrincipal": {
+      "title": "The new curator asks for the issuer's principal",
+      "status": "reverted",
+      "hash": "0x99fd6b84e06b6399910f10af0dc43bbab35966519151797a291e3b81c4b1b2e3",
+      "block": 60943816,
+      "error": "NotIssuer()",
+      "detail": "NotIssuer(): Only the issuer can do this."
+    },
+    "principalOut": {
+      "title": "The issuer takes a quarter of its vested principal",
+      "status": "success",
+      "hash": "0x5d51d18e47cc4812839e18380bc9cfd3bda707facfaf4c7cd5459e0f124c065c",
+      "block": 60956417,
+      "detail": "0.00379 ETH and 23.93 CVQ to the treasury: a proportional slice of every range, so the shape and support are unchanged"
+    },
+    "lpFunds": {
+      "title": "The issuer funds the LP",
+      "status": "success",
+      "hash": "0x2b043969732fe7f445305d0d93576766214cfdc1ab7e685793dba1bd8e1dc4e1",
+      "block": 60956470,
+      "detail": "11.77 CVQ and 0.00527 ETH to 0xf76b92051035021d8EF9562058f3e8085006D8f0"
+    },
+    "lpJoin": {
+      "title": "An outside LP joins for a tenth of the vault",
+      "status": "success",
+      "hash": "0xb54fca4ec390e1ecb3cae452c7cd17e84aedc0048b85a3435a70d66842601ea9",
+      "block": 60956534,
+      "detail": "0.00114 ETH and 7.18 CVQ: a tenth of every range, in kind"
+    },
+    "dump": {
+      "title": "The price is pushed 2,500 ticks down",
+      "status": "success",
+      "hash": "0xc4e93b13e2f0a42ceaa0a0ac19c99a5b7f07b65baf558d827c3b0cb7d43dd282",
+      "block": 60956608,
+      "detail": "spot -87512 → -90011, 2500 ticks from the TWAP (the guard allows 300)"
+    },
+    "guardReshape": {
+      "title": "The curator reshapes at the manipulated price",
+      "status": "reverted",
+      "hash": "0xc8ac813fc4410ea48fc4c838c4c004477664714ebc40dca2120fb299c5de49e9",
+      "block": 60956707,
+      "error": "PriceGuard(90011, 87513)",
+      "detail": "PriceGuard(90011, 87513): Spot is 2498 ticks from the time-weighted price. Nothing can change until the price has held."
+    },
+    "guardDeposit": {
+      "title": "The LP deposits at the manipulated price",
+      "status": "reverted",
+      "hash": "0xf0fabe737ca244f7f3834d28c0f6e7cc376b7214377bf94a6ef3f9a5ee35e362",
+      "block": 60956707,
+      "error": "PriceGuard(90011, 87513)",
+      "detail": "PriceGuard(90011, 87513): Spot is 2498 ticks from the time-weighted price. Nothing can change until the price has held."
+    },
+    "guardRestore": {
+      "title": "A keeper calls restore at the manipulated price",
+      "status": "reverted",
+      "hash": "0x24b6aa5553af82434e7df2d091cbe3abf9d74f86f6ccca3ed7247122a91948ff",
+      "block": 60956707,
+      "error": "PriceGuard(90011, 87513)",
+      "detail": "PriceGuard(90011, 87513): Spot is 2498 ticks from the time-weighted price. Nothing can change until the price has held."
+    },
+    "lpExitTripped": {
+      "title": "The LP leaves while the guard is tripped",
+      "status": "success",
+      "hash": "0xc39772a0e8170a8639ce70022112ab3d2ff48c7ba3f64716cd465e32aa494a8a",
+      "block": 60956743,
+      "detail": "every share out, with spot 2498 ticks from the TWAP: exits are never guarded, a proportional burn cannot be priced wrong"
+    },
+    "buyBack": {
+      "title": "The price is bought back",
+      "status": "success",
+      "hash": "0x104eb92a1e9541fc8a97108ca6a9fa293fd2d4a3aa4792683647a6fdf9c2d4bb",
+      "block": 60956796,
+      "detail": "spot back to -87511 (it was -87512)"
+    },
+    "attackerFunds": {
+      "title": "The attacker's ETH",
+      "status": "success",
+      "hash": "0xd49a132ff4a7f7d3c867e31d3a87290920eaf8b9767722418e606ae180682354",
+      "block": 60958836,
+      "detail": "0.0175 ETH: the pump costs about 0.0133"
+    },
+    "pump": {
+      "title": "The attacker buys every ask and pushes 30,000 ticks up",
+      "status": "success",
+      "hash": "0x8cb514272913b49061757a86278d803db9f1995073fd18b86517dee571129163",
+      "block": 60958885,
+      "detail": "71.78 CVQ bought; price 0.0001584 → 0.003181 ETH, through empty ticks"
+    },
+    "quickRestore": {
+      "title": "Two hours on, a restore to drag the bids up under the pump",
+      "status": "reverted",
+      "hash": "0x6fb68da77b3b7b1c9267133c3fb5ba555f63498b0be8f76ead50877ce14843a4",
+      "block": 60995130,
+      "error": "NothingToRestore(6689, 4000)",
+      "detail": "NothingToRestore(6689, 4000): support still reads 66.9% against 40.0%: the asks the attacker bought are quote just under the old price, and they count"
+    },
+    "poke1": {
+      "title": "A keeper syncs the Anchor (1)",
+      "status": "success",
+      "hash": "0xaa0f98e0ba131bb50af92f3af4ea3c1a80933c1150e4be4eedaca2846e3a63bc",
+      "block": 60995163,
+      "detail": "the Anchor is committed at tick -86762, 750 above where the pump began; support reads 66.9%"
+    },
+    "poke2": {
+      "title": "A keeper syncs the Anchor (2)",
+      "status": "success",
+      "hash": "0xc1f7ed3f84588e3771b6e1e67342c821cfe093b5e58997b77c6a9bed52c69394",
+      "block": 61002707,
+      "detail": "the Anchor is committed at tick -86133, 1379 above where the pump began; support reads 55.7%"
+    },
+    "poke3": {
+      "title": "A keeper syncs the Anchor (3)",
+      "status": "success",
+      "hash": "0x09c90b7dbeaa20aabd0fa88a5f5b775090053c4bb127df8402baed0f28ef3428",
+      "block": 61010297,
+      "detail": "the Anchor is committed at tick -85501, 2011 above where the pump began; support reads 45.6%"
+    },
+    "poke4": {
+      "title": "A keeper syncs the Anchor (4)",
+      "status": "success",
+      "hash": "0x760a64201eff8666de052b7c26a38634cbd3077041715f4ce0a13c2fea664b80",
+      "block": 61017842,
+      "detail": "the Anchor is committed at tick -84872, 2640 above where the pump began; support reads 35.0%"
+    },
+    "poke5": {
+      "title": "A keeper syncs the Anchor (5)",
+      "status": "success",
+      "hash": "0x44f868b8dd15cbe46fca438208b346a37f086b50edf602ea253ceda65c2fb428",
+      "block": 61025386,
+      "detail": "the Anchor is committed at tick -84243, 3269 above where the pump began; support reads 24.1%"
+    },
+    "poke6": {
+      "title": "A keeper syncs the Anchor (6)",
+      "status": "success",
+      "hash": "0x6296bcb69ccd444e50dc8cf02c68ef3da3b3f688f98c80a49143e8dd0442b53c",
+      "block": 61032926,
+      "detail": "the Anchor is committed at tick -83615, 3897 above where the pump began; support reads 12.9%"
+    },
+    "poke7": {
+      "title": "A keeper syncs the Anchor (7)",
+      "status": "success",
+      "hash": "0x4275a8089dd35b46f9581d7d306490baad456109ddde2e65092cb71862096f52",
+      "block": 61040458,
+      "detail": "the Anchor is committed at tick -82987, 4525 above where the pump began; support reads 1.3%"
+    },
+    "poke8": {
+      "title": "A keeper syncs the Anchor (8)",
+      "status": "success",
+      "hash": "0x3116035b521b1a65f060e6c055c76ff1ef6ab442cd9fcd6cf774ed061c232b8c",
+      "block": 61047976,
+      "detail": "the Anchor is committed at tick -82360, 5152 above where the pump began; support reads 0.0%"
+    },
+    "patientRestore": {
+      "title": "Held 5.0 hours (5.0 epochs), synced: a restore to drag the bids up",
+      "status": "reverted",
+      "hash": "0x14b89e7bbbb8b8d51aa741bbf6a0e30ca2e53ddc1d294d34d30a99d340bdb60a",
+      "block": 61048012,
+      "error": "RestoreBandEmpty(-83820, -84420)",
+      "detail": "RestoreBandEmpty(-83820, -84420): support reads 0.0%, lapsed, but the band sits above every price the vault has sold at. Restore refuses rather than chase the pump"
+    },
+    "sellBack": {
+      "title": "The attacker sells everything back",
+      "status": "success",
+      "hash": "0x6f92e322776cca99f034a9415fbb477054ea4ba3f2413e65d0cd6161fe8e87e3",
+      "block": 61048048,
+      "value": "-97067328875744",
+      "detail": "71.78 CVQ sold, price 0.003181 → 0.0001585 ETH. The attacker ends -0.000097067329 ETH, gas included: the swap fees stay with the vault"
+    },
+    "curatorFees": {
+      "title": "The new curator claims its fee share",
+      "status": "success",
+      "hash": "0x8dfa416c6567c78552fec341f2d7382493f68b38d7506c2f2cdccba0876f66b7",
+      "block": 61070552,
+      "detail": "0.00000456298 ETH and 0.0583 CVQ to the curator"
+    },
+    "collect": {
+      "title": "A stranger collects the principal's fees",
+      "status": "success",
+      "hash": "0x130b76d23703a1a107377283927535d2ded8d6e7921835270078162d25fcc6b4",
+      "block": 61070567,
+      "detail": "0 ETH and 0.698 CVQ to the treasury"
+    },
+    "lpClaim": {
+      "title": "The LP claims what it earned while it held",
+      "status": "success",
+      "hash": "0xd15a9ff5a081228ed8d7eca2a0ee94962a06571641633d24dbc4e854543e395f",
+      "block": 61070581,
+      "detail": "0 ETH and 0.0203 CVQ to the LP"
+    }
+  },
+  "marks": {
+    "homeTick": -87512,
+    "attackerEthBefore": "17471976350497440",
+    "tokensBought": "71775608077916531695",
+    "pumpAt": 1795113645,
+    "lastPokeAt": 1795131464
+  },
+  "pending": {},
+  "finishedAtBlock": 61070585
+}

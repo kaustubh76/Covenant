@@ -58,6 +58,14 @@ export interface PublicLaunchOptions {
    * given; the contract's minimum is an hour.
    */
   epochLength?: number;
+  /**
+   * Quick clocks for a vault meant to show its governance run to completion in one sitting, in seconds: the curator
+   * timelock, the principal's lock and its vesting. The Standard terms' 2 days, 90 days and 30 days unless given; the
+   * contract bounds none of them (TermsLib).
+   */
+  curatorTimelock?: number;
+  lockDuration?: number;
+  vestDuration?: number;
   /** The progress file's name under deployments/ (<progress>.launch.json): the records' unless given. */
   progress?: string;
   /** Make this launch the runtime's default vault: yes unless false, so a second launch can stand beside the first. */
@@ -72,7 +80,7 @@ export interface PublicLaunchOptions {
 interface Progress {
   net: PublicNetworkKey;
   signer: Address;
-  spec: { symbol: string; shift: number; durationBlocks: number; epochLength?: number };
+  spec: { symbol: string; shift: number; durationBlocks: number; epochLength?: number; curatorTimelock?: number; lockDuration?: number; vestDuration?: number };
   /** The block this launch began from: its events are all at or after it. */
   fromBlock: number;
   token?: Address;
@@ -131,14 +139,35 @@ export async function runPublicLaunch(o: PublicLaunchOptions): Promise<PublicLau
   const p: Progress = previous ?? {
     net: o.net,
     signer: me,
-    spec: { symbol: o.symbol ?? "CVNT", shift: o.shift ?? TESTNET_PRICE_SHIFT, durationBlocks: o.durationBlocks ?? 128, epochLength: o.epochLength },
+    spec: {
+      symbol: o.symbol ?? "CVNT",
+      shift: o.shift ?? TESTNET_PRICE_SHIFT,
+      durationBlocks: o.durationBlocks ?? 128,
+      epochLength: o.epochLength,
+      curatorTimelock: o.curatorTimelock,
+      lockDuration: o.lockDuration,
+      vestDuration: o.vestDuration,
+    },
     fromBlock: Number(await ctx.pub.getBlockNumber()),
   };
+  // A resumed launch keeps the terms it started with: a flag that disagrees is a mistake, not a change of plan.
+  if (previous) {
+    for (const k of ["epochLength", "curatorTimelock", "lockDuration", "vestDuration"] as const) {
+      if (o[k] !== undefined && o[k] !== previous.spec[k]) throw new Error(`${ppath} was started with ${k} ${previous.spec[k] ?? "(Standard)"}, not ${o[k]}. Pass --fresh to start a new launch.`);
+    }
+  }
   const save = () => writeFileSync(ppath, JSON.stringify(p, null, 2) + "\n");
   if (previous) log(`resuming the launch in ${ppath}`);
   save();
 
-  const terms = { ...PRESETS.standard, epochLength: p.spec.epochLength ?? PRESETS.standard.epochLength };
+  const std = PRESETS.standard;
+  const terms = {
+    ...std,
+    epochLength: p.spec.epochLength ?? std.epochLength,
+    curatorTimelock: p.spec.curatorTimelock ?? std.curatorTimelock,
+    lockDuration: p.spec.lockDuration ?? std.lockDuration,
+    vestDuration: p.spec.vestDuration ?? std.vestDuration,
+  };
   const spec = testnetLaunchSpec(terms, { name: `${p.spec.symbol} Launch`, symbol: p.spec.symbol, durationBlocks: p.spec.durationBlocks }, p.spec.shift);
   const bids = testnetBids(p.spec.shift);
   const bounty = o.bounty ?? parseEther("0.005");

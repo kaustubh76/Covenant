@@ -2,6 +2,8 @@
 // npm run proof -- --rehearse [--fork-block N] [--check]
 // npm run proof -- --lp [--net base-sepolia | --rehearse] [--vault 0x…] [--check] [--fresh]
 // npm run proof -- --manage [--net base-sepolia | --rehearse] [--vault 0x…] [--check] [--fresh]
+// npm run proof -- --refusals [--net base-sepolia | --rehearse] [--vault 0x…] [--check] [--fresh]
+// npm run proof -- --lifecycle --vault 0x… [--net base-sepolia | --rehearse] [--max-pump 0.3] [--check] [--fresh]
 //
 // The live proof (scripts/lib/proof.ts): Covenant's rules exercised as real transactions against the CVNT vault on
 // Base Sepolia, each on record in deployments/84532.proof.json with its receipt. It takes about half an hour, most of it
@@ -20,16 +22,24 @@
 // --manage            the management proof instead (scripts/lib/manageproof.ts): on the latest launch, past its setup
 //                     epoch, a pump; the curator's chase above the Anchor, refused; an honest re-centre capped at the
 //                     ceiling; and moving everything at once, refused by Pace. Recorded in deployments/84532-manage.proof.json.
+// --refusals          the refusal proof (scripts/lib/refusalproof.ts): the attack lab's one-call attacks sent against
+//                     the default vault and refused by the chain, plus a keeper's poke and the curator's fee claim.
+//                     Recorded in deployments/84532-refusals.proof.json.
+// --lifecycle         the lifecycle proof (scripts/lib/lifecycleproof.ts), against a vault launched with quick clocks:
+//                     the curator and issuer handovers, the principal's lock, the guard and flash attacks, and the
+//                     pump-ratchet held for two hours and then four epochs. Recorded in deployments/84532-lifecycle.proof.json.
 
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { type Address, type Hex, concat, keccak256, toHex } from "viem";
+import { type Address, type Hex, concat, keccak256, parseEther, toHex } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { NETWORKS, parseManifest } from "../src/chain/network";
 import { ROOT, alive, manifestPath, rpc, startAnvil, waitFor } from "./lib/localchain";
+import { runLifecycleProof } from "./lib/lifecycleproof";
 import { runLpProof } from "./lib/lpproof";
 import { runManageProof } from "./lib/manageproof";
 import { runProof } from "./lib/proof";
+import { runRefusalProof } from "./lib/refusalproof";
 
 const argv = process.argv.slice(2);
 const arg = (name: string) => {
@@ -39,6 +49,11 @@ const arg = (name: string) => {
 const RECORDS = NETWORKS["base-sepolia"].records;
 const LP = argv.includes("--lp");
 const MANAGE = argv.includes("--manage");
+const REFUSALS = argv.includes("--refusals");
+const LIFECYCLE = argv.includes("--lifecycle");
+const maxPump = arg("max-pump") ? parseEther(arg("max-pump") as string) : undefined;
+/** A helper's key, derived from the signer's so its ETH is never stranded: keccak256(key ‖ "covenant:<tag>"). */
+const derived = (key: string, tag: string) => privateKeyToAccount(keccak256(concat([`0x${key}` as Hex, toHex(`covenant:${tag}`)])));
 const vaultArg = arg("vault") as Address | undefined;
 const log = (s: string) => console.log(`proof: ${s}`);
 
@@ -59,6 +74,45 @@ async function rehearse() {
     const deployer = parseManifest(JSON.parse(readFileSync(manifestPath(RECORDS), "utf8"))).deployer;
     if (!deployer) throw new Error(`deployments/${RECORDS}.json does not record its deployer`);
     await rpc(rpcUrl, "anvil_impersonateAccount", [deployer]);
+    if (LIFECYCLE) {
+      if (!vaultArg) throw new Error("--lifecycle needs --vault 0x… (rehearse it against CVLP, whose epoch is an hour)");
+      const fresh = () => privateKeyToAccount(generatePrivateKey());
+      await runLifecycleProof({
+        net: "base-sepolia-fork",
+        records: RECORDS,
+        progress: `${RECORDS}-fork-lifecycle-rehearsal`,
+        rpcUrl,
+        signer: { account: deployer },
+        keeper: fresh(),
+        lp: fresh(),
+        curator2: fresh(),
+        issuer2: fresh(),
+        attacker: fresh(),
+        vault: vaultArg,
+        maxPump,
+        warp: true,
+        fresh: true,
+        check: argv.includes("--check"),
+        log,
+      });
+      return;
+    }
+    if (REFUSALS) {
+      await runRefusalProof({
+        net: "base-sepolia-fork",
+        records: RECORDS,
+        progress: `${RECORDS}-fork-refusals-rehearsal`,
+        rpcUrl,
+        signer: { account: deployer },
+        keeper: privateKeyToAccount(generatePrivateKey()),
+        lp: privateKeyToAccount(generatePrivateKey()),
+        vault: vaultArg,
+        fresh: true,
+        check: argv.includes("--check"),
+        log,
+      });
+      return;
+    }
     if (MANAGE) {
       await runManageProof({
         net: "base-sepolia-fork",
@@ -116,6 +170,43 @@ async function live() {
   const key = process.env.PRIVATE_KEY?.trim().replace(/^0x/i, "");
   if (!key || !/^[0-9a-fA-F]{64}$/.test(key)) throw new Error("PRIVATE_KEY in .env must be a 32-byte hex key, with or without 0x (see .env.example)");
   const signer = privateKeyToAccount(`0x${key}`);
+  if (LIFECYCLE) {
+    if (!vaultArg) throw new Error("--lifecycle needs --vault 0x…: a vault launched with quick clocks (npm run launch -- --timelock 900 --lock 1800 --vest 1800 --epoch 3600 --no-default)");
+    await runLifecycleProof({
+      net,
+      records: RECORDS,
+      rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || undefined,
+      signer: { account: signer },
+      keeper: derived(key, "keeper"),
+      lp: derived(key, "lp"),
+      curator2: derived(key, "curator"),
+      issuer2: derived(key, "issuer"),
+      attacker: derived(key, "attacker"),
+      vault: vaultArg,
+      maxPump,
+      recordSpan: true,
+      check: argv.includes("--check"),
+      fresh: argv.includes("--fresh"),
+      log,
+    });
+    return;
+  }
+  if (REFUSALS) {
+    await runRefusalProof({
+      net,
+      records: RECORDS,
+      rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || undefined,
+      signer: { account: signer },
+      keeper: derived(key, "keeper"),
+      lp: derived(key, "lp"),
+      vault: vaultArg,
+      recordSpan: true,
+      check: argv.includes("--check"),
+      fresh: argv.includes("--fresh"),
+      log,
+    });
+    return;
+  }
   if (MANAGE) {
     await runManageProof({
       net,
@@ -136,7 +227,7 @@ async function live() {
       records: RECORDS,
       rpcUrl: process.env.BASE_SEPOLIA_RPC_URL || undefined,
       signer: { account: signer },
-      lp: privateKeyToAccount(keccak256(concat([`0x${key}` as Hex, toHex("covenant:lp")]))),
+      lp: derived(key, "lp"),
       vault: vaultArg,
       recordSpan: true,
       check: argv.includes("--check"),
@@ -145,7 +236,7 @@ async function live() {
     });
     return;
   }
-  const keeper = privateKeyToAccount(keccak256(concat([`0x${key}` as Hex, toHex("covenant:keeper")])));
+  const keeper = derived(key, "keeper");
   await runProof({
     net,
     records: RECORDS,

@@ -1,0 +1,84 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+  "token": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+  "signer": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+  "keeper": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+  "lp": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+  "startedAtBlock": 60928911,
+  "steps": {
+    "curatorWithdraw": {
+      "title": "The curator withdraws shares it does not hold",
+      "status": "reverted",
+      "hash": "0xa0a2e0b66d284568db987069bd728c21e67da4a54569dab56ac94ce269873902",
+      "block": 60928957,
+      "error": "InsufficientShares(0, 10000000000000000)",
+      "detail": "InsufficientShares(0, 10000000000000000): This address holds no vault shares. The curator has no withdrawal path at all."
+    },
+    "skim": {
+      "title": "The curator re-adds only 90% of the support",
+      "status": "reverted",
+      "hash": "0x2b056a0b26f44ba356a5e7b75828e78e79acd27d10ee2ec80b693c577ab3c4da",
+      "block": 60929540,
+      "error": "IdleTooLarge(738550211640646, 9)",
+      "detail": "IdleTooLarge(738550211640646, 9): 0.000739 ETH and 9.00e-18 CVNT would be left out of the pool. A reshape must put back everything it lifts."
+    },
+    "fragment": {
+      "title": "The curator splits the reserve over the range cap",
+      "status": "reverted",
+      "hash": "0xc0a7e032e0f128d5724c2230bc96d096bd4650863a9654123f610afa29dfe8ed",
+      "block": 60929603,
+      "error": "TooManyRanges(16, 14)",
+      "detail": "TooManyRanges(16, 14): 16 ranges. A reshape may leave at most 14, so restore always has room."
+    },
+    "issuerExit": {
+      "title": "The issuer withdraws principal that has not vested",
+      "status": "reverted",
+      "hash": "0x40284323e30a8c90dd1144e6363a6b046e3d82ab90d827779f290ddb0ad89910",
+      "block": 60929632,
+      "error": "Locked(0, 10000000000000000)",
+      "detail": "Locked(0, 10000000000000000): Only 0.00% of the issuer's principal is withdrawable now. This asks for 1.00%."
+    },
+    "farm": {
+      "title": "A keeper calls restore on a healthy vault",
+      "status": "reverted",
+      "hash": "0x47a6dfc0634d997cab1b82e7eccb5008159b5b1b421fb16f10f1610836d7782d",
+      "block": 60929660,
+      "error": "NothingToRestore(9999, 4000)",
+      "detail": "NothingToRestore(9999, 4000): Support is 100.0% against a 40% minimum, so there is nothing to restore and no bounty to claim."
+    },
+    "outsider": {
+      "title": "A stranger removes one of the vault's ranges through a router",
+      "status": "reverted",
+      "hash": "0x3b9910f63c1430fccc2a8a895a634d9e2a1fb9d5b846bb39c77078e863dc2f05",
+      "block": 60929689,
+      "error": "SafeCastOverflow()",
+      "detail": "SafeCastOverflow(): That position belongs to its owner: the caller holds no liquidity there to remove."
+    },
+    "vaultPays": {
+      "title": "An LP deposits for a tenth of the vault with 1 wei attached",
+      "status": "reverted",
+      "hash": "0xfc2c35bcf9298069372faf29c6ea14fe4c524ec5bb4d2629e50f68fac04ccd1d",
+      "block": 60929720,
+      "error": "InsufficientPayment(738550211640646, 1)",
+      "detail": "InsufficientPayment(738550211640646, 1): The deposit costs 0.000739 ETH but 1.00e-18 ETH was sent. The vault never pays for a depositor."
+    },
+    "poke": {
+      "title": "A keeper syncs the Anchor",
+      "status": "success",
+      "hash": "0x0595676eaa5b7d53d76e21703700862e3a40c4a5559982f6738d23c677a61e1d",
+      "block": 60929749,
+      "detail": "the Anchor is committed at tick -88712, unchanged: the TWAP has not moved it"
+    },
+    "curatorFees": {
+      "title": "The curator claims its fee share",
+      "status": "success",
+      "hash": "0x6bef21defbf97312927febc91bf7a75e6da8aea1b25e567315fa03f956caa1c0",
+      "block": 60929768,
+      "detail": "0 ETH and 0.0165 CVNT to the curator, its 10.0% of the fees"
+    }
+  },
+  "pending": {},
+  "finishedAtBlock": 60929769
+}

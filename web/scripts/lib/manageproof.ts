@@ -79,7 +79,8 @@ export async function runManageProof(o: ManageProofOptions): Promise<ManageProof
 
   const chainId = await ctx.pub.getChainId();
   if (chainId !== info.chainId) throw new Error(`the RPC answers as chain ${chainId}, not ${info.name} (${info.chainId})`);
-  const vault = o.vault ?? runtime.launches.at(-1)?.vault;
+  // Unless told, the vault this proof already ran against; a first run takes the latest launch.
+  const vault = o.vault ?? (o.fresh ? undefined : loadRecord<{ vault?: Address }>(manageProofPath(o.progress ?? `${o.records}-manage`))?.vault) ?? runtime.launches.at(-1)?.vault;
   if (!vault) throw new Error(`deployments/${o.records}.runtime.json records no launch`);
   let v = await readVaultView(ctx, vault);
   if (!isAddressEqual(v.people.curator, me)) throw new Error(`${me} is not the curator of ${vault} (${v.people.curator})`);

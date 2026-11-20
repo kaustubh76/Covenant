@@ -272,8 +272,8 @@ export const ATTACKS: Attack[] = [
       const [a0, a1] = (o.value ?? [0n, 0n]) as readonly [bigint, bigint];
       const q = v.quoteIs0 ? eth(a0) : eth(a1);
       const t = v.quoteIs0 ? eth(a1) : eth(a0);
-      const fq = q / (v.principal.quote + v.idle.quote);
-      const ft = t / (v.principal.token + v.idle.token);
+      const fq = q / v.principal.quote;
+      const ft = t / v.principal.token;
       k.record(note("lp", "What a tenth of the shares cost", `${(fq * 100).toFixed(3)}% of the quote and ${(ft * 100).toFixed(3)}% of the tokens`));
       return { blocked: o.ok && Math.abs(fq - 0.1) < 1e-4 && Math.abs(ft - 0.1) < 1e-4, summary: "A tenth of the shares costs exactly a tenth of every range" };
     },

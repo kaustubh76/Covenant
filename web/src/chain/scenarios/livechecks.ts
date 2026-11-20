@@ -7,17 +7,18 @@
 
 import { type Abi, type Address, maxUint256, parseEther } from "viem";
 import type { Who } from "../accounts";
-import { covenantLensAbi, covenantVaultAbi, liquidityRouterAbi, testTokenAbi } from "../abi.generated";
+import { covenantLensAbi, covenantVaultAbi, testTokenAbi } from "../abi.generated";
 import type { BeatInput } from "../beat";
 import type { ChainCtx } from "../client";
 import { CRASH_DEPTHS, type SimCall } from "../crashsim";
 import { type DecodedError, decodeRevert } from "../errors";
 import { NEVER } from "../launch";
 import { swapCall } from "../market";
-import { type Leg, type Plan, SINK, bidLeg, chasePump, cut, moveEverything, reserveIndex, skim, softRug } from "../plans";
+import { type Plan, chasePump, cut, moveEverything, softRug } from "../plans";
 import { type ActionCall, preflight } from "../preflight";
 import type { Party } from "../tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "../view";
+import { MAX_RANGES, curatorWithdrawCall, farmCall, fragmentCall, issuerExitCall, outsiderCall, overTheCap, skimCall, softRugCall, vaultCall } from "./attackcalls";
 import type { AttackRun } from "./attacks";
 import { restoreCandidates } from "./restore";
 
@@ -30,8 +31,6 @@ export const NEW_CURATOR: Address = "0x000000000000000000000000000000000000c0de"
 const STAND_INS = [OUTSIDER, ATTACKER, LP, KEEPER, NEW_CURATOR];
 /** What each stand-in is given to spend, by state override. */
 const STAND_IN_ETH = parseEther("100");
-/** The most ranges a reshape may leave (CovenantVault's cap, test_13_2_08). */
-const MAX_RANGES = 14;
 
 const vaultAbi = covenantVaultAbi as Abi;
 const tokenAbi = testTokenAbi as Abi;
@@ -94,7 +93,6 @@ const ok = (r: SimResult | undefined) => r?.status === "success";
 
 // ------------------------------------------------------------------------------------------------- calls
 
-const vaultCall = (v: VaultView, functionName: string, args: readonly unknown[]): ActionCall => ({ address: v.address, abi: covenantVaultAbi, functionName, args });
 const reshape = (v: VaultView, p: Plan) => vaultCall(v, "reshape", [p.cuts, p.legs, NEVER]);
 const asSim = (account: Address, c: ActionCall): SimCall => ({ account, to: c.address, abi: c.abi, functionName: c.functionName, args: c.args, value: c.value });
 const snapshot = (s: Scene): SimCall => ({ to: s.ctx.net.manifest.lens, abi: covenantLensAbi as Abi, functionName: "snapshot", args: [s.v.address] });
@@ -126,22 +124,12 @@ function pump(s: Scene, who: Address, ticks: number, title: string, eth = STAND_
 function deposit(s: Scene, fraction: number, value?: bigint): { shares: bigint; call: SimCall; tokens: bigint } {
   const v = s.v;
   const shares = (v.raw.totalShares * BigInt(Math.round(fraction * 1e6))) / 1_000_000n;
-  const quote = (v.principal.quote + v.idle.quote) * fraction;
-  const tokens = wei((v.principal.token + v.idle.token) * fraction * 1.2 + 1e-6);
+  const quote = v.principal.quote * fraction;
+  const tokens = wei(v.principal.token * fraction * 1.2 + 1e-6);
   return { shares, tokens, call: { account: LP, to: v.address, abi: vaultAbi, functionName: "deposit", args: [shares, maxUint256, maxUint256, NEVER], value: value ?? wei(quote * 1.5 + 0.01) } };
 }
 
-/** Slivers enough that the vault would end up over the range cap, whatever it holds now. */
-export function overTheCap(v: VaultView): Plan {
-  const slivers = Math.max(12, MAX_RANGES + 1 - (v.ranges.length - 1));
-  const legs: Leg[] = [];
-  let top = v.spotTick - v.terms.supportBandTicks;
-  for (let i = 0; i < slivers; i++) {
-    legs.push(bidLeg(v, top - 60, top, i === 0 ? SINK : 300));
-    top -= 60;
-  }
-  return { cuts: [cut(reserveIndex(v))], legs };
-}
+export { overTheCap };
 
 const pctOf = (x: number) => `${(x * 100).toFixed(3)}%`;
 
@@ -178,57 +166,46 @@ const run = (blocked: boolean, summary: string, beats: BeatInput[]): AttackRun =
 
 export const LIVE_CHECKS: LiveCheck[] = [
   // ---- one call each
-  single("curator-withdraw", "The curator manages the vault but owns none of it: the principal only ever leaves to the treasury, once vested", (s) => ({
-    party: s.v.people.curator,
-    who: "curator",
-    title: "The curator asks for the issuer's principal",
-    call: vaultCall(s.v, "withdrawPrincipal", [10n ** 16n, 0n, 0n, NEVER]),
-  })),
+  single("curator-withdraw", "The curator manages the vault but owns none of it: no shares to withdraw, and the principal only ever leaves to the treasury, once vested", (s) => {
+    const { call, title } = curatorWithdrawCall(s.v);
+    return { party: s.v.people.curator, who: "curator", title, call };
+  }),
   single("skim", "What is lifted must all go back in: principal is conserved on every reshape", (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Reshape, re-adding 90% of the support",
-    call: reshape(s.v, skim(s.v)),
+    call: skimCall(s.v),
   })),
   single("softrug", "Support is checked on the layout the reshape would leave", (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Move the support 9,000 ticks below the price",
-    call: reshape(s.v, softRug(s.v)),
+    call: softRugCall(s.v),
   })),
   single(`fragment`, `A reshape may leave ${MAX_RANGES} ranges at most, so restore always has room`, (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Split the reserve into slivers, over the range cap",
-    call: reshape(s.v, overTheCap(s.v)),
+    call: fragmentCall(s.v),
   })),
   single("issuer-exit", "Nothing leaves before it vests", (s) => ({
     party: s.v.people.issuer,
     who: "issuer",
     title: "Withdraw more principal than has vested",
-    call: vaultCall(s.v, "withdrawPrincipal", [s.v.raw.principalWithdrawable + 10n ** 16n, 0n, 0n, NEVER]),
+    call: issuerExitCall(s.v),
   })),
   single(
     "farm",
     "Healthy support pays nothing",
-    (s) => ({ party: KEEPER, who: "keeper", title: "Call restore on a healthy vault", call: vaultCall(s.v, "restore", [s.v.ranges.map((r) => BigInt(r.index)), NEVER]) }),
+    (s) => ({ party: KEEPER, who: "keeper", title: "Call restore on a healthy vault", call: farmCall(s.v) }),
     (v) => (v.support.have < v.support.need ? "Support has lapsed right now, so a restore is owed" : null),
   ),
   single(
     "outsider",
     "Positions are keyed to their owner: the vault's are out of anyone else's reach",
     (s) => {
-      const r = s.v.ranges[0];
-      const lr = s.ctx.net.manifest.liquidityRouter;
-      if (!r || !lr) return null;
-      // a modest amount: the whole of a launch's full-range position would overflow int128 first
-      const delta = r.liquidity < 10n ** 18n ? r.liquidity : 10n ** 18n;
-      return {
-        party: OUTSIDER,
-        who: "attacker",
-        title: "Remove one of the vault's ranges directly, through a router",
-        call: { address: lr, abi: liquidityRouterAbi, functionName: "modifyLiquidity", args: [s.v.key, { tickLower: r.tickLower, tickUpper: r.tickUpper, liquidityDelta: -delta, salt: `0x${"0".repeat(64)}` }, "0x"] },
-      };
+      const call = outsiderCall(s.v, s.ctx.net.manifest);
+      return call ? { party: OUTSIDER, who: "attacker", title: "Remove one of the vault's ranges directly, through a router", call } : null;
     },
     (v) => (v.ranges.length ? null : "The vault holds no ranges yet"),
   ),
@@ -327,8 +304,8 @@ export const LIVE_CHECKS: LiveCheck[] = [
       if (!ok(r)) return null;
       const [a0, a1] = r.result as readonly [bigint, bigint];
       const [q, tk] = s.v.quoteIs0 ? [a0, a1] : [a1, a0];
-      const fq = Number(q) / 1e18 / (s.v.principal.quote + s.v.idle.quote);
-      const ft = Number(tk) / 1e18 / (s.v.principal.token + s.v.idle.token);
+      const fq = Number(q) / 1e18 / s.v.principal.quote;
+      const ft = Number(tk) / 1e18 / s.v.principal.token;
       beats.push({ actor: "lp", title: "What a tenth of the shares cost", ok: true, detail: `${pctOf(fq)} of the quote and ${pctOf(ft)} of the tokens` });
       return run(Math.abs(fq - 0.1) < 1e-4 && Math.abs(ft - 0.1) < 1e-4, "A tenth of the shares costs exactly a tenth of every range", beats);
     },

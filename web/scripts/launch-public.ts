@@ -1,11 +1,13 @@
 // npm run launch -- --net base-sepolia [--shift 13] [--symbol CVNT] [--blocks 128] [--epoch 86400] [--progress name]
-//                   [--no-default] [--fresh]
+//                   [--timelock s] [--lock s] [--vest s] [--no-default] [--fresh]
 // npm run launch -- --net base-sepolia-fork [--rpc http://127.0.0.1:8548]
 //
 // A real-time testnet launch through Uniswap's deployed LBPStrategy and CCA (see scripts/lib/publiclaunch.ts).
 // On Base Sepolia it signs with PRIVATE_KEY from the repository's .env, which it never prints; that account becomes the
 // vault's issuer, curator and treasury. About 0.24 ETH of bids go out. The outbid bids' ETH comes back at the end,
 // and most of the raise goes to the treasury, so the launch ends up costing about 0.02 ETH plus gas.
+// --timelock, --lock and --vest shorten the curator timelock, the principal's lock and its vesting (in seconds) for a
+// vault meant to show its governance settling in one sitting (CVQ: 900, 1800, 1800); every other term stays Standard.
 // On a fork (from `npm run fork`) it acts as the fork's own deployer through Anvil's impersonation: no key is needed,
 // and the real one is never used.
 
@@ -56,6 +58,9 @@ async function main() {
     symbol: arg("symbol"),
     durationBlocks: num(arg("blocks")),
     epochLength: num(arg("epoch")),
+    curatorTimelock: num(arg("timelock")),
+    lockDuration: num(arg("lock")),
+    vestDuration: num(arg("vest")),
     progress: arg("progress"),
     makeDefault: !argv.includes("--no-default"),
     fresh: argv.includes("--fresh"),

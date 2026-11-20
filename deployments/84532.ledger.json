@@ -1,0 +1,3040 @@
+{
+  "network": "Base Sepolia",
+  "chainId": 84532,
+  "explorer": "https://sepolia.basescan.org",
+  "generatedAt": "2026-11-20T00:53:40.896Z",
+  "generatedAtBlock": 61070581,
+  "addresses": {
+    "deployer": [
+      "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1"
+    ],
+    "keeper": [
+      "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B"
+    ],
+    "lp": [
+      "0xf76b92051035021d8EF9562058f3e8085006D8f0"
+    ],
+    "curator2": [
+      "0xD570E1dAd01264178b5218246E74e0A961b0900c"
+    ],
+    "issuer2": [
+      "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1"
+    ],
+    "attacker": [
+      "0x64428A5EFb02A7384b70f257dfb205a071A8236D"
+    ],
+    "relayer": [
+      "0xDa6fFF7c3979cc816f4DbB46c3cE1D0Ffeae3D83"
+    ]
+  },
+  "vaults": [
+    {
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "symbol": "CVNT"
+    },
+    {
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "symbol": "CVLP"
+    },
+    {
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "symbol": "CVQ"
+    }
+  ],
+  "txs": [
+    {
+      "hash": "0x6adec30f75c065e806f38089cc6eb9196aeffe8ced44a2c84bf9323f975a27ae",
+      "block": 59849420,
+      "time": "2026-11-17T05:02:32.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+      "target": "other",
+      "fn": "0x00000000",
+      "status": "success"
+    },
+    {
+      "hash": "0x9a64d89226245413592eb8f15517936bccd5b557f95a5ea5233c3a8dabb6874f",
+      "block": 59849426,
+      "time": "2026-11-17T05:02:34.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x4e59b44847b379578588920cA78FbF26c0B4956C",
+      "target": "other",
+      "fn": "0x00000000",
+      "status": "success"
+    },
+    {
+      "hash": "0x1960a8e275836147e5958ae189fec8e24f6e226e3594e0cf8d4451d2e36000b7",
+      "block": 59849431,
+      "time": "2026-11-17T05:02:35.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0x671bE60CE78071a647f30E5B45c6917ADA585F4B",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x3231f01f5bc34be99229dade4d8d775ebf8394997b3dae1a2c99eb374a4c0b16",
+      "block": 59849437,
+      "time": "2026-11-17T05:02:36.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x32ae3579cc2b032d9b057af2b6860ba3ac01924223b76b097465801424933d03",
+      "block": 59849442,
+      "time": "2026-11-17T05:02:37.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0x8BEf38167F47b57b6177DAfB8039798653018Fda",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x177ba98bb8c4ed4aa4ae134abbdfdfc1dd835ae6b6bf0f4b0f6f83762ea58333",
+      "block": 59849448,
+      "time": "2026-11-17T05:02:38.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0x2f572fab2f0802B4Ef6Ce325EEf7a4B494d754Da",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x8ca914d012111998b44b3d1b30384caecd66b375a0c89373b1be9a3d0fb8ad55",
+      "block": 59849713,
+      "time": "2026-11-17T05:03:31.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x31aa21bd5a3d946a53bfa9d987a25fba84414fb6b5f22babcc4762b8eaa5d64c",
+      "block": 59849728,
+      "time": "2026-11-17T05:03:34.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE",
+      "target": "CovenantFactory",
+      "fn": "CovenantFactory.createVault",
+      "status": "success"
+    },
+    {
+      "hash": "0x0e718f06617633c2f99816ff9048951e8223db85b63f60391640bf348baf002a",
+      "block": 59849742,
+      "time": "2026-11-17T05:03:37.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+      "target": "CVNT token",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0x58f6354d087b70666fa23952825e53cd92ae41f03c4d53d69c5aa9725028dc77",
+      "block": 59849755,
+      "time": "2026-11-17T05:03:39.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.initializeDistribution",
+      "status": "success"
+    },
+    {
+      "hash": "0xbf8560cc4d1b22aa2b0b00566854137b5df85a98e2505b42bf8803926258c7c5",
+      "block": 59849773,
+      "time": "2026-11-17T05:03:43.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xef0e7795fcfc0c0cf359cf35fc26e0883cf89354a13c9369694ef4b1e9e0eddb",
+      "block": 59849785,
+      "time": "2026-11-17T05:03:45.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x8e65a74a2851f9fe4dff2ef025fb46c5ba41d98f9c10594c24b99627e2fa923c",
+      "block": 59849797,
+      "time": "2026-11-17T05:03:48.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x7d3ae55d20e81f6653620d8a2389e20dc3992b8b1f01f1e1f68e01410c8de21d",
+      "block": 59849901,
+      "time": "2026-11-17T05:04:09.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.checkpoint",
+      "status": "success"
+    },
+    {
+      "hash": "0x8b7865923a10b25ac90301d3c464ce0baa810153964a7740097a7c4985a32594",
+      "block": 59849922,
+      "time": "2026-11-17T05:04:13.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.migrate",
+      "status": "success"
+    },
+    {
+      "hash": "0xc6d0e7559fc4cfb4ad5f7848afaab538ddaa656c3475d8dc889128e87b2ab2d8",
+      "block": 59849933,
+      "time": "2026-11-17T05:04:15.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.adopt",
+      "status": "success"
+    },
+    {
+      "hash": "0xdc3f7d2fbedf95d2b90802b5d1290b199a00963f7db705eff9ab44b85ce772ed",
+      "block": 59849948,
+      "time": "2026-11-17T05:04:18.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.reshape",
+      "status": "success"
+    },
+    {
+      "hash": "0x89beb7c056b24d6cf2ff1d935f59c8a7fce822139d11790348de8201acef465c",
+      "block": 59849962,
+      "time": "2026-11-17T05:04:21.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.fundBounty",
+      "status": "success"
+    },
+    {
+      "hash": "0x4d615a8ddedc0236b5c296863cd45a499556580bcd7e41643fe09c2c090f1250",
+      "block": 59849988,
+      "time": "2026-11-17T05:04:26.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xb7218efdd4cf94581808434dabd3baca5562971078a44976486d5004e485ec32",
+      "block": 59850008,
+      "time": "2026-11-17T05:04:30.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x4a2be0c549ca13b319a56c8af8e56eb3dc24c17f9d4d0cdd79938b93df3c8796",
+      "block": 59850025,
+      "time": "2026-11-17T05:04:33.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xc3681e9a4bb988296e8fc2d7976ca430b46a1247454fcdc55c21dd7de8c24671",
+      "block": 59850042,
+      "time": "2026-11-17T05:04:37.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0xcf102957207aa5080fb557fc3c388608794e2449765d73d7a41691695dddb59e",
+      "block": 59850056,
+      "time": "2026-11-17T05:04:40.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x34c54bd5240e41a45b65cb7c8544dc5f209f6b8cb29be2cc77929f6dd83d0160",
+      "block": 59850069,
+      "time": "2026-11-17T05:04:42.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb705d378c1e19fE19DFa93175d4dE959fE3F2D97",
+      "target": "CVNT auction",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4",
+      "block": 59870064,
+      "time": "2026-11-17T06:11:21.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "SupportBroken(277, 4000)",
+      "story": "covenant",
+      "step": "rug",
+      "title": "The curator's soft rug"
+    },
+    {
+      "hash": "0xdcf89d9801c7c4bc07e6a579fb3d52ab8ab9c8b9fffec50492c61284a28db58a",
+      "block": 59870080,
+      "time": "2026-11-17T06:11:24.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.reshape",
+      "status": "success",
+      "story": "covenant",
+      "step": "deepen",
+      "title": "An honest reshape: half the reserve four bands deep"
+    },
+    {
+      "hash": "0x5a1fef95ede6730be8825224e54a4783ca3bdf3c309c005c5b029f595b8e0ece",
+      "block": 59870108,
+      "time": "2026-11-17T06:11:30.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+      "target": "CVNT token",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0xeaf892b56b3de475728de3958204222edca89c67b90a6ae387b75a7ba157fc25",
+      "block": 59870124,
+      "time": "2026-11-17T06:11:33.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "covenant",
+      "step": "crash",
+      "title": "The market sells the price down"
+    },
+    {
+      "hash": "0x521364ec89da0da0670a721cc28ba93532bc766b15a5e984afef0dee87da7428",
+      "block": 59877876,
+      "time": "2026-11-17T06:37:24.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "target": "keeper",
+      "fn": "transfer",
+      "status": "success",
+      "story": "covenant",
+      "step": "keeper",
+      "title": "A second address gets gas money"
+    },
+    {
+      "hash": "0x76baab6f8cc6aa702eda2636de00e74e4b19da6572974ba2f0ba2d23f6e695c1",
+      "block": 59877894,
+      "time": "2026-11-17T06:37:27.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.restore",
+      "status": "success",
+      "story": "covenant",
+      "step": "restore",
+      "title": "A stranger restores support, for the bounty"
+    },
+    {
+      "hash": "0x753e022a51ba51fdc0ef480d6b354b695a6d6d40bae332b86c06556d779730c7",
+      "block": 59877905,
+      "time": "2026-11-17T06:37:29.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.collectFees",
+      "status": "success",
+      "story": "covenant",
+      "step": "fees",
+      "title": "Anyone collects the swap fees"
+    },
+    {
+      "hash": "0x57784c77ce5682e47cd72bdf117e3296a0c01254ba531b2e6b7a25e5ece11890",
+      "block": 59877916,
+      "time": "2026-11-17T06:37:32.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.fundBounty",
+      "status": "success",
+      "story": "covenant",
+      "step": "refill",
+      "title": "The issuer tops the bounty pool back up"
+    },
+    {
+      "hash": "0x18fa6a03395da82f4e7edda7278df2248050f414f43cea31638d39403a21e33b",
+      "block": 59937848,
+      "time": "2026-11-17T09:57:18.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0x2c068c29d94303bc1b32ef505bed888160a816a242a9cc1d55da0443f695399f",
+      "block": 59937871,
+      "time": "2026-11-17T09:57:23.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE",
+      "target": "CovenantFactory",
+      "fn": "CovenantFactory.createVault",
+      "status": "success"
+    },
+    {
+      "hash": "0x695055d013b08cb7681b128d438266caafbd8286a4008a3bd8cc8c8525394df8",
+      "block": 59937886,
+      "time": "2026-11-17T09:57:26.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "target": "CVLP token",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0xa27ae7b094293bb26ab90269352609f039941a899c2490773253cd1dcc32c01a",
+      "block": 59937906,
+      "time": "2026-11-17T09:57:30.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.initializeDistribution",
+      "status": "success"
+    },
+    {
+      "hash": "0x05eb553917fb485a2cc90cd122382a8221acbc86f56ed152e33e039422b2232a",
+      "block": 59937924,
+      "time": "2026-11-17T09:57:33.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xd075bb4d823a010f32e1cb6e52b9dfff40a8f2126ddafec6a9135acd40bebc8b",
+      "block": 59937946,
+      "time": "2026-11-17T09:57:38.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x9191f82eec8b8839021fbd689cc521092e2abd5eb1e6f358430f0ee7185c14d2",
+      "block": 59937959,
+      "time": "2026-11-17T09:57:40.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xe36f7c1871bcffa95dfdef42077224367566c498c5e00cb4f017fac6dfda1626",
+      "block": 59938052,
+      "time": "2026-11-17T09:57:59.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.checkpoint",
+      "status": "success"
+    },
+    {
+      "hash": "0xfd1151b339d86f534d6e1f9b3cf8bacaa7e9c21d322e6672ad73e9ba8586a8de",
+      "block": 59938071,
+      "time": "2026-11-17T09:58:03.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.migrate",
+      "status": "success"
+    },
+    {
+      "hash": "0xefc588f6306e2176d172a961998daebc1aa1445f3ad560b34c9cb5bf84600235",
+      "block": 59938084,
+      "time": "2026-11-17T09:58:05.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.adopt",
+      "status": "success"
+    },
+    {
+      "hash": "0xcaf96bba5b08c490118dfe5bbf33408092e4d96e6bf1f09bb693d85962131492",
+      "block": 59938099,
+      "time": "2026-11-17T09:58:08.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.reshape",
+      "status": "success"
+    },
+    {
+      "hash": "0x91612302f3827e7d1263a769a7ba6abfe68de852ae082503ca932272a4cda58c",
+      "block": 59938112,
+      "time": "2026-11-17T09:58:11.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.fundBounty",
+      "status": "success"
+    },
+    {
+      "hash": "0x6da62c46ccf621b975a2d9ba383eba809c6bbb2df81239f150d01bf999bcd46f",
+      "block": 59938141,
+      "time": "2026-11-17T09:58:17.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x795264207332ca90eda7871ea0faf15c3b13b6f0cc0f260ca082a16a7d7262df",
+      "block": 59938164,
+      "time": "2026-11-17T09:58:21.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xce2cefee1c442d03e8649c1b0254c48b7d88ec05b80b788f7cba73ae1aeb590a",
+      "block": 59938208,
+      "time": "2026-11-17T09:58:30.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x96afb931dd6b1dd4a2b005807e942527d0a6f2ea257c4d2b5a05f7dd83f18d27",
+      "block": 59938236,
+      "time": "2026-11-17T09:58:36.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0xe7b0e82752bb501aaec8e4bb1a9317d275ebb2dbfef23e7fd25d50b4c43d5e6f",
+      "block": 59938250,
+      "time": "2026-11-17T09:58:38.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x3659efd7365a4f4303e2f5b5695abc4bf829b0e711a8cf926c50fcd353ab8faf",
+      "block": 59938263,
+      "time": "2026-11-17T09:58:41.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xb345FF399a44d2D029e16C5D51373A7B724a9f1C",
+      "target": "CVLP auction",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x504b000a1df44ace002fec3773d460ab94edc57f19d29cd892d1bc9e84cffa6f",
+      "block": 59940236,
+      "time": "2026-11-17T10:05:16.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "target": "lp",
+      "fn": "transfer",
+      "status": "success",
+      "story": "lp",
+      "step": "gas",
+      "title": "The issuer sends the LP gas money"
+    },
+    {
+      "hash": "0x3a4823b8ca0991d4765a6f3860a9532201b8d4fe382d82182590fb33a6423b0a",
+      "block": 59940250,
+      "time": "2026-11-17T10:05:18.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "target": "CVLP token",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "LaunchToken.transfer",
+      "status": "success",
+      "story": "lp",
+      "step": "tokens",
+      "title": "The issuer sends the LP CVLP"
+    },
+    {
+      "hash": "0xf235e0d93203c409ca60b08df9cfa6da44d983993a6ebdc75e4e6e3027e81dca",
+      "block": 59956135,
+      "time": "2026-11-17T10:58:15.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "target": "CVLP token",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0xd88268b608f252dbe000545a36077a6c863786bcfd210aa7ed6aae74d5a9d599",
+      "block": 59956154,
+      "time": "2026-11-17T10:58:19.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.deposit",
+      "status": "success",
+      "story": "lp",
+      "step": "join",
+      "title": "An outside LP joins in kind"
+    },
+    {
+      "hash": "0x20659845ed521a1a406ee0673a3f0258fa88c34592ce75dd33834a653d68ae0f",
+      "block": 59956177,
+      "time": "2026-11-17T10:58:24.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lp",
+      "step": "buy",
+      "title": "The market buys"
+    },
+    {
+      "hash": "0x57dab32acb386d65a4843190685bafb57f902563bf974d576ff29b082d2579a5",
+      "block": 59956199,
+      "time": "2026-11-17T10:58:28.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "target": "CVLP token",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0x4bb83c949f39365e70867eb22cc6579ae502c84b350b8d653bf60d88fe0e144f",
+      "block": 59956210,
+      "time": "2026-11-17T10:58:30.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lp",
+      "step": "sell",
+      "title": "The market sells"
+    },
+    {
+      "hash": "0x522ffe59247a21d687c14399aef30662a9b7a6f489713b074ab55eb76f04f676",
+      "block": 59956227,
+      "time": "2026-11-17T10:58:34.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.collectFees",
+      "status": "success",
+      "story": "lp",
+      "step": "collect",
+      "title": "Anyone collects the fees"
+    },
+    {
+      "hash": "0x240e4b22d71c185ae1a4e596348c67b04a0c52e1c7b4015db222e14dee801c50",
+      "block": 59956241,
+      "time": "2026-11-17T10:58:37.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.claimFees",
+      "status": "success",
+      "story": "lp",
+      "step": "claim",
+      "title": "The LP claims its share of the fees"
+    },
+    {
+      "hash": "0x981ef478ac606d155a89d9721547abab944c65326b757b3bd0c1d0348fa43146",
+      "block": 59956266,
+      "time": "2026-11-17T10:58:42.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.withdraw",
+      "status": "success",
+      "story": "lp",
+      "step": "leave",
+      "title": "The LP leaves in kind"
+    },
+    {
+      "hash": "0xb6e7ea6ddb93b3309703ef43eaed6db1b28f6ea259c4c979c51c4d5f3af615b6",
+      "block": 59956473,
+      "time": "2026-11-17T10:59:23.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "manage",
+      "step": "pump",
+      "title": "The market pumps the price"
+    },
+    {
+      "hash": "0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8",
+      "block": 59964211,
+      "time": "2026-11-17T11:25:11.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "BidAboveCeiling(-86280, -86542)",
+      "story": "manage",
+      "step": "chase",
+      "title": "The curator chases the pump"
+    },
+    {
+      "hash": "0x2cdb1cb4e3053ba15f85c1aef48d29d9d366bf9a532453d4fd2c083f1d9e4c39",
+      "block": 59964364,
+      "time": "2026-11-17T11:25:41.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.reshape",
+      "status": "success",
+      "story": "manage",
+      "step": "recentre",
+      "title": "The curator re-centres, capped at the Anchor"
+    },
+    {
+      "hash": "0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5",
+      "block": 59964486,
+      "time": "2026-11-17T11:26:06.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "target": "CVLP vault",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "PaceExceeded(1000000000, 264622709)",
+      "story": "manage",
+      "step": "overpace",
+      "title": "The curator tries to move everything at once"
+    },
+    {
+      "hash": "0xa6d0aa054e1fc7ce6cba38bd5c31ae3d66e22f6e71180692123679a7079af75d",
+      "block": 60783959,
+      "time": "2026-11-19T08:57:40.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xDa6fFF7c3979cc816f4DbB46c3cE1D0Ffeae3D83",
+      "target": "relayer",
+      "fn": "transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x6ea99c8e4fb528518589994eb45b990c771fb7c3821a54bd4d2adde1fe4f0526",
+      "block": 60783976,
+      "time": "2026-11-19T08:57:44.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+      "target": "CVNT token",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "LaunchToken.transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x70fe6eb5d193ebaa36834872537e0ef4ea7a98d0a1cb4395188fb54ac42f93c2",
+      "block": 60783996,
+      "time": "2026-11-19T08:57:48.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x5e67dED47FCaf33c819F85043b7f7dD636E22bf9",
+      "target": "CVLP token",
+      "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+      "fn": "LaunchToken.transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x18166c40939e1593466143ad2a588c6e191dc517e0200ab74bfee1278bd72ad5",
+      "block": 60825201,
+      "time": "2026-11-19T11:15:09.000000Z",
+      "from": "0xDa6fFF7c3979cc816f4DbB46c3cE1D0Ffeae3D83",
+      "role": "relayer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.poke",
+      "status": "success"
+    },
+    {
+      "hash": "0xb7b065c8eb4c4c44ae91ba9721c24a7bafe79caf81ab4303c5a7edca623fefe5",
+      "block": 60826842,
+      "time": "2026-11-19T11:20:37.000000Z",
+      "from": "0xDa6fFF7c3979cc816f4DbB46c3cE1D0Ffeae3D83",
+      "role": "relayer",
+      "to": "0x5A783B5B24Cfa94F85C4d0524C64af164C329432",
+      "target": "other",
+      "fn": "transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x2937662bec42411a80d3393d3d50d25965d8b135c2db6037a865187d43154207",
+      "block": 60826844,
+      "time": "2026-11-19T11:20:37.000000Z",
+      "from": "0xDa6fFF7c3979cc816f4DbB46c3cE1D0Ffeae3D83",
+      "role": "relayer",
+      "to": "0xBd539bdf1864d951Eda75Ec5760d04BA554FC989",
+      "target": "CVNT token",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "LaunchToken.transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0xa0a2e0b66d284568db987069bd728c21e67da4a54569dab56ac94ce269873902",
+      "block": 60928957,
+      "time": "2026-11-19T17:01:00.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.withdraw",
+      "status": "reverted",
+      "error": "InsufficientShares(0, 10000000000000000)",
+      "story": "refusals",
+      "step": "curatorWithdraw",
+      "title": "The curator withdraws shares it does not hold"
+    },
+    {
+      "hash": "0x2b056a0b26f44ba356a5e7b75828e78e79acd27d10ee2ec80b693c577ab3c4da",
+      "block": 60929540,
+      "time": "2026-11-19T17:02:56.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "IdleTooLarge(738550211640646, 9)",
+      "story": "refusals",
+      "step": "skim",
+      "title": "The curator re-adds only 90% of the support"
+    },
+    {
+      "hash": "0xc0a7e032e0f128d5724c2230bc96d096bd4650863a9654123f610afa29dfe8ed",
+      "block": 60929603,
+      "time": "2026-11-19T17:03:09.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "TooManyRanges(16, 14)",
+      "story": "refusals",
+      "step": "fragment",
+      "title": "The curator splits the reserve over the range cap"
+    },
+    {
+      "hash": "0x40284323e30a8c90dd1144e6363a6b046e3d82ab90d827779f290ddb0ad89910",
+      "block": 60929632,
+      "time": "2026-11-19T17:03:15.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.withdrawPrincipal",
+      "status": "reverted",
+      "error": "Locked(0, 10000000000000000)",
+      "story": "refusals",
+      "step": "issuerExit",
+      "title": "The issuer withdraws principal that has not vested"
+    },
+    {
+      "hash": "0x47a6dfc0634d997cab1b82e7eccb5008159b5b1b421fb16f10f1610836d7782d",
+      "block": 60929660,
+      "time": "2026-11-19T17:03:20.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.restore",
+      "status": "reverted",
+      "error": "NothingToRestore(9999, 4000)",
+      "story": "refusals",
+      "step": "farm",
+      "title": "A keeper calls restore on a healthy vault"
+    },
+    {
+      "hash": "0x3b9910f63c1430fccc2a8a895a634d9e2a1fb9d5b846bb39c77078e863dc2f05",
+      "block": 60929689,
+      "time": "2026-11-19T17:03:26.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x37429cD17Cb1454C34E7F50b09725202Fd533039",
+      "target": "PoolModifyLiquidityTest",
+      "fn": "PoolModifyLiquidityTest.modifyLiquidity",
+      "status": "reverted",
+      "error": "SafeCastOverflow()",
+      "story": "refusals",
+      "step": "outsider",
+      "title": "A stranger removes one of the vault's ranges through a router"
+    },
+    {
+      "hash": "0xfc2c35bcf9298069372faf29c6ea14fe4c524ec5bb4d2629e50f68fac04ccd1d",
+      "block": 60929720,
+      "time": "2026-11-19T17:03:32.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.deposit",
+      "status": "reverted",
+      "error": "InsufficientPayment(738550211640646, 1)",
+      "story": "refusals",
+      "step": "vaultPays",
+      "title": "An LP deposits for a tenth of the vault with 1 wei attached"
+    },
+    {
+      "hash": "0x0595676eaa5b7d53d76e21703700862e3a40c4a5559982f6738d23c677a61e1d",
+      "block": 60929749,
+      "time": "2026-11-19T17:03:38.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "refusals",
+      "step": "poke",
+      "title": "A keeper syncs the Anchor"
+    },
+    {
+      "hash": "0x6bef21defbf97312927febc91bf7a75e6da8aea1b25e567315fa03f956caa1c0",
+      "block": 60929768,
+      "time": "2026-11-19T17:03:42.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "target": "CVNT vault",
+      "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+      "fn": "CovenantVault.claimCuratorFees",
+      "status": "success",
+      "story": "refusals",
+      "step": "curatorFees",
+      "title": "The curator claims its fee share"
+    },
+    {
+      "hash": "0x59d3979634aa7f15c8826714809a354670450d412c67094c5cb9ec234c3ff79a",
+      "block": 60938103,
+      "time": "2026-11-19T17:31:29.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": null,
+      "target": "new contract 0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "fn": "deploy",
+      "status": "success"
+    },
+    {
+      "hash": "0xa477960d9f67741078de76e13465b6b496d2e42bc65b77015542fe424c84f0a3",
+      "block": 60938129,
+      "time": "2026-11-19T17:31:34.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xc15a09382Fe8bf585638E4F3EAc572423fDEbeDE",
+      "target": "CovenantFactory",
+      "fn": "CovenantFactory.createVault",
+      "status": "success"
+    },
+    {
+      "hash": "0xab573af5bcd44b46299d339642eef884b6cd62527ba8abac456ab6b15d67f7a3",
+      "block": 60938154,
+      "time": "2026-11-19T17:31:39.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0x8816479bc3fc0ebd674b054bddad8bb46a5150acd724d93f99dbceedc67eaed0",
+      "block": 60938178,
+      "time": "2026-11-19T17:31:44.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.initializeDistribution",
+      "status": "success"
+    },
+    {
+      "hash": "0x4f2c61521298cad69823583d1274bb97c4aa6986df3f5443860b29b6f776be3b",
+      "block": 60938207,
+      "time": "2026-11-19T17:31:50.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x84f09db85b0a33645d1038db482b96b4ac73d0dc38848ead46364738e862a555",
+      "block": 60938228,
+      "time": "2026-11-19T17:31:54.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xf946b1a0b09e40f9c5ec9b08564cbe877c8aff1f85d2e54fe4d5acd696c82633",
+      "block": 60938243,
+      "time": "2026-11-19T17:31:57.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.submitBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x437d921e757ec51038cda7fdeabcf79db21c11c15210089e6d8629fc7c06545f",
+      "block": 60938318,
+      "time": "2026-11-19T17:32:12.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.checkpoint",
+      "status": "success"
+    },
+    {
+      "hash": "0xe808ef9c48a863e7ff63d64f8d92efffa81e4c739d8a70a14b1e22aa14d7fa61",
+      "block": 60938336,
+      "time": "2026-11-19T17:32:16.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x73ad52384798AdADfBe19fCfD28ff09D2CC82000",
+      "target": "LBPStrategy",
+      "fn": "LBPStrategy.migrate",
+      "status": "success"
+    },
+    {
+      "hash": "0xacf6ebba36b2012cdffa7138efd1dbc35af87f0a9bc15da851469d20dbaf8e1f",
+      "block": 60938352,
+      "time": "2026-11-19T17:32:19.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.adopt",
+      "status": "success"
+    },
+    {
+      "hash": "0xfdfbc6a5dc5b0387ffff9a83377373fa79256743ed0f3f59d18fb27cb23247fd",
+      "block": 60938374,
+      "time": "2026-11-19T17:32:23.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.reshape",
+      "status": "success"
+    },
+    {
+      "hash": "0x28a50ab531d3eb3f40d41ce51cec59ae7c01f139086ad8584593999114620b37",
+      "block": 60938405,
+      "time": "2026-11-19T17:32:29.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.fundBounty",
+      "status": "success"
+    },
+    {
+      "hash": "0xec7d45d357c5005c8b6ba4a7121d0447f0620001b9cf01e0ecfb5648ef081130",
+      "block": 60938458,
+      "time": "2026-11-19T17:32:40.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xa9870c968f8d7ff732755cdd203b945bb22e7f90a11f97530d6875fbf0798ab9",
+      "block": 60938478,
+      "time": "2026-11-19T17:32:44.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0x004c98592cb6260e40c0b8aa7cda04e59bbe32b4578c3b3b8b454fcf32d32495",
+      "block": 60938506,
+      "time": "2026-11-19T17:32:50.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.exitPartiallyFilledBid",
+      "status": "success"
+    },
+    {
+      "hash": "0xd67b33a21dac2507a2d8956ac0aee6631985635e8c97daae5165cdc362a3f50d",
+      "block": 60938526,
+      "time": "2026-11-19T17:32:54.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x69119435e5ca19dfb34eb4f58b5701cb8087ed5b5f9d79c55635b03c46581954",
+      "block": 60938542,
+      "time": "2026-11-19T17:32:57.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0xdd59211726501ae22c618b1afc521dae4b15aaaf90f95e249ac901c3ca3587bd",
+      "block": 60938555,
+      "time": "2026-11-19T17:32:59.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xAd8eEb9C9F7C46D1B272541CA10BA4e06a2FAf36",
+      "target": "CVQ auction",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CCA.claimTokens",
+      "status": "success"
+    },
+    {
+      "hash": "0x324420f46b13b410312cea54a4e29e64f53f427bb96f0791620ca9b9e0c6b352",
+      "block": 60939060,
+      "time": "2026-11-19T17:34:40.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "target": "curator2",
+      "fn": "transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x71f58c867921dc722ce108b87ae4dc6e84c2101ca41887bb3a85b1deb7563e34",
+      "block": 60939072,
+      "time": "2026-11-19T17:34:43.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1",
+      "target": "issuer2",
+      "fn": "transfer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "gas",
+      "title": "Gas money for the helpers"
+    },
+    {
+      "hash": "0xa1a9f6b3376f41867c0499ec6ee01c07f29d6f9b5de49a633c33cca0cfe262a6",
+      "block": 60939099,
+      "time": "2026-11-19T17:34:48.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.withdrawPrincipal",
+      "status": "reverted",
+      "error": "Locked(0, 1000000000000000000)",
+      "story": "lifecycle",
+      "step": "lockedEarly",
+      "title": "The issuer takes all its principal, before it has vested"
+    },
+    {
+      "hash": "0x676d7bd55d6fab606086580dd2b4935bc622c7315cfe4a901e8b1a9d1b649478",
+      "block": 60939123,
+      "time": "2026-11-19T17:34:53.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.proposeCurator",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "propose1",
+      "title": "The issuer proposes a new curator"
+    },
+    {
+      "hash": "0xb890fed66c77604e626f413d8f1dff858c7866d3a37a752d0bee825333a81ded",
+      "block": 60939137,
+      "time": "2026-11-19T17:34:56.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.cancelCuratorProposal",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "cancel",
+      "title": "The issuer withdraws the proposal"
+    },
+    {
+      "hash": "0x006ff79d13c401ca177fe93692283355c435f5f9fce6b878a524340430aee709",
+      "block": 60939153,
+      "time": "2026-11-19T17:34:59.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.proposeCurator",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "propose",
+      "title": "The issuer proposes the new curator again"
+    },
+    {
+      "hash": "0xf423e195d2d720470730e19f20cc45f215e2a09a3982e12c208666aa679c33dc",
+      "block": 60939182,
+      "time": "2026-11-19T17:35:05.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.acceptCurator",
+      "status": "reverted",
+      "error": "TimelockActive(1795110599)",
+      "story": "lifecycle",
+      "step": "acceptEarly",
+      "title": "A stranger accepts the change at once"
+    },
+    {
+      "hash": "0x76e9ff1ee2edc9dc67a40e226642e5d668514f37825cb1e6237a3f15290660b8",
+      "block": 60939208,
+      "time": "2026-11-19T17:35:10.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.transferIssuer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "transferIssuer",
+      "title": "The issuer hands its role to a second key"
+    },
+    {
+      "hash": "0x7bd40464360957e543f2c47587e8e5a14c71cfed169cb84957324e9637fd6e13",
+      "block": 60939224,
+      "time": "2026-11-19T17:35:13.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.acceptIssuer",
+      "status": "reverted",
+      "error": "NotPendingIssuer()",
+      "story": "lifecycle",
+      "step": "strangerIssuer",
+      "title": "A stranger tries to take the issuer role"
+    },
+    {
+      "hash": "0x84fb7fd368ccb0fddd2e75c70b66c953a2a3db876e3099020ab6509c06371fff",
+      "block": 60939240,
+      "time": "2026-11-19T17:35:16.000000Z",
+      "from": "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1",
+      "role": "issuer2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.acceptIssuer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "acceptIssuer",
+      "title": "The second key accepts the issuer role"
+    },
+    {
+      "hash": "0xea61f5c772fde71c1152d07ad9064e7d52c21960bc01f742fad7d40d5d4b54b0",
+      "block": 60939258,
+      "time": "2026-11-19T17:35:20.000000Z",
+      "from": "0x7DcaB4fE494f1b1830A3C34CCedFd14D62b679B1",
+      "role": "issuer2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.transferIssuer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "transferBack",
+      "title": "It hands the role back"
+    },
+    {
+      "hash": "0xdbcbafe7e9ad507a3fb5968576ea0b5844777ca1e7ec209b1418efbab2f8da14",
+      "block": 60939274,
+      "time": "2026-11-19T17:35:23.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.acceptIssuer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "issuerBack",
+      "title": "The original issuer accepts it back"
+    },
+    {
+      "hash": "0x106649ffb9ef534e2db0b20a14311ba071757336b7a9bc0844467d8a37f21204",
+      "block": 60939318,
+      "time": "2026-11-19T17:35:32.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0x3a52fcf6d2b3bb2df14b7bf781aec7648557b48ac3d6d09ade0f3e103f905d00",
+      "block": 60939818,
+      "time": "2026-11-19T17:37:12.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "flashSell",
+      "title": "Dump 5,000 ticks…"
+    },
+    {
+      "hash": "0x6994bea91cf44a81e005b0796b52e038e68896e3efa61a0867636f2c65b28b3f",
+      "block": 60939818,
+      "time": "2026-11-19T17:37:12.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "flashBuy",
+      "title": "…and buy it straight back"
+    },
+    {
+      "hash": "0x7f02d788e9b9808c0078e6afd8cd5a1ff657b24fd6692ebcdc0ae443caee6aeb",
+      "block": 60939860,
+      "time": "2026-11-19T17:37:20.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.reshape",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "flashCheck",
+      "title": "The curator reshapes: is the guard fooled?"
+    },
+    {
+      "hash": "0x0896f5513822ece11405b49501ac0cb7e785b4478970d7357c3bb6e79bf1d5ab",
+      "block": 60943714,
+      "time": "2026-11-19T17:50:11.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.acceptCurator",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "accept",
+      "title": "A stranger accepts once the timelock has run"
+    },
+    {
+      "hash": "0xcf1eaa81a8029cd0f3f46d3df691b7b84d7b332cf125c13eb43acf8612bb3202",
+      "block": 60943755,
+      "time": "2026-11-19T17:50:19.000000Z",
+      "from": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "role": "curator2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "SupportBroken(280, 4000)",
+      "story": "lifecycle",
+      "step": "newCuratorRug",
+      "title": "The new curator moves the support away"
+    },
+    {
+      "hash": "0xebfd91968f66455850c640b77cc97feb606d60459408e58fe80af21c19f69d16",
+      "block": 60943788,
+      "time": "2026-11-19T17:50:26.000000Z",
+      "from": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "role": "curator2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.withdraw",
+      "status": "reverted",
+      "error": "InsufficientShares(0, 10000000000000000)",
+      "story": "lifecycle",
+      "step": "curatorShares",
+      "title": "The new curator withdraws shares it does not hold"
+    },
+    {
+      "hash": "0x99fd6b84e06b6399910f10af0dc43bbab35966519151797a291e3b81c4b1b2e3",
+      "block": 60943816,
+      "time": "2026-11-19T17:50:32.000000Z",
+      "from": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "role": "curator2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.withdrawPrincipal",
+      "status": "reverted",
+      "error": "NotIssuer()",
+      "story": "lifecycle",
+      "step": "curatorPrincipal",
+      "title": "The new curator asks for the issuer's principal"
+    },
+    {
+      "hash": "0x5d51d18e47cc4812839e18380bc9cfd3bda707facfaf4c7cd5459e0f124c065c",
+      "block": 60956417,
+      "time": "2026-11-19T18:32:32.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.withdrawPrincipal",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "principalOut",
+      "title": "The issuer takes a quarter of its vested principal"
+    },
+    {
+      "hash": "0xae6e3b31a8d47775863907fec530e3191519a1b550e3f27cc409507040e92f2f",
+      "block": 60956454,
+      "time": "2026-11-19T18:32:39.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "target": "lp",
+      "fn": "transfer",
+      "status": "success"
+    },
+    {
+      "hash": "0x2b043969732fe7f445305d0d93576766214cfdc1ab7e685793dba1bd8e1dc4e1",
+      "block": 60956470,
+      "time": "2026-11-19T18:32:42.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.transfer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "lpFunds",
+      "title": "The issuer funds the LP"
+    },
+    {
+      "hash": "0x256b6a8cd8dc51eeafff7c0be1c78ba730313e72e70f5f14dd548eaa4b85edac",
+      "block": 60956513,
+      "time": "2026-11-19T18:32:51.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0xb54fca4ec390e1ecb3cae452c7cd17e84aedc0048b85a3435a70d66842601ea9",
+      "block": 60956534,
+      "time": "2026-11-19T18:32:55.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.deposit",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "lpJoin",
+      "title": "An outside LP joins for a tenth of the vault"
+    },
+    {
+      "hash": "0x32159e0b3fb60de7f12d0ad8003ce28561970a0f72d6c7c8d596a69fda0011e1",
+      "block": 60956571,
+      "time": "2026-11-19T18:33:03.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0xc4e93b13e2f0a42ceaa0a0ac19c99a5b7f07b65baf558d827c3b0cb7d43dd282",
+      "block": 60956608,
+      "time": "2026-11-19T18:33:10.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "dump",
+      "title": "The price is pushed 2,500 ticks down"
+    },
+    {
+      "hash": "0x24b6aa5553af82434e7df2d091cbe3abf9d74f86f6ccca3ed7247122a91948ff",
+      "block": 60956707,
+      "time": "2026-11-19T18:33:30.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.restore",
+      "status": "reverted",
+      "error": "PriceGuard(90011, 87513)",
+      "story": "lifecycle",
+      "step": "guardRestore",
+      "title": "A keeper calls restore at the manipulated price"
+    },
+    {
+      "hash": "0xc8ac813fc4410ea48fc4c838c4c004477664714ebc40dca2120fb299c5de49e9",
+      "block": 60956707,
+      "time": "2026-11-19T18:33:30.000000Z",
+      "from": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "role": "curator2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.reshape",
+      "status": "reverted",
+      "error": "PriceGuard(90011, 87513)",
+      "story": "lifecycle",
+      "step": "guardReshape",
+      "title": "The curator reshapes at the manipulated price"
+    },
+    {
+      "hash": "0xf0fabe737ca244f7f3834d28c0f6e7cc376b7214377bf94a6ef3f9a5ee35e362",
+      "block": 60956707,
+      "time": "2026-11-19T18:33:30.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.deposit",
+      "status": "reverted",
+      "error": "PriceGuard(90011, 87513)",
+      "story": "lifecycle",
+      "step": "guardDeposit",
+      "title": "The LP deposits at the manipulated price"
+    },
+    {
+      "hash": "0xc39772a0e8170a8639ce70022112ab3d2ff48c7ba3f64716cd465e32aa494a8a",
+      "block": 60956743,
+      "time": "2026-11-19T18:33:37.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.withdraw",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "lpExitTripped",
+      "title": "The LP leaves while the guard is tripped"
+    },
+    {
+      "hash": "0x104eb92a1e9541fc8a97108ca6a9fa293fd2d4a3aa4792683647a6fdf9c2d4bb",
+      "block": 60956796,
+      "time": "2026-11-19T18:33:48.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "buyBack",
+      "title": "The price is bought back"
+    },
+    {
+      "hash": "0xd49a132ff4a7f7d3c867e31d3a87290920eaf8b9767722418e606ae180682354",
+      "block": 60958836,
+      "time": "2026-11-19T18:40:36.000000Z",
+      "from": "0x455EbCA0935d9cd06908E96Aac2BB95047e88eb1",
+      "role": "deployer",
+      "to": "0x64428A5EFb02A7384b70f257dfb205a071A8236D",
+      "target": "attacker",
+      "fn": "transfer",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "attackerFunds",
+      "title": "The attacker's ETH"
+    },
+    {
+      "hash": "0x8cb514272913b49061757a86278d803db9f1995073fd18b86517dee571129163",
+      "block": 60958885,
+      "time": "2026-11-19T18:40:45.000000Z",
+      "from": "0x64428A5EFb02A7384b70f257dfb205a071A8236D",
+      "role": "attacker",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "pump",
+      "title": "The attacker buys every ask and pushes 30,000 ticks up"
+    },
+    {
+      "hash": "0x6fb68da77b3b7b1c9267133c3fb5ba555f63498b0be8f76ead50877ce14843a4",
+      "block": 60995130,
+      "time": "2026-11-19T20:41:34.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.restore",
+      "status": "reverted",
+      "error": "NothingToRestore(6689, 4000)",
+      "story": "lifecycle",
+      "step": "quickRestore",
+      "title": "Two hours on, a restore to drag the bids up under the pump"
+    },
+    {
+      "hash": "0xaa0f98e0ba131bb50af92f3af4ea3c1a80933c1150e4be4eedaca2846e3a63bc",
+      "block": 60995163,
+      "time": "2026-11-19T20:41:41.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke1",
+      "title": "A keeper syncs the Anchor (1)"
+    },
+    {
+      "hash": "0xc1f7ed3f84588e3771b6e1e67342c821cfe093b5e58997b77c6a9bed52c69394",
+      "block": 61002707,
+      "time": "2026-11-19T21:06:50.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke2",
+      "title": "A keeper syncs the Anchor (2)"
+    },
+    {
+      "hash": "0x09c90b7dbeaa20aabd0fa88a5f5b775090053c4bb127df8402baed0f28ef3428",
+      "block": 61010297,
+      "time": "2026-11-19T21:32:08.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke3",
+      "title": "A keeper syncs the Anchor (3)"
+    },
+    {
+      "hash": "0x760a64201eff8666de052b7c26a38634cbd3077041715f4ce0a13c2fea664b80",
+      "block": 61017842,
+      "time": "2026-11-19T21:57:17.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke4",
+      "title": "A keeper syncs the Anchor (4)"
+    },
+    {
+      "hash": "0x44f868b8dd15cbe46fca438208b346a37f086b50edf602ea253ceda65c2fb428",
+      "block": 61025386,
+      "time": "2026-11-19T22:22:26.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke5",
+      "title": "A keeper syncs the Anchor (5)"
+    },
+    {
+      "hash": "0x6296bcb69ccd444e50dc8cf02c68ef3da3b3f688f98c80a49143e8dd0442b53c",
+      "block": 61032926,
+      "time": "2026-11-19T22:47:34.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke6",
+      "title": "A keeper syncs the Anchor (6)"
+    },
+    {
+      "hash": "0x4275a8089dd35b46f9581d7d306490baad456109ddde2e65092cb71862096f52",
+      "block": 61040458,
+      "time": "2026-11-19T23:12:40.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke7",
+      "title": "A keeper syncs the Anchor (7)"
+    },
+    {
+      "hash": "0x3116035b521b1a65f060e6c055c76ff1ef6ab442cd9fcd6cf774ed061c232b8c",
+      "block": 61047976,
+      "time": "2026-11-19T23:37:44.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.poke",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "poke8",
+      "title": "A keeper syncs the Anchor (8)"
+    },
+    {
+      "hash": "0x14b89e7bbbb8b8d51aa741bbf6a0e30ca2e53ddc1d294d34d30a99d340bdb60a",
+      "block": 61048012,
+      "time": "2026-11-19T23:37:51.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.restore",
+      "status": "reverted",
+      "error": "RestoreBandEmpty(-83820, -84420)",
+      "story": "lifecycle",
+      "step": "patientRestore",
+      "title": "Held 5.0 hours (5.0 epochs), synced: a restore to drag the bids up"
+    },
+    {
+      "hash": "0xbd74cc97e5926c2778c8db42fbf8eadc3cb7e2969495017207ef18fe08adb578",
+      "block": 61048037,
+      "time": "2026-11-19T23:37:56.000000Z",
+      "from": "0x64428A5EFb02A7384b70f257dfb205a071A8236D",
+      "role": "attacker",
+      "to": "0x0B689019F31bB5927b8dAf80F47577AAf2Be0f34",
+      "target": "CVQ token",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "LaunchToken.approve",
+      "status": "success"
+    },
+    {
+      "hash": "0x6f92e322776cca99f034a9415fbb477054ea4ba3f2413e65d0cd6161fe8e87e3",
+      "block": 61048048,
+      "time": "2026-11-19T23:37:58.000000Z",
+      "from": "0x64428A5EFb02A7384b70f257dfb205a071A8236D",
+      "role": "attacker",
+      "to": "0x8B5bcC363ddE2614281aD875bad385E0A785D3B9",
+      "target": "PoolSwapTest",
+      "fn": "PoolSwapTest.swap",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "sellBack",
+      "title": "The attacker sells everything back"
+    },
+    {
+      "hash": "0x8dfa416c6567c78552fec341f2d7382493f68b38d7506c2f2cdccba0876f66b7",
+      "block": 61070552,
+      "time": "2026-11-20T00:52:59.000000Z",
+      "from": "0xD570E1dAd01264178b5218246E74e0A961b0900c",
+      "role": "curator2",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.claimCuratorFees",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "curatorFees",
+      "title": "The new curator claims its fee share"
+    },
+    {
+      "hash": "0x130b76d23703a1a107377283927535d2ded8d6e7921835270078162d25fcc6b4",
+      "block": 61070567,
+      "time": "2026-11-20T00:53:02.000000Z",
+      "from": "0x5eE8F25f2A191788E832151ffdcd1Af5e69a5F3B",
+      "role": "keeper",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.collectFees",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "collect",
+      "title": "A stranger collects the principal's fees"
+    },
+    {
+      "hash": "0xd15a9ff5a081228ed8d7eca2a0ee94962a06571641633d24dbc4e854543e395f",
+      "block": 61070581,
+      "time": "2026-11-20T00:53:05.000000Z",
+      "from": "0xf76b92051035021d8EF9562058f3e8085006D8f0",
+      "role": "lp",
+      "to": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "target": "CVQ vault",
+      "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+      "fn": "CovenantVault.claimFees",
+      "status": "success",
+      "story": "lifecycle",
+      "step": "lpClaim",
+      "title": "The LP claims what it earned while it held"
+    }
+  ],
+  "coverage": [
+    {
+      "contract": "CovenantFactory",
+      "fn": "createVault",
+      "who": "Issuer",
+      "what": "Create the vault and register the launch",
+      "settled": [
+        {
+          "hash": "0x31aa21bd5a3d946a53bfa9d987a25fba84414fb6b5f22babcc4762b8eaa5d64c"
+        },
+        {
+          "hash": "0x2c068c29d94303bc1b32ef505bed888160a816a242a9cc1d55da0443f695399f"
+        },
+        {
+          "hash": "0xa477960d9f67741078de76e13465b6b496d2e42bc65b77015542fe424c84f0a3"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "LBPStrategy",
+      "fn": "initializeDistribution",
+      "who": "Issuer",
+      "what": "Open the auction",
+      "settled": [
+        {
+          "hash": "0x58f6354d087b70666fa23952825e53cd92ae41f03c4d53d69c5aa9725028dc77"
+        },
+        {
+          "hash": "0xa27ae7b094293bb26ab90269352609f039941a899c2490773253cd1dcc32c01a"
+        },
+        {
+          "hash": "0x8816479bc3fc0ebd674b054bddad8bb46a5150acd724d93f99dbceedc67eaed0"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CCA",
+      "fn": "submitBid",
+      "who": "Bidder",
+      "what": "Bid in the auction",
+      "settled": [
+        {
+          "hash": "0xbf8560cc4d1b22aa2b0b00566854137b5df85a98e2505b42bf8803926258c7c5",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xef0e7795fcfc0c0cf359cf35fc26e0883cf89354a13c9369694ef4b1e9e0eddb",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x8e65a74a2851f9fe4dff2ef025fb46c5ba41d98f9c10594c24b99627e2fa923c",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x05eb553917fb485a2cc90cd122382a8221acbc86f56ed152e33e039422b2232a",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xd075bb4d823a010f32e1cb6e52b9dfff40a8f2126ddafec6a9135acd40bebc8b",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x9191f82eec8b8839021fbd689cc521092e2abd5eb1e6f358430f0ee7185c14d2",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x4f2c61521298cad69823583d1274bb97c4aa6986df3f5443860b29b6f776be3b",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x84f09db85b0a33645d1038db482b96b4ac73d0dc38848ead46364738e862a555",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xf946b1a0b09e40f9c5ec9b08564cbe877c8aff1f85d2e54fe4d5acd696c82633",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CCA",
+      "fn": "checkpoint",
+      "who": "Anyone",
+      "what": "Close the auction",
+      "settled": [
+        {
+          "hash": "0x7d3ae55d20e81f6653620d8a2389e20dc3992b8b1f01f1e1f68e01410c8de21d",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xe36f7c1871bcffa95dfdef42077224367566c498c5e00cb4f017fac6dfda1626",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x437d921e757ec51038cda7fdeabcf79db21c11c15210089e6d8629fc7c06545f",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "LBPStrategy",
+      "fn": "migrate",
+      "who": "Anyone",
+      "what": "Migrate the raise into the pool",
+      "settled": [
+        {
+          "hash": "0x8b7865923a10b25ac90301d3c464ce0baa810153964a7740097a7c4985a32594"
+        },
+        {
+          "hash": "0xfd1151b339d86f534d6e1f9b3cf8bacaa7e9c21d322e6672ad73e9ba8586a8de"
+        },
+        {
+          "hash": "0xe808ef9c48a863e7ff63d64f8d92efffa81e4c739d8a70a14b1e22aa14d7fa61"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "adopt",
+      "who": "Anyone",
+      "what": "Adopt the launch's liquidity",
+      "settled": [
+        {
+          "hash": "0xc6d0e7559fc4cfb4ad5f7848afaab538ddaa656c3475d8dc889128e87b2ab2d8",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xefc588f6306e2176d172a961998daebc1aa1445f3ad560b34c9cb5bf84600235",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xacf6ebba36b2012cdffa7138efd1dbc35af87f0a9bc15da851469d20dbaf8e1f",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CCA",
+      "fn": "exitBid / exitPartiallyFilledBid",
+      "who": "Bidder",
+      "what": "Exit a bid",
+      "settled": [
+        {
+          "hash": "0x4d615a8ddedc0236b5c296863cd45a499556580bcd7e41643fe09c2c090f1250",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xb7218efdd4cf94581808434dabd3baca5562971078a44976486d5004e485ec32",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x4a2be0c549ca13b319a56c8af8e56eb3dc24c17f9d4d0cdd79938b93df3c8796",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x6da62c46ccf621b975a2d9ba383eba809c6bbb2df81239f150d01bf999bcd46f",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x795264207332ca90eda7871ea0faf15c3b13b6f0cc0f260ca082a16a7d7262df",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xce2cefee1c442d03e8649c1b0254c48b7d88ec05b80b788f7cba73ae1aeb590a",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xec7d45d357c5005c8b6ba4a7121d0447f0620001b9cf01e0ecfb5648ef081130",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xa9870c968f8d7ff732755cdd203b945bb22e7f90a11f97530d6875fbf0798ab9",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x004c98592cb6260e40c0b8aa7cda04e59bbe32b4578c3b3b8b454fcf32d32495",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CCA",
+      "fn": "claimTokens",
+      "who": "Bidder",
+      "what": "Claim the bought tokens",
+      "settled": [
+        {
+          "hash": "0xc3681e9a4bb988296e8fc2d7976ca430b46a1247454fcdc55c21dd7de8c24671",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xcf102957207aa5080fb557fc3c388608794e2449765d73d7a41691695dddb59e",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x34c54bd5240e41a45b65cb7c8544dc5f209f6b8cb29be2cc77929f6dd83d0160",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x96afb931dd6b1dd4a2b005807e942527d0a6f2ea257c4d2b5a05f7dd83f18d27",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xe7b0e82752bb501aaec8e4bb1a9317d275ebb2dbfef23e7fd25d50b4c43d5e6f",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x3659efd7365a4f4303e2f5b5695abc4bf829b0e711a8cf926c50fcd353ab8faf",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xd67b33a21dac2507a2d8956ac0aee6631985635e8c97daae5165cdc362a3f50d",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x69119435e5ca19dfb34eb4f58b5701cb8087ed5b5f9d79c55635b03c46581954",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xdd59211726501ae22c618b1afc521dae4b15aaaf90f95e249ac901c3ca3587bd",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "reshape",
+      "who": "Curator",
+      "what": "Reshape the liquidity",
+      "settled": [
+        {
+          "hash": "0xdc3f7d2fbedf95d2b90802b5d1290b199a00963f7db705eff9ab44b85ce772ed",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xdcf89d9801c7c4bc07e6a579fb3d52ab8ab9c8b9fffec50492c61284a28db58a",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xcaf96bba5b08c490118dfe5bbf33408092e4d96e6bf1f09bb693d85962131492",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x2cdb1cb4e3053ba15f85c1aef48d29d9d366bf9a532453d4fd2c083f1d9e4c39",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xfdfbc6a5dc5b0387ffff9a83377373fa79256743ed0f3f59d18fb27cb23247fd",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x7f02d788e9b9808c0078e6afd8cd5a1ff657b24fd6692ebcdc0ae443caee6aeb",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4",
+          "error": "SupportBroken(277, 4000)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8",
+          "error": "BidAboveCeiling(-86280, -86542)",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5",
+          "error": "PaceExceeded(1000000000, 264622709)",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x2b056a0b26f44ba356a5e7b75828e78e79acd27d10ee2ec80b693c577ab3c4da",
+          "error": "IdleTooLarge(738550211640646, 9)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xc0a7e032e0f128d5724c2230bc96d096bd4650863a9654123f610afa29dfe8ed",
+          "error": "TooManyRanges(16, 14)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xcf1eaa81a8029cd0f3f46d3df691b7b84d7b332cf125c13eb43acf8612bb3202",
+          "error": "SupportBroken(280, 4000)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xc8ac813fc4410ea48fc4c838c4c004477664714ebc40dca2120fb299c5de49e9",
+          "error": "PriceGuard(90011, 87513)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "fundBounty",
+      "who": "Anyone",
+      "what": "Fund the restore bounty",
+      "settled": [
+        {
+          "hash": "0x89beb7c056b24d6cf2ff1d935f59c8a7fce822139d11790348de8201acef465c",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x57784c77ce5682e47cd72bdf117e3296a0c01254ba531b2e6b7a25e5ece11890",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x91612302f3827e7d1263a769a7ba6abfe68de852ae082503ca932272a4cda58c",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x28a50ab531d3eb3f40d41ce51cec59ae7c01f139086ad8584593999114620b37",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "PoolSwapTest",
+      "fn": "swap",
+      "who": "Trader",
+      "what": "Trade in the pool (the hook runs)",
+      "settled": [
+        {
+          "hash": "0xeaf892b56b3de475728de3958204222edca89c67b90a6ae387b75a7ba157fc25"
+        },
+        {
+          "hash": "0x20659845ed521a1a406ee0673a3f0258fa88c34592ce75dd33834a653d68ae0f"
+        },
+        {
+          "hash": "0x4bb83c949f39365e70867eb22cc6579ae502c84b350b8d653bf60d88fe0e144f"
+        },
+        {
+          "hash": "0xb6e7ea6ddb93b3309703ef43eaed6db1b28f6ea259c4c979c51c4d5f3af615b6"
+        },
+        {
+          "hash": "0x3a52fcf6d2b3bb2df14b7bf781aec7648557b48ac3d6d09ade0f3e103f905d00"
+        },
+        {
+          "hash": "0x6994bea91cf44a81e005b0796b52e038e68896e3efa61a0867636f2c65b28b3f"
+        },
+        {
+          "hash": "0xc4e93b13e2f0a42ceaa0a0ac19c99a5b7f07b65baf558d827c3b0cb7d43dd282"
+        },
+        {
+          "hash": "0x104eb92a1e9541fc8a97108ca6a9fa293fd2d4a3aa4792683647a6fdf9c2d4bb"
+        },
+        {
+          "hash": "0x8cb514272913b49061757a86278d803db9f1995073fd18b86517dee571129163"
+        },
+        {
+          "hash": "0x6f92e322776cca99f034a9415fbb477054ea4ba3f2413e65d0cd6161fe8e87e3"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "poke",
+      "who": "Anyone",
+      "what": "Sync the Anchor",
+      "settled": [
+        {
+          "hash": "0x18166c40939e1593466143ad2a588c6e191dc517e0200ab74bfee1278bd72ad5",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x0595676eaa5b7d53d76e21703700862e3a40c4a5559982f6738d23c677a61e1d",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xaa0f98e0ba131bb50af92f3af4ea3c1a80933c1150e4be4eedaca2846e3a63bc",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xc1f7ed3f84588e3771b6e1e67342c821cfe093b5e58997b77c6a9bed52c69394",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x09c90b7dbeaa20aabd0fa88a5f5b775090053c4bb127df8402baed0f28ef3428",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x760a64201eff8666de052b7c26a38634cbd3077041715f4ce0a13c2fea664b80",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x44f868b8dd15cbe46fca438208b346a37f086b50edf602ea253ceda65c2fb428",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x6296bcb69ccd444e50dc8cf02c68ef3da3b3f688f98c80a49143e8dd0442b53c",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x4275a8089dd35b46f9581d7d306490baad456109ddde2e65092cb71862096f52",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x3116035b521b1a65f060e6c055c76ff1ef6ab442cd9fcd6cf774ed061c232b8c",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "restore",
+      "who": "Anyone",
+      "what": "Restore lapsed support, for the bounty",
+      "settled": [
+        {
+          "hash": "0x76baab6f8cc6aa702eda2636de00e74e4b19da6572974ba2f0ba2d23f6e695c1",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0x47a6dfc0634d997cab1b82e7eccb5008159b5b1b421fb16f10f1610836d7782d",
+          "error": "NothingToRestore(9999, 4000)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x24b6aa5553af82434e7df2d091cbe3abf9d74f86f6ccca3ed7247122a91948ff",
+          "error": "PriceGuard(90011, 87513)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x6fb68da77b3b7b1c9267133c3fb5ba555f63498b0be8f76ead50877ce14843a4",
+          "error": "NothingToRestore(6689, 4000)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x14b89e7bbbb8b8d51aa741bbf6a0e30ca2e53ddc1d294d34d30a99d340bdb60a",
+          "error": "RestoreBandEmpty(-83820, -84420)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "collectFees",
+      "who": "Anyone",
+      "what": "Collect the principal's fees",
+      "settled": [
+        {
+          "hash": "0x753e022a51ba51fdc0ef480d6b354b695a6d6d40bae332b86c06556d779730c7",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x522ffe59247a21d687c14399aef30662a9b7a6f489713b074ab55eb76f04f676",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0x130b76d23703a1a107377283927535d2ded8d6e7921835270078162d25fcc6b4",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "claimCuratorFees",
+      "who": "Curator",
+      "what": "Claim the curator's fee share",
+      "settled": [
+        {
+          "hash": "0x6bef21defbf97312927febc91bf7a75e6da8aea1b25e567315fa03f956caa1c0",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0x8dfa416c6567c78552fec341f2d7382493f68b38d7506c2f2cdccba0876f66b7",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "deposit",
+      "who": "LP",
+      "what": "Join in kind",
+      "settled": [
+        {
+          "hash": "0xd88268b608f252dbe000545a36077a6c863786bcfd210aa7ed6aae74d5a9d599",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xb54fca4ec390e1ecb3cae452c7cd17e84aedc0048b85a3435a70d66842601ea9",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0xfc2c35bcf9298069372faf29c6ea14fe4c524ec5bb4d2629e50f68fac04ccd1d",
+          "error": "InsufficientPayment(738550211640646, 1)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xf0fabe737ca244f7f3834d28c0f6e7cc376b7214377bf94a6ef3f9a5ee35e362",
+          "error": "PriceGuard(90011, 87513)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "claimFees",
+      "who": "LP",
+      "what": "Claim an LP's fees",
+      "settled": [
+        {
+          "hash": "0x240e4b22d71c185ae1a4e596348c67b04a0c52e1c7b4015db222e14dee801c50",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xd15a9ff5a081228ed8d7eca2a0ee94962a06571641633d24dbc4e854543e395f",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "withdraw",
+      "who": "LP",
+      "what": "Leave in kind",
+      "settled": [
+        {
+          "hash": "0x981ef478ac606d155a89d9721547abab944c65326b757b3bd0c1d0348fa43146",
+          "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095"
+        },
+        {
+          "hash": "0xc39772a0e8170a8639ce70022112ab3d2ff48c7ba3f64716cd465e32aa494a8a",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0xa0a2e0b66d284568db987069bd728c21e67da4a54569dab56ac94ce269873902",
+          "error": "InsufficientShares(0, 10000000000000000)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xebfd91968f66455850c640b77cc97feb606d60459408e58fe80af21c19f69d16",
+          "error": "InsufficientShares(0, 10000000000000000)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "withdrawPrincipal",
+      "who": "Issuer",
+      "what": "Take vested principal",
+      "settled": [
+        {
+          "hash": "0x5d51d18e47cc4812839e18380bc9cfd3bda707facfaf4c7cd5459e0f124c065c",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0x40284323e30a8c90dd1144e6363a6b046e3d82ab90d827779f290ddb0ad89910",
+          "error": "Locked(0, 10000000000000000)",
+          "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc"
+        },
+        {
+          "hash": "0xa1a9f6b3376f41867c0499ec6ee01c07f29d6f9b5de49a633c33cca0cfe262a6",
+          "error": "Locked(0, 1000000000000000000)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x99fd6b84e06b6399910f10af0dc43bbab35966519151797a291e3b81c4b1b2e3",
+          "error": "NotIssuer()",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "proposeCurator",
+      "who": "Issuer",
+      "what": "Propose a new curator",
+      "settled": [
+        {
+          "hash": "0x676d7bd55d6fab606086580dd2b4935bc622c7315cfe4a901e8b1a9d1b649478",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0x006ff79d13c401ca177fe93692283355c435f5f9fce6b878a524340430aee709",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "cancelCuratorProposal",
+      "who": "Issuer",
+      "what": "Cancel the proposal",
+      "settled": [
+        {
+          "hash": "0xb890fed66c77604e626f413d8f1dff858c7866d3a37a752d0bee825333a81ded",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "acceptCurator",
+      "who": "Anyone",
+      "what": "Complete the change after the timelock",
+      "settled": [
+        {
+          "hash": "0x0896f5513822ece11405b49501ac0cb7e785b4478970d7357c3bb6e79bf1d5ab",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0xf423e195d2d720470730e19f20cc45f215e2a09a3982e12c208666aa679c33dc",
+          "error": "TimelockActive(1795110599)",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "transferIssuer",
+      "who": "Issuer",
+      "what": "Hand over the issuer role",
+      "settled": [
+        {
+          "hash": "0x76e9ff1ee2edc9dc67a40e226642e5d668514f37825cb1e6237a3f15290660b8",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xea61f5c772fde71c1152d07ad9064e7d52c21960bc01f742fad7d40d5d4b54b0",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": []
+    },
+    {
+      "contract": "CovenantVault",
+      "fn": "acceptIssuer",
+      "who": "Pending issuer",
+      "what": "Accept the issuer role",
+      "settled": [
+        {
+          "hash": "0x84fb7fd368ccb0fddd2e75c70b66c953a2a3db876e3099020ab6509c06371fff",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        },
+        {
+          "hash": "0xdbcbafe7e9ad507a3fb5968576ea0b5844777ca1e7ec209b1418efbab2f8da14",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ],
+      "refused": [
+        {
+          "hash": "0x7bd40464360957e543f2c47587e8e5a14c71cfed169cb84957324e9637fd6e13",
+          "error": "NotPendingIssuer()",
+          "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d"
+        }
+      ]
+    }
+  ],
+  "attacks": {
+    "curator-withdraw": [
+      {
+        "story": "refusals",
+        "step": "curatorWithdraw",
+        "hash": "0xa0a2e0b66d284568db987069bd728c21e67da4a54569dab56ac94ce269873902",
+        "status": "reverted",
+        "error": "InsufficientShares(0, 10000000000000000)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      },
+      {
+        "story": "lifecycle",
+        "step": "curatorShares",
+        "hash": "0xebfd91968f66455850c640b77cc97feb606d60459408e58fe80af21c19f69d16",
+        "status": "reverted",
+        "error": "InsufficientShares(0, 10000000000000000)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "curatorPrincipal",
+        "hash": "0x99fd6b84e06b6399910f10af0dc43bbab35966519151797a291e3b81c4b1b2e3",
+        "status": "reverted",
+        "error": "NotIssuer()",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "skim": [
+      {
+        "story": "refusals",
+        "step": "skim",
+        "hash": "0x2b056a0b26f44ba356a5e7b75828e78e79acd27d10ee2ec80b693c577ab3c4da",
+        "status": "reverted",
+        "error": "IdleTooLarge(738550211640646, 9)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "softrug": [
+      {
+        "story": "covenant",
+        "step": "rug",
+        "hash": "0x23ab646664a1fec895ab3cbb234d1aa92543205ce540045cd242e30b5986ccc4",
+        "status": "reverted",
+        "error": "SupportBroken(277, 4000)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      },
+      {
+        "story": "lifecycle",
+        "step": "newCuratorRug",
+        "hash": "0xcf1eaa81a8029cd0f3f46d3df691b7b84d7b332cf125c13eb43acf8612bb3202",
+        "status": "reverted",
+        "error": "SupportBroken(280, 4000)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "manipulate": [
+      {
+        "story": "lifecycle",
+        "step": "dump",
+        "hash": "0xc4e93b13e2f0a42ceaa0a0ac19c99a5b7f07b65baf558d827c3b0cb7d43dd282",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "guardReshape",
+        "hash": "0xc8ac813fc4410ea48fc4c838c4c004477664714ebc40dca2120fb299c5de49e9",
+        "status": "reverted",
+        "error": "PriceGuard(90011, 87513)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "guardDeposit",
+        "hash": "0xf0fabe737ca244f7f3834d28c0f6e7cc376b7214377bf94a6ef3f9a5ee35e362",
+        "status": "reverted",
+        "error": "PriceGuard(90011, 87513)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "guardRestore",
+        "hash": "0x24b6aa5553af82434e7df2d091cbe3abf9d74f86f6ccca3ed7247122a91948ff",
+        "status": "reverted",
+        "error": "PriceGuard(90011, 87513)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "flash": [
+      {
+        "story": "lifecycle",
+        "step": "flashSell",
+        "hash": "0x3a52fcf6d2b3bb2df14b7bf781aec7648557b48ac3d6d09ade0f3e103f905d00",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "flashBuy",
+        "hash": "0x6994bea91cf44a81e005b0796b52e038e68896e3efa61a0867636f2c65b28b3f",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "flashCheck",
+        "hash": "0x7f02d788e9b9808c0078e6afd8cd5a1ff657b24fd6692ebcdc0ae443caee6aeb",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "pace": [
+      {
+        "story": "manage",
+        "step": "overpace",
+        "hash": "0x3ad94a43336aa8302e92cc8a4d13982f440915d95a5562b903b72ad887e588f5",
+        "status": "reverted",
+        "error": "PaceExceeded(1000000000, 264622709)",
+        "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+        "symbol": "CVLP"
+      }
+    ],
+    "instant-curator": [
+      {
+        "story": "lifecycle",
+        "step": "propose",
+        "hash": "0x006ff79d13c401ca177fe93692283355c435f5f9fce6b878a524340430aee709",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "acceptEarly",
+        "hash": "0xf423e195d2d720470730e19f20cc45f215e2a09a3982e12c208666aa679c33dc",
+        "status": "reverted",
+        "error": "TimelockActive(1795110599)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "accept",
+        "hash": "0x0896f5513822ece11405b49501ac0cb7e785b4478970d7357c3bb6e79bf1d5ab",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "newCuratorRug",
+        "hash": "0xcf1eaa81a8029cd0f3f46d3df691b7b84d7b332cf125c13eb43acf8612bb3202",
+        "status": "reverted",
+        "error": "SupportBroken(280, 4000)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "fragment": [
+      {
+        "story": "refusals",
+        "step": "fragment",
+        "hash": "0xc0a7e032e0f128d5724c2230bc96d096bd4650863a9654123f610afa29dfe8ed",
+        "status": "reverted",
+        "error": "TooManyRanges(16, 14)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "farm": [
+      {
+        "story": "refusals",
+        "step": "farm",
+        "hash": "0x47a6dfc0634d997cab1b82e7eccb5008159b5b1b421fb16f10f1610836d7782d",
+        "status": "reverted",
+        "error": "NothingToRestore(9999, 4000)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "cheap-shares": [
+      {
+        "story": "lp",
+        "step": "join",
+        "hash": "0xd88268b608f252dbe000545a36077a6c863786bcfd210aa7ed6aae74d5a9d599",
+        "status": "success",
+        "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+        "symbol": "CVLP"
+      }
+    ],
+    "lp-exit": [
+      {
+        "story": "lp",
+        "step": "leave",
+        "hash": "0x981ef478ac606d155a89d9721547abab944c65326b757b3bd0c1d0348fa43146",
+        "status": "success",
+        "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+        "symbol": "CVLP"
+      }
+    ],
+    "big-dump": [
+      {
+        "story": "covenant",
+        "step": "crash",
+        "hash": "0xeaf892b56b3de475728de3958204222edca89c67b90a6ae387b75a7ba157fc25",
+        "status": "success",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "issuer-exit": [
+      {
+        "story": "refusals",
+        "step": "issuerExit",
+        "hash": "0x40284323e30a8c90dd1144e6363a6b046e3d82ab90d827779f290ddb0ad89910",
+        "status": "reverted",
+        "error": "Locked(0, 10000000000000000)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      },
+      {
+        "story": "lifecycle",
+        "step": "lockedEarly",
+        "hash": "0xa1a9f6b3376f41867c0499ec6ee01c07f29d6f9b5de49a633c33cca0cfe262a6",
+        "status": "reverted",
+        "error": "Locked(0, 1000000000000000000)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "outsider": [
+      {
+        "story": "refusals",
+        "step": "outsider",
+        "hash": "0x3b9910f63c1430fccc2a8a895a634d9e2a1fb9d5b846bb39c77078e863dc2f05",
+        "status": "reverted",
+        "error": "SafeCastOverflow()",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "pump-quick": [
+      {
+        "story": "lifecycle",
+        "step": "pump",
+        "hash": "0x8cb514272913b49061757a86278d803db9f1995073fd18b86517dee571129163",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "quickRestore",
+        "hash": "0x6fb68da77b3b7b1c9267133c3fb5ba555f63498b0be8f76ead50877ce14843a4",
+        "status": "reverted",
+        "error": "NothingToRestore(6689, 4000)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "sellBack",
+        "hash": "0x6f92e322776cca99f034a9415fbb477054ea4ba3f2413e65d0cd6161fe8e87e3",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "pump-patient": [
+      {
+        "story": "lifecycle",
+        "step": "pump",
+        "hash": "0x8cb514272913b49061757a86278d803db9f1995073fd18b86517dee571129163",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "patientRestore",
+        "hash": "0x14b89e7bbbb8b8d51aa741bbf6a0e30ca2e53ddc1d294d34d30a99d340bdb60a",
+        "status": "reverted",
+        "error": "RestoreBandEmpty(-83820, -84420)",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "sellBack",
+        "hash": "0x6f92e322776cca99f034a9415fbb477054ea4ba3f2413e65d0cd6161fe8e87e3",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "colluding-curator": [
+      {
+        "story": "manage",
+        "step": "pump",
+        "hash": "0xb6e7ea6ddb93b3309703ef43eaed6db1b28f6ea259c4c979c51c4d5f3af615b6",
+        "status": "success",
+        "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+        "symbol": "CVLP"
+      },
+      {
+        "story": "manage",
+        "step": "chase",
+        "hash": "0x60ab24042c29dae7bf08bd961400a4d439282c38fe51e9e6b43c01bc221daeb8",
+        "status": "reverted",
+        "error": "BidAboveCeiling(-86280, -86542)",
+        "vault": "0xaF846Eb3396CC95Ef073e860D55a52d043644095",
+        "symbol": "CVLP"
+      }
+    ],
+    "freeze-exits": [
+      {
+        "story": "lifecycle",
+        "step": "dump",
+        "hash": "0xc4e93b13e2f0a42ceaa0a0ac19c99a5b7f07b65baf558d827c3b0cb7d43dd282",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      },
+      {
+        "story": "lifecycle",
+        "step": "lpExitTripped",
+        "hash": "0xc39772a0e8170a8639ce70022112ab3d2ff48c7ba3f64716cd465e32aa494a8a",
+        "status": "success",
+        "vault": "0x2d887961773d3793cF5950f6a9Bec4F4BF79582d",
+        "symbol": "CVQ"
+      }
+    ],
+    "dust-restore": [
+      {
+        "story": "covenant",
+        "step": "restore",
+        "hash": "0x76baab6f8cc6aa702eda2636de00e74e4b19da6572974ba2f0ba2d23f6e695c1",
+        "status": "success",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ],
+    "vault-pays": [
+      {
+        "story": "refusals",
+        "step": "vaultPays",
+        "hash": "0xfc2c35bcf9298069372faf29c6ea14fe4c524ec5bb4d2629e50f68fac04ccd1d",
+        "status": "reverted",
+        "error": "InsufficientPayment(738550211640646, 1)",
+        "vault": "0xa999c514FB4B9063Ef047CF39EdCb37098f84AFc",
+        "symbol": "CVNT"
+      }
+    ]
+  }
+}

@@ -96,7 +96,8 @@ export async function runLpProof(o: LpProofOptions): Promise<LpProofRecord> {
 
   const chainId = await ctx.pub.getChainId();
   if (chainId !== info.chainId) throw new Error(`the RPC answers as chain ${chainId}, not ${info.name} (${info.chainId})`);
-  const vault = o.vault ?? runtime.launches.at(-1)?.vault;
+  // Unless told, the vault this proof already ran against; a first run takes the latest launch.
+  const vault = o.vault ?? (o.fresh ? undefined : loadRecord<{ vault?: Address }>(lpProofPath(o.progress ?? `${o.records}-lp`))?.vault) ?? runtime.launches.at(-1)?.vault;
   if (!vault) throw new Error(`deployments/${o.records}.runtime.json records no launch`);
   let v = await readVaultView(ctx, vault);
   if (!isAddressEqual(v.people.issuer, me)) throw new Error(`${me} is not the issuer of ${vault} (${v.people.issuer}): the issuer funds the LP`);
@@ -117,7 +118,7 @@ export async function runLpProof(o: LpProofOptions): Promise<LpProofRecord> {
 
   // What the LP needs: its slice of the vault's tokens for SHARE% new shares, with room to spare. (Its ETH comes with the
   // gas money: a 10% slice of a testnet vault is a few thousandths of an ETH.)
-  const tokensNeeded = parseEther((((v.principal.token + v.idle.token) * Number(SHARE)) / 100 * 1.5 + 1).toFixed(18));
+  const tokensNeeded = parseEther(((v.principal.token * Number(SHARE)) / 100 * 1.5 + 1).toFixed(18));
   if (o.check) {
     const opens = v.pace.setup ? `deposits open in about ${Math.ceil((v.pace.setupEndsAt - v.time) / 60)} min` : "deposits are open";
     log(`plan: fund the LP with ${formatEther(GAS_MONEY)} ETH and ${amt(tokensNeeded)} ${sym}; ${opens}; join for ${SHARE}% new shares, trade, collect, claim, leave`);

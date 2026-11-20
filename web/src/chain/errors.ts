@@ -144,6 +144,9 @@ const REASONS: Record<string, Describer> = {
   CannotSweepTokens: () => ["Auction", "The unsold tokens have already been swept to the treasury."],
   // ---- the pool
   PriceLimitAlreadyExceeded: () => ["Pool", "The price is already past the swap's limit."],
+  // The PoolManager keys positions by owner: removing liquidity from a range the caller never added to underflows its
+  // own empty position (LiquidityMath.addDelta), so the vault's ranges are out of anyone else's reach.
+  SafeCastOverflow: () => ["Access", "That position belongs to its owner: the caller holds no liquidity there to remove."],
 };
 
 /** Render one decoded custom error. */

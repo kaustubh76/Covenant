@@ -59,7 +59,7 @@ async function main() {
     created = true;
   }
   // The relayer must hold none of the vaults' roles: the backend refuses such a key, and so does this.
-  const derived = ["covenant:keeper", "covenant:lp"].map((tag) => keccak256(concat([deployerKey, toHex(tag)])));
+  const derived = ["covenant:keeper", "covenant:lp", "covenant:curator", "covenant:issuer", "covenant:attacker"].map((tag) => keccak256(concat([deployerKey, toHex(tag)])));
   if (relayerKey === deployerKey || derived.includes(relayerKey)) {
     throw new Error("RELAYER_PRIVATE_KEY must be its own key, not the deployer's or one derived from it");
   }
