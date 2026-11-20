@@ -211,6 +211,11 @@ export default function ProvidePage() {
   // holdings, which a proportional deposit matches exactly; once the payer holds some, the simulation's.
   const tokenNeed = cost ? eth(cost[1]) : v.principal.token * (addPct / 100) * 1.01;
   const tokenShort = bal ? Math.max(0, tokenNeed - bal.token) : 0;
+  // Guard first: the vault checks the price guard before it takes any token, so while the guard holds no deposit can go
+  // through, short or not. Buying more then would only push spot further from the time-weighted price and lengthen the
+  // wait, so the buy comes back once the price has held.
+  const guarded = dep?.ok === false && dep.error?.name === "PriceGuard";
+  const showBuy = tokenShort > 0 && mayAct && !isAddressParty(party) && !guarded;
   const buyShortfall = () =>
     run(`Buy ${amt(tokenShort)} ${sym}`, async (c, rec) => {
       // exact-input: the shortfall plus 2%, at the spot price plus 3% for the pool fee and the price the buy moves
@@ -260,16 +265,16 @@ export default function ProvidePage() {
               <span className={canPay || !cost || (publicChain && !wallet) ? "" : "text-breach"}>{bal ? `${amt(bal.quote)} ETH · ${amt(bal.token)} ${sym}` : publicChain && !wallet ? "Connect a wallet" : "…"}</span>
             </Row>
           </div>
-          {tokenShort > 0 && mayAct && !isAddressParty(party) && (
+          {showBuy && (
             <Button variant="secondary" className="mt-5 w-full" onClick={buyShortfall} disabled={!!busy}>
               Buy {amt(tokenShort * 1.02)} {sym} from the pool first
             </Button>
           )}
-          <SendButton verb="deposit" variant="primary" className={tokenShort > 0 && mayAct ? "mt-2.5 w-full" : "mt-5 w-full"} onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
+          <SendButton verb="deposit" variant="primary" className={showBuy ? "mt-2.5 w-full" : "mt-5 w-full"} onClick={deposit} disabled={!!busy || (publicChain && (!mayAct || !dep?.ok || !canPay))}>
             Deposit
           </SendButton>
           <p className="mt-2 text-center text-xs text-faint">
-            {dep && !dep.ok && tokenShort > 0 && dep.error?.name !== "SetupEpoch"
+            {dep && !dep.ok && tokenShort > 0 && dep.error?.name !== "SetupEpoch" && !guarded
               ? `The deposit takes ${sym} too, in proportion, and ${publicChain ? "this wallet" : `the ${name}`} holds ${amt(bal?.token ?? 0)}: buy the difference, then deposit.`
               : dep && !dep.ok
               ? dep.error?.name === "SetupEpoch"
