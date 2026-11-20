@@ -6,12 +6,17 @@
 // the local chain (web/scripts/lib/localchain.ts), and takes a baseline snapshot to reset to.
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { createServer } from "node:net";
 
 export const CHAIN_ID = 31337;
 
 export interface AnvilChain {
   port: number;
+  /** The Anvil process, for its memory (rssMb). */
+  pid?: number;
+  /** The block number the seed loads at: how far a chain has grown is its head minus this. */
+  baseHead: number;
   url: string;
   /** The snapshot a reset reverts to. Anvil consumes a snapshot when it reverts, so a reset takes a new one. */
   baseline: string;
@@ -38,6 +43,20 @@ export async function rpc<T>(url: string, method: string, params: unknown[] = []
   const body = (await res.json()) as { result?: T; error?: { message?: string } };
   if (body.error) throw new Error(`${method}: ${body.error.message ?? "failed"}`);
   return body.result as T;
+}
+
+/**
+ * A process's resident memory in MB, from /proc (Linux, as on Render), or null where there is none (macOS): there the
+ * memory guard simply stands aside.
+ */
+export function rssMb(pid: number | undefined): number | null {
+  if (!pid) return null;
+  try {
+    const kb = /^VmRSS:\s+(\d+)\s+kB/m.exec(readFileSync(`/proc/${pid}/status`, "utf8"))?.[1];
+    return kb ? Number(kb) / 1024 : null;
+  } catch {
+    return null;
+  }
 }
 
 /** A port nothing is listening on right now. */
@@ -75,8 +94,10 @@ export async function startChain(o: StartOptions): Promise<AnvilChain> {
       "--gas-price", "0",
       "--disable-min-priority-fee",
       "--load-state", o.stateFile,
-      // Old block states stay in memory; by default Anvil would also write thousands of them to disk.
-      "--max-persisted-states", "0",
+      // Only the newest block states stay in memory, and none go to disk. Kept whole (--max-persisted-states 0), every
+      // block costs about 75 KB empty and 170 KB with a transaction, never given back; pruned, about a third of that. The
+      // app reads only the newest blocks' state: a pre-flight at the head, a revert replayed at its parent block.
+      "--prune-history", "128",
       "--silent",
     ],
     { stdio: ["ignore", "ignore", "pipe"] },
@@ -107,9 +128,12 @@ export async function startChain(o: StartOptions): Promise<AnvilChain> {
       await new Promise((r) => setTimeout(r, 100));
     }
     await prepareClock(url);
+    const baseHead = Number(await rpc<string>(url, "eth_blockNumber"));
     const baseline = await rpc<string>(url, "evm_snapshot");
     return {
       port,
+      pid: proc.pid,
+      baseHead,
       url,
       baseline,
       get exited() {

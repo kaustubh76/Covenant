@@ -2,7 +2,8 @@
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { type Hex, parseEther } from "viem";
+import { type Abi, ContractFunctionRevertedError, type Hex, encodeErrorResult, parseEther } from "viem";
+import { errorAbi } from "../../web/src/chain/abi.generated";
 import { describe, expect, it } from "vitest";
 import { Relayer } from "../src/relay/relayer";
 
@@ -11,11 +12,18 @@ const HASH = `0x${"ab".repeat(32)}` as Hex;
 const ME = "0x00000000000000000000000000000000000000a1";
 
 /** Chain clients that answer every read, pass every simulation unless told otherwise, and mine every send. */
-function clients(o: { revert?: string; me?: string; curator?: string; twap?: number } = {}) {
+/** What the vault answers when there is nothing to restore: the contract's own revert data. */
+const NOTHING_TO_RESTORE = encodeErrorResult({ abi: errorAbi as unknown as Abi, errorName: "NothingToRestore", args: [9999n, 4000n] });
+
+function clients(o: { revert?: string; me?: string; curator?: string; twap?: number; raw?: boolean } = {}) {
   const sent: string[] = [];
   const pub = {
-    simulateContract: async (c: { functionName: string }) => {
-      if (o.revert === c.functionName) throw new Error("execution reverted: NothingToRestore(9999, 4000)");
+    simulateContract: async (c: { functionName: string; abi: Abi }) => {
+      if (o.revert === c.functionName) {
+        // As viem throws it: decoded with the ABI the call carried, so only a call sent with the errors can be named.
+        if (o.raw) throw new ContractFunctionRevertedError({ abi: c.abi, data: NOTHING_TO_RESTORE, functionName: c.functionName });
+        throw new Error("execution reverted: NothingToRestore(9999, 4000)");
+      }
       return {};
     },
     readContract: async (c: { functionName: string }) => {
@@ -64,6 +72,14 @@ describe("the relayer", () => {
   it("simulates first and sends nothing when the contract would refuse", async () => {
     const c = clients({ revert: "restore" });
     await expect(relayer(c).handle("restore", JSON.stringify({ indices: [0] }), "1.1.1.1")).rejects.toMatchObject({ status: 409 });
+    expect(c.sent).toEqual([]);
+  });
+
+  it("names the contract's refusal and passes its revert data on, whichever contract's errors it is", async () => {
+    const c = clients({ revert: "restore", raw: true });
+    const e = await relayer(c).handle("restore", JSON.stringify({ indices: [0] }), "1.1.1.1").catch((x: unknown) => x);
+    expect(e).toMatchObject({ status: 409, extra: { revert: { name: "NothingToRestore", data: NOTHING_TO_RESTORE } } });
+    expect((e as Error).message).toMatch(/would revert: NothingToRestore\(9999, 4000\)\. Nothing was sent\./);
     expect(c.sent).toEqual([]);
   });
 

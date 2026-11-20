@@ -21,6 +21,8 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     idleMs: config.idleMs,
     evictAfterMs: config.evictAfterMs,
     start: () => startChain({ bin: config.anvil, stateFile: config.stateFile, timeoutMs: config.startTimeoutMs }),
+    limits: config.playgroundLimits,
+    restartAboveMb: config.restartAboveMb,
     log,
   });
   // Six new chains a minute per address. Calls are limited per chain only against runaway loops: a visitor can only flood
@@ -121,7 +123,7 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
       if (!session) throw new HttpError(410, "This Playground chain has stopped: it sat idle, or the backend restarted. Open a new one.");
       const body = await readBody(req, config.maxBodyBytes);
       if (!calls.take(r[1])) throw new HttpError(429, "Too many calls to this chain at once.", { "retry-after": "1" });
-      return json(res, 200, await proxy(session.chain.url, body));
+      return json(res, 200, await proxy(session.chain.url, body, 120_000, playground.meter(session)));
     }
     throw new HttpError(404, "Not found");
   }
@@ -131,7 +133,9 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
       const status = e instanceof HttpError ? e.status : ((e as { status?: number }).status ?? 500);
       // Session ids are the keys to a chain: never write them to the log.
       if (status >= 500) log(`${status} ${req.method} ${(req.url ?? "").replace(/[0-9a-f]{32}/g, "…")}: ${e instanceof Error ? e.message : String(e)}`);
-      if (!res.headersSent) json(res, status, { error: e instanceof Error ? e.message : "Something went wrong" }, e instanceof HttpError ? e.headers : {});
+      if (!res.headersSent) {
+        json(res, status, { ...(e instanceof HttpError ? e.extra : {}), error: e instanceof Error ? e.message : "Something went wrong" }, e instanceof HttpError ? e.headers : {});
+      }
     });
   });
 

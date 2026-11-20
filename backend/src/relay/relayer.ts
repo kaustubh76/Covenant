@@ -23,7 +23,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia } from "viem/chains";
-import { covenantLensAbi, covenantVaultAbi, poolSwapTestAbi, testTokenAbi } from "../../../web/src/chain/abi.generated";
+import { covenantLensAbi, covenantVaultAbi, errorAbi, poolSwapTestAbi, testTokenAbi } from "../../../web/src/chain/abi.generated";
 import { MAX_SQRT_PRICE, MIN_SQRT_PRICE, sqrtPriceLimitAt, toPool } from "../../../web/src/chain/price";
 import { Buckets, HttpError } from "../http";
 
@@ -69,15 +69,26 @@ export interface Relayed {
 
 const day = (t: number) => new Date(t).toISOString().slice(0, 10);
 
-/** The revert a simulation hit, as the contract named it: "SupportBroken(277, 4000)". */
-function reason(e: unknown): string {
+/**
+ * The generated per-contract ABIs carry no errors (gen-abi gathers every contract's errors into errorAbi), so a call is
+ * simulated and sent with all of them: a revert is then decoded by name, whichever contract down the call raised it.
+ */
+const withErrors = (abi: Abi): Abi => [...abi, ...(errorAbi as unknown as Abi)];
+
+/**
+ * The revert a simulation hit: as the contract named it ("SupportBroken(277, 4000)"), with the raw revert data, which
+ * the app decodes into its own sentence.
+ */
+function refusal(e: unknown): { text: string; data?: Hex; name?: string } {
   if (e instanceof BaseError) {
     const r = e.walk((x) => x instanceof ContractFunctionRevertedError) as ContractFunctionRevertedError | null;
-    if (r?.data?.errorName) return `${r.data.errorName}(${(r.data.args ?? []).map(String).join(", ")})`;
-    return e.shortMessage;
+    const data = r?.raw && r.raw !== "0x" ? r.raw : undefined;
+    if (r?.data?.errorName) return { text: `${r.data.errorName}(${(r.data.args ?? []).map(String).join(", ")})`, data, name: r.data.errorName };
+    return { text: e.shortMessage, data };
   }
-  return e instanceof Error ? e.message.split("\n")[0] : String(e);
+  return { text: e instanceof Error ? e.message.split("\n")[0] : String(e) };
 }
+const reason = (e: unknown): string => refusal(e).text;
 
 export class Relayer {
   private readonly o: RelayOptions;
@@ -327,19 +338,21 @@ export class Relayer {
     let cost = 0n;
     const fail = (e: unknown) => Object.assign(e instanceof HttpError ? e : new HttpError(502, `Sending failed: ${reason(e)}.`), { cost });
     for (const s of steps) {
-      if ("call" in s) {
+      const call = "call" in s ? { ...s.call, abi: withErrors(s.call.abi) } : null;
+      if (call) {
         try {
-          await this.pub!.simulateContract({ ...s.call, account: this.address! } as never);
+          await this.pub!.simulateContract({ ...call, account: this.address! } as never);
         } catch (e) {
           const sent = hashes.length ? ` Already sent: ${hashes.join(", ")}.` : " Nothing was sent.";
-          throw fail(new HttpError(409, `${s.title} would revert: ${reason(e)}.${sent}`));
+          const r = refusal(e);
+          throw fail(new HttpError(409, `${s.title} would revert: ${r.text}.${sent}`, {}, r.data ? { revert: { name: r.name, data: r.data } } : {}));
         }
       }
       let hash: Hex;
       try {
         hash =
           "call" in s
-            ? await this.wallet!.writeContract({ ...s.call, account: this.wallet!.account!, chain: baseSepolia } as never)
+            ? await this.wallet!.writeContract({ ...call!, account: this.wallet!.account!, chain: baseSepolia } as never)
             : await this.wallet!.sendTransaction({ to: s.transfer.to, value: s.transfer.value, account: this.wallet!.account!, chain: baseSepolia });
       } catch (e) {
         throw fail(e);

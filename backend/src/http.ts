@@ -2,14 +2,19 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-/** An error with the HTTP status (and headers) to answer with. Its message is shown to the caller. */
+/**
+ * An error with the HTTP status (and headers) to answer with. Its message is shown to the caller; `extra` adds fields to
+ * the JSON answer beside `error` (a refused relay's revert data, say).
+ */
 export class HttpError extends Error {
   readonly status: number;
   readonly headers: Record<string, string>;
-  constructor(status: number, message: string, headers: Record<string, string> = {}) {
+  readonly extra: Record<string, unknown>;
+  constructor(status: number, message: string, headers: Record<string, string> = {}, extra: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
     this.headers = headers;
+    this.extra = extra;
   }
 }
 
@@ -66,6 +71,8 @@ export function cors(req: IncomingMessage, res: ServerResponse, origins: readonl
   res.setHeader("vary", "origin");
   res.setHeader("access-control-allow-methods", "GET, POST, DELETE, OPTIONS");
   res.setHeader("access-control-allow-headers", "content-type");
+  // so the app can read how long a 429 or 503 asks it to wait (a cross-origin page sees only "simple" headers otherwise)
+  res.setHeader("access-control-expose-headers", "retry-after");
   res.setHeader("access-control-max-age", "600");
   return true;
 }

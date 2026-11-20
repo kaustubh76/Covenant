@@ -38,6 +38,10 @@ export interface Config {
   idleMs: number;
   /** When every chain is taken, one idle for this long is handed to a new visitor. */
   evictAfterMs: number;
+  /** How far past its seed one chain may grow (blocks, and resident MB where it can be read) and how many snapshots it may hold, before it must be reset. */
+  playgroundLimits: { height: number; snapshots: number; memoryMb: number };
+  /** Past this many MB, a reset restarts the chain from the seed rather than reverting it. */
+  restartAboveMb: number;
   startTimeoutMs: number;
   maxBodyBytes: number;
   /** Base Sepolia's RPC for the shared reader. May carry an API key: never logged, never sent to a browser. */
@@ -66,6 +70,11 @@ export function loadConfig(): Config {
     chainsPerIp: int("CHAINS_PER_IP", 2),
     idleMs: int("CHAIN_IDLE_MS", 10 * 60_000),
     evictAfterMs: int("CHAIN_EVICT_AFTER_MS", 2 * 60_000),
+    // Measured on Anvil 1.1.0 with --prune-history 128: about 26 KB a block, 83 KB with a transaction, 0.4 MB a snapshot,
+    // and a revert keeps what the chain grew. Four chains at 100 MB and the server fit the 512 MB instance; a launch on
+    // the desk is about 200 blocks, and the heaviest flows reach a few hundred.
+    playgroundLimits: { height: int("PLAYGROUND_MAX_HEIGHT", 3_000), snapshots: int("PLAYGROUND_MAX_SNAPSHOTS", 32), memoryMb: int("PLAYGROUND_MAX_MB", 100) },
+    restartAboveMb: int("PLAYGROUND_RESTART_MB", 60),
     startTimeoutMs: int("CHAIN_START_TIMEOUT_MS", 90_000),
     maxBodyBytes: int("MAX_BODY_BYTES", 2_000_000),
     baseSepoliaRpc: process.env.BASE_SEPOLIA_RPC_URL || "https://sepolia.base.org",

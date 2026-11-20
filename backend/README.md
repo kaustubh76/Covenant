@@ -73,6 +73,18 @@ with its own key, `RELAYER_PRIVATE_KEY`; without one, `/v1/relay` reports it off
   - idle chains stop after `CHAIN_IDLE_MS`;
   - request bodies are capped;
   - new chains are rate-limited per address.
+- **Each chain's share of memory.** Anvil keeps every block in memory, and a revert never gives it back. On Anvil 1.1.0
+  that is about 75 KB a block empty and 170 KB with a transaction, kept whole; `--prune-history 128` cuts it to about a
+  third. So each chain is held to:
+  - 1,000 blocks per `anvil_mine` or `evm_mine` call (the app's largest is a launch's auction, about 200);
+  - `PLAYGROUND_MAX_HEIGHT` blocks above its seed, read from the chain, so a revert or a reset gives the room back;
+  - `PLAYGROUND_MAX_SNAPSHOTS` snapshots held at once, by id;
+  - `PLAYGROUND_MAX_MB` of resident memory, read from `/proc` (Linux, as on Render): past it, nothing that grows the
+    chain goes on.
+
+  Each refusal is a JSON-RPC error whose message starts "This Playground chain" and ends "Reset it to start again: …"
+  (-32000; -32602 for one call over 1,000 blocks). A reset of a chain past `PLAYGROUND_RESTART_MB` restarts it from the
+  seed, since only a new process gives the memory back.
 - **CORS:** only the app's origins (`ALLOWED_ORIGINS`).
 - **Not a fork.** The seed is a fresh chain, so none of Base Sepolia's state, or the EIP-7702 sweepers on Anvil's
   well-known accounts there, comes along.
@@ -96,9 +108,13 @@ one second per block, as the local chain runs; otherwise the TWAP oracle would s
 |---|---|---|
 | `PORT` | 8080 | Render sets 10000 |
 | `ALLOWED_ORIGINS` | the Vercel app and localhost:3000 | comma-separated |
-| `MAX_CHAINS` | 4 | about 30 MB each when idle, more as a chain grows |
+| `MAX_CHAINS` | 4 | about 20 MB each when fresh, up to `PLAYGROUND_MAX_MB` as a chain grows |
 | `CHAINS_PER_IP` | 2 | |
 | `CHAIN_IDLE_MS` | 600000 | |
+| `PLAYGROUND_MAX_HEIGHT` | 3000 | blocks a chain may stand above its seed |
+| `PLAYGROUND_MAX_SNAPSHOTS` | 32 | snapshots (save points included) one chain may hold |
+| `PLAYGROUND_MAX_MB` | 100 | resident memory one chain may grow to, where it can be read |
+| `PLAYGROUND_RESTART_MB` | 60 | past this, a reset restarts the chain from the seed |
 | `ANVIL_BIN` | `anvil` | |
 | `BASE_SEPOLIA_RPC_URL` | `https://sepolia.base.org` | the reader's upstream; may carry a key |
 | `READ_RATE` | 15 | upstream calls a second, all visitors together |
