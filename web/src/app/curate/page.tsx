@@ -207,7 +207,8 @@ export default function CuratePage() {
   const [ed, setEd] = useState<Editor | null>(null);
   const [preset, setPreset] = useState("tighten");
   const [domain, setDomain] = useState<[number, number] | null>(null);
-  const [pre, setPre] = useState<Preflight | null>(null);
+  // The last verdict, with the plan it was asked for (see `pre` below).
+  const [last, setLast] = useState<{ r: Preflight; preset: string; party: string; handEdit: Editor | null } | null>(null);
   const [checking, setChecking] = useState(false);
   const req = useRef(0);
 
@@ -249,8 +250,11 @@ export default function CuratePage() {
   const handEdit = preset ? null : ed;
   useEffect(() => {
     plan.current++;
-    setPre(null);
+    setLast(null);
   }, [preset, party, handEdit]);
+  // The verdict on screen is only ever the plan's own. The effect above clears the one before only after a render, and
+  // in that render it would show under the new preset: the soft rug briefly read "Would settle", the previous preset's.
+  const pre = last && last.preset === preset && last.party === party && last.handEdit === handEdit ? last.r : null;
 
   // Pre-flight the exact transaction whenever the plan or the chain changes. Every block starts a check, so on a slow
   // RPC the newest check may never finish before the next one starts: a result lands unless a newer one already has,
@@ -265,12 +269,12 @@ export default function CuratePage() {
       const r = await preflight(ctx, party, { address: v.address, abi: covenantVaultAbi, functionName: "reshape", args: [cuts, legs, NEVER] }, v).catch(failedPreflight);
       if (asked === plan.current && id > shown.current) {
         shown.current = id;
-        setPre(r);
+        setLast({ r, preset, party, handEdit });
       }
       if (id === req.current) setChecking(false);
     }, 150);
     return () => clearTimeout(t);
-  }, [ctx, v, ed, cuts, legs, party]);
+  }, [ctx, v, ed, cuts, legs, party, preset, handEdit]);
 
   if (!v || !ed) return <NeedsChain what="the curator's desk" />;
 
