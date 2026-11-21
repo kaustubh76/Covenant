@@ -365,20 +365,25 @@ function Yours({ explorer }: { explorer: string }) {
   const [list, setList] = useState<SentTx[]>([]);
   useEffect(() => {
     const read = () => setList(readSent(BASE_SEPOLIA));
+    // another tab's change to this browser's sends, and nothing else it stores
+    const onStorage = (e: StorageEvent) => (!e.key || e.key.startsWith("covenant.sent.")) && read();
     read();
     window.addEventListener("covenant:sent", read);
-    window.addEventListener("storage", read);
+    window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener("covenant:sent", read);
-      window.removeEventListener("storage", read);
+      window.removeEventListener("storage", onStorage);
     };
   }, []);
   const rows = useMemo(() => list.slice(0, 20), [list]);
   // Each one's outcome, read again from its receipt: what this browser saw when it sent it may have been "not mined yet".
   const [onChain, setOnChain] = useState<Record<string, "success" | "reverted" | "pending">>({});
+  // asked again while any is still not mined
+  const [again, setAgain] = useState(0);
   useEffect(() => {
     if (!rows.length) return;
     let live = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     void (async () => {
       const res = await fetch("/api/chain?net=base-sepolia", { cache: "no-store" }).then((r) => r.json() as Promise<{ state: string; network?: Network }>).catch(() => null);
       if (!res?.network || res.state !== "ready") return;
@@ -391,12 +396,16 @@ function Yours({ explorer }: { explorer: string }) {
             .catch((e: unknown) => [t.hash, e instanceof TransactionReceiptNotFoundError ? "pending" : null] as const),
         ),
       );
-      if (live) setOnChain(Object.fromEntries(read.filter((x): x is readonly [Hex, "success" | "reverted" | "pending"] => x[1] !== null)));
+      if (!live) return;
+      const known = read.filter((x): x is readonly [Hex, "success" | "reverted" | "pending"] => x[1] !== null);
+      setOnChain(Object.fromEntries(known));
+      if (known.some(([, st]) => st === "pending")) timer = setTimeout(() => live && setAgain((n) => n + 1), 15_000);
     })();
     return () => {
       live = false;
+      clearTimeout(timer);
     };
-  }, [rows]);
+  }, [rows, again]);
   if (!rows.length) return null;
   return (
     <Panel eyebrow="Yours" title="Sent from this browser" flush>
@@ -408,7 +417,9 @@ function Yours({ explorer }: { explorer: string }) {
               <Mark ok={onChain[t.hash] ? onChain[t.hash] === "success" : t.ok} pending={onChain[t.hash] === "pending"} />
               <span className="min-w-0 truncate">
                 <span className="text-ink">{t.title}</span>
-                {t.error && <span className="num text-breach"> · {t.error}</span>}
+                {/* what this browser saw when sending, until the chain's receipt says otherwise */}
+                {t.error && !onChain[t.hash] && <span className="num text-breach"> · {t.error}</span>}
+                {onChain[t.hash] === "reverted" && <span className="num text-breach"> · reverted on chain</span>}
                 {onChain[t.hash] === "pending" && <span className="text-faint"> · not mined yet</span>}
                 <span className="text-faint">
                   {" "}

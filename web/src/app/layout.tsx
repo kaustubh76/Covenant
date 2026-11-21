@@ -8,7 +8,7 @@ const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 const TITLE = "Covenant — Locked for holders. Managed for the market.";
-const DESCRIPTION = "A Uniswap v4 hook that lets a curator actively manage launch liquidity it can never withdraw. Deployed on Base Sepolia.";
+const DESCRIPTION = "A Uniswap v4 hook that lets a curator actively manage launch liquidity it can never withdraw. Live on Base Sepolia.";
 
 // Links to the app unfurl with a card: a screenshot of the CVNT vault page on Base Sepolia (public/og.jpg), taken on
 // 2026-11-17 and dated as such. On Vercel the production domain is known at build time; anywhere else the card's URLs

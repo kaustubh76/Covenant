@@ -10,7 +10,7 @@ import { HeroStage } from "@/components/landing/HeroStage";
 import { LiveSection, day } from "@/components/landing/Live";
 import { Lifecycle, ProblemTriptych, RevertTape, RuleExplorer, Seats } from "@/components/landing/Sections";
 import { Container, Reveal, SectionHead } from "@/components/landing/motion";
-import { useLiveVault } from "@/components/landing/useLiveVault";
+import { ago, useLiveVault } from "@/components/landing/useLiveVault";
 import { Button } from "@/components/ui";
 import { pct } from "@/lib/format";
 import type { LiveDeployment } from "@/server/live";
@@ -37,7 +37,7 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
         {
           big: v ? pct(v.support.have) : "—",
           small: v
-            ? `of ${sym}'s ${v.quoteSymbol} bids in the band under the price right now, read at block ${v.block.toLocaleString("en-US")}; the covenant needs ${pct(v.support.need)}`
+            ? `of ${sym}'s ${v.quoteSymbol} bids in the band under the price, read at block ${v.block.toLocaleString("en-US")}${vault.readAt ? `, ${ago(vault.readAt)}` : ""}${vault.error ? " (the latest read failed)" : ""}; the covenant needs ${pct(v.support.need)}`
             : vault.error
               ? `of ${sym}'s liquidity in the band: not read yet (${vault.error})`
               : `of ${sym}'s liquidity in the band: reading ${live.network}…`,
@@ -48,7 +48,7 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
                 big: "Refused",
                 small: (
                   <>
-                    the curator&apos;s soft rug on {live.symbol}, by the pool itself on {live.network}
+                    the curator&apos;s soft rug on {live.symbol}, by the vault&apos;s own reshape checks on {live.network}
                     {rug.time ? `, ${day(rug.time)}` : ""}:{" "}
                     <a href={`${live.explorer}/tx/${rug.hash}`} target="_blank" rel="noreferrer" className="num text-breach underline-offset-2 hover:underline">
                       {rug.error} ↗
@@ -263,8 +263,8 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
           {live ? (
             <>
               The vault at the top is read live from {live.network}, beside Uniswap v4, the Liquidity Launcher and the CCA, and every page past this one reads it with no wallet. Every other figure here is a {live.network}{" "}
-              transaction on record, linked to the explorer{live.asOf ? `; the record was read back from the chain on ${day(live.asOf.time)}, at block ${live.asOf.block.toLocaleString("en-US")}` : ""}. The contracts have not been
-              audited.
+              transaction on record, linked to the explorer{live.asOf ? ` (the record was read back from the chain on ${day(live.asOf.time)}, at block ${live.asOf.block.toLocaleString("en-US")})` : ""}, or a rule the
+              contracts&apos; source and tests pin, such as what a curator can take out. The contracts have not been audited.
             </>
           ) : (
             <>

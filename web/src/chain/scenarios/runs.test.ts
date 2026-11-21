@@ -85,6 +85,16 @@ describe("the attack lab's runs", () => {
     expect(judged({ expect: ["IdleTooLarge"] }, { blocked: true, summary: "", beats: [refusal("IdleTooLarge")] as never }).noVerdict).toBeUndefined();
   });
 
+  it("never turns a breach into no verdict: a refused exit is what frozen exits look like", () => {
+    // freeze-exits: the LP's withdraw refused while the guard is tripped is the attack getting through
+    const frozen = judged({ expect: [] }, { blocked: false, summary: "The LP leaves while the guard is tripped", beats: [refusal("PriceGuard")] as never });
+    expect(frozen).toMatchObject({ blocked: false });
+    expect(frozen.noVerdict).toBeUndefined();
+    // a script that already failed keeps its own reason, rather than one about another refusal
+    const crashed = judged({ expect: ["SupportBroken"] }, { blocked: false, summary: "HTTP request failed", noVerdict: "HTTP request failed", beats: [refusal("PriceGuard")] as never });
+    expect(crashed.noVerdict).toBe("HTTP request failed");
+  });
+
   it("names, for every attack, the refusal that means it was stopped, and has a live check for each but the one that needs days", () => {
     for (const a of ATTACKS) expect(EXPECTED[a.id], a.id).toBeDefined();
     const checked = new Set(LIVE_CHECKS.map((c) => c.id));

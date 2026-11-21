@@ -70,7 +70,7 @@ export function RuleRail({ world: v }: { world: VaultView }) {
 
       <Card
         name="Pace"
-        status={p.setup ? { word: "Not yet in force", tone: "warn" } : { word: "In force", tone: "pass" }}
+        status={!v.adopted ? { word: "Not adopted", tone: "neutral" } : p.setup ? { word: "Not yet in force", tone: "warn" } : { word: "In force", tone: "pass" }}
         value={p.setup ? "Setup" : <Num value={allowance * 1e4} format={(x) => pct(x, 0)} />}
         unit={p.setup ? "epoch" : "of allowance left"}
         meter={<Meter value={p.setup ? 0 : allowance} tone="neutral" label="Pace allowance left" />}
@@ -105,7 +105,9 @@ export function RuleRail({ world: v }: { world: VaultView }) {
         unit={fullyVested ? undefined : toUnlock > 0 ? "until unlock" : "vested"}
         meter={<Meter value={lock.vested} tone="accent" label="Issuer principal vested" />}
       >
-        {toUnlock > 0 ? (
+        {!v.adopted ? (
+          <>The vault has not adopted a launch yet: the lock starts when it does, then vests over {duration(t.vestDuration)}.</>
+        ) : toUnlock > 0 ? (
           <>Issuer principal is fully locked, then vests in a line over {duration(t.vestDuration)}.</>
         ) : fullyVested ? (
           <>The lock has run its course. The issuer may withdraw its principal to the treasury.</>

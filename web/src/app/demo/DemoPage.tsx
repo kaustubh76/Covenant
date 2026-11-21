@@ -10,6 +10,7 @@ import { ACTOR_LABEL, shortAddress } from "@/chain/accounts";
 import { type BeatInput, note } from "@/chain/beat";
 import { DEMO_BIDS, DEMO_STEPS, DUMP_SIZE, type DemoState, bidPrice, emptyDemo } from "@/chain/scenarios/demo";
 import { isFailureKind } from "@/chain/failure";
+import { ccaAbi } from "@/chain/abi.generated";
 import { allBids } from "@/chain/launch";
 import { q96ToNumber } from "@/chain/price";
 import { revertTo, snapshot } from "@/chain/time";
@@ -64,28 +65,43 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   const net = useChain((s) => s.net);
   const [records, setRecords] = useState<StepRecord[]>([]);
   const ctx = useChain((s) => s.ctx);
-  // every bid the demo's auction holds, read from the auction once step 1 has created it
+  // every bid the demo's auction holds, and its floor, read from the auction once step 1 has created it
   const [auctionBids, setAuctionBids] = useState<CurveBid[] | null>(null);
+  const [floor, setFloor] = useState<number | null>(null);
+  // the auction exists but its bids could not be read: said, and asked again shortly
+  const [bidsUnread, setBidsUnread] = useState(false);
+  const [bidsTry, setBidsTry] = useState(0);
   const demoLaunch = records[0]?.state.launch ?? null;
   useEffect(() => {
-    if (!ctx || !demoLaunch) return void setAuctionBids(null);
+    if (!ctx || !demoLaunch) {
+      setAuctionBids(null);
+      setBidsUnread(false);
+      return;
+    }
     let live = true;
-    allBids(ctx, demoLaunch)
-      .then(
-        (bids) =>
-          live &&
-          setAuctionBids(
-            bids.map((b) => {
-              const who = whoIs(b.owner, true);
-              return { id: String(b.id), bidder: who ? ACTOR_LABEL[who] : shortAddress(b.owner), maxPrice: q96ToNumber(b.maxPrice), amount: Number(formatEther(b.amount)) };
-            }),
-          ),
-      )
-      .catch(() => live && setAuctionBids(null));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    Promise.all([allBids(ctx, demoLaunch), ctx.pub.readContract({ address: demoLaunch.auction, abi: ccaAbi, functionName: "floorPrice" })])
+      .then(([bids, floorQ96]) => {
+        if (!live) return;
+        setBidsUnread(false);
+        setFloor(q96ToNumber(floorQ96 as bigint));
+        setAuctionBids(
+          bids.map((b) => {
+            const who = whoIs(b.owner, true);
+            return { id: String(b.id), bidder: who ? ACTOR_LABEL[who] : shortAddress(b.owner), maxPrice: q96ToNumber(b.maxPrice), amount: Number(formatEther(b.amount)) };
+          }),
+        );
+      })
+      .catch(() => {
+        if (!live) return;
+        setBidsUnread(true);
+        timer = setTimeout(() => live && setBidsTry((n) => n + 1), 5000);
+      });
     return () => {
       live = false;
+      clearTimeout(timer);
     };
-  }, [ctx, demoLaunch, records.length]);
+  }, [ctx, demoLaunch, records.length, bidsTry]);
   const [at, setAt] = useState(0);
   // the step whose events should play out one by one: the one just run, until the presenter moves on
   const [freshAt, setFreshAt] = useState(-1);
@@ -306,9 +322,17 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
             {step.view === "auction" && (
               <Panel
                 eyebrow="Continuous Clearing Auction"
-                title={auctionBids ? `${auctionBids.length} bid${auctionBids.length === 1 ? "" : "s"} in the auction, read from it` : `The ${PLANNED_BIDS.length} bids step 1 will place (dashed, not placed yet)`}
+                title={
+                  auctionBids
+                    ? `${auctionBids.length} bid${auctionBids.length === 1 ? "" : "s"} in the auction, read from it`
+                    : demoLaunch
+                      ? bidsUnread
+                        ? "The auction's bids could not be read just now: asking again"
+                        : "Reading the auction's bids…"
+                      : `The ${PLANNED_BIDS.length} bids step 1 will place (dashed, not placed yet)`
+                }
               >
-                <DemandCurve bids={auctionBids ?? PLANNED_BIDS} result={clearing ? { clearingPrice: clearing, floorPrice: 1 } : null} height={280} />
+                <DemandCurve bids={auctionBids ?? (demoLaunch ? [] : PLANNED_BIDS)} result={clearing && floor !== null ? { clearingPrice: clearing, floorPrice: floor } : null} height={280} />
               </Panel>
             )}
             {step.view === "compare" && (

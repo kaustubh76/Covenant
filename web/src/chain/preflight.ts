@@ -22,6 +22,8 @@ export interface Preflight {
   after?: VaultView;
   /** Vault events the action would emit, e.g. Reshaped(movedFraction, rangesAfter, supportBps). */
   events: VaultEvent[];
+  /** The block the action was simulated in (the head's next), when it was simulated as a block: what a page names. */
+  simulatedAt?: bigint;
   value?: unknown;
 }
 
@@ -74,11 +76,13 @@ export async function preflight(ctx: ChainCtx, party: Party, call: ActionCall, b
     } as never);
     const calls = (block as unknown as { calls: { status: string; result?: unknown; error?: unknown; logs?: never[] }[] }).calls;
     const failedSetup = calls.slice(0, setup.length).find((c) => c.status !== "success");
-    if (failedSetup) return { ok: false, error: decodeRevert(failedSetup.error, describe), events: [] };
+    const simulatedAt = latest.number + 1n;
+    if (failedSetup) return { ok: false, error: decodeRevert(failedSetup.error, describe), events: [], simulatedAt };
     const [action, snapshot] = calls.slice(setup.length);
-    if (action.status !== "success") return { ok: false, error: decodeRevert(action.error, describe), events: [] };
+    if (action.status !== "success") return { ok: false, error: decodeRevert(action.error, describe), events: [], simulatedAt };
     return {
       ok: true,
+      simulatedAt,
       value: action.result,
       after: snapshot.status === "success" ? viewFromSnapshot(base, snapshot.result as LensState) : undefined,
       events: vaultEvents(action.logs, base.address),

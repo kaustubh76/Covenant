@@ -142,7 +142,6 @@ export async function chainStatus(key: NetworkKey): Promise<ChainStatus> {
 /** The local chain, as the reset route needs it. */
 export const localChain = () => chainStatus("local");
 
-/** Every network this server offers, with whether each is reachable right now. */
 /** Whether Covenant's backend answers its health check within `ms`: a sleeping one (Render's free plan) takes a minute to wake. */
 async function backendAwake(backend: string, ms = 3000): Promise<boolean> {
   try {
@@ -157,7 +156,25 @@ async function backendAwake(backend: string, ms = 3000): Promise<boolean> {
  * Every served network, with whether it can be used now. A Playground whose backend did not answer its health check is
  * still offered (opening a chain wakes it), with a reason that says it is waking, rather than shown as live.
  */
-export async function allStatuses(): Promise<{ key: NetworkKey; name: string; state: ChainStatus["state"]; reason?: string }[]> {
+type NetworkLine = { key: NetworkKey; name: string; state: ChainStatus["state"]; reason?: string };
+
+/**
+ * The list, kept for a few seconds: every open tab asks for it each minute, and each answer costs a public RPC call or
+ * two and a health check, so tabs on the same server share one answer.
+ */
+let listed: { at: number; value: Promise<NetworkLine[]> } | null = null;
+const LIST_TTL_MS = 15_000;
+
+export function allStatuses(): Promise<NetworkLine[]> {
+  if (listed && Date.now() - listed.at < LIST_TTL_MS) return listed.value;
+  const value = readStatuses();
+  listed = { at: Date.now(), value };
+  // a failed list is not kept: the next request asks again
+  value.catch(() => (listed = null));
+  return value;
+}
+
+async function readStatuses(): Promise<NetworkLine[]> {
   return Promise.all(
     servedNetworks().map(async (key) => {
       const s = await chainStatus(key);

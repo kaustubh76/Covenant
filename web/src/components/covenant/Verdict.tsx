@@ -87,8 +87,9 @@ export function ReshapeVerdict({ before, pre, moved, measured = false, loading }
     <div>
       <ul>
         {failed === "curator" && (
-          <Line state="fail" name="Curator only">
-            You are not the named curator for this vault. Switch to the curator in the top bar.
+          <Line state="fail" name={e?.name === "NotCurator" ? "Curator only" : "Before any check"}>
+            {/* NotAdopted and an expired deadline share this step: each says what it is */}
+            {e?.name === "NotCurator" ? "You are not the named curator for this vault. Switch to the curator in the top bar." : e?.reason}
           </Line>
         )}
         <Line state={state("guard")} name="Guard">

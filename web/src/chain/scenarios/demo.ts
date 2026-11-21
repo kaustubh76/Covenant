@@ -324,8 +324,9 @@ export const DEMO_STEPS: DemoStep[] = [
       const lock = termsFromChain(await k.ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName: "terms" })).curatorTimelock;
       await attempt(k, "issuer", "Propose a new curator", vault, "proposeCurator", [k.ctx.address("newCurator")], { detail: () => `The ${duration(lock)} timelock starts` });
       await attempt(k, "keeper", "Accept immediately", vault, "acceptCurator", []);
-      await advance(k.ctx, 2 * 86_400);
-      k.record(note("anyone", "Two days pass", "Holders had the whole timelock to react"));
+      // the vault's own timelock, and a second past it
+      await advance(k.ctx, lock + 1);
+      k.record(note("anyone", `${duration(lock)} pass`, "Holders had the whole timelock to react"));
       await attempt(k, "keeper", "Accept after the timelock", vault, "acceptCurator", [], { detail: () => "New curator in place" });
       const v = await view(k, vault);
       await attempt(k, "newCurator", "New curator moves support far away", vault, "reshape", [[cut(rangeWithMostQuote(v))], [bidLeg(v, v.spotTick - 14_000, v.spotTick - 11_000, SINK)], NEVER]);

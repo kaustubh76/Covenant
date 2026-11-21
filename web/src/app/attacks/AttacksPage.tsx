@@ -9,7 +9,7 @@ import { ATTACK_TXS } from "@/chain/scenarios/onchain";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { BeatList } from "@/components/covenant/Verdict";
 import { note } from "@/chain/beat";
-import { shortHash } from "@/components/landing/Live";
+import { day, shortHash } from "@/components/landing/Live";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
 import type { LiveDeployment, LiveStep, LiveStory } from "@/server/live";
 import { offeredDevNetwork, useChain } from "@/store/chain";
@@ -142,7 +142,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <Num value={blocked} format={(x) => String(Math.round(x))} />
                   <span className="text-faint"> / {ran}</span>
                 </div>
-                <div className="eyebrow mt-1">{live ? "blocked" : "blocked, checked live"}</div>
+                <div className="eyebrow mt-1">{live ? "blocked" : "would be blocked, checked live"}</div>
               </div>
             )}
             {live ? (
@@ -203,7 +203,24 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <h2 className="mt-1 text-[17px] font-medium leading-snug text-ink">{a.title}</h2>
                 </div>
                 <Tag tone={r ? (r.noVerdict ? "warn" : r.blocked ? "pass" : "breach") : "neutral"}>
-                  {r ? (r.noVerdict ? (r.skipped ? "Not checked" : live ? "Could not run" : "No verdict") : r.blocked ? "Blocked" : "Got through") : !live && checking && !NOT_LIVE[a.id] ? "Checking live…" : a.rule}
+                  {/* on a public chain a verdict is a simulation, said as what would happen; on a dev chain it happened */}
+                  {r
+                    ? r.noVerdict
+                      ? r.skipped
+                        ? "Not checked"
+                        : live
+                          ? "Could not run"
+                          : "No verdict"
+                      : r.blocked
+                        ? live
+                          ? "Blocked"
+                          : "Would be blocked"
+                        : live
+                          ? "Got through"
+                          : "Would get through"
+                    : !live && checking && !NOT_LIVE[a.id]
+                      ? "Checking live…"
+                      : a.rule}
                 </Tag>
               </div>
               <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{a.story}</p>
@@ -213,7 +230,12 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <p className={clsx("mt-2 text-[13px] font-medium", r.noVerdict ? "text-muted" : r.blocked ? "text-pass" : "text-breach")}>{r.summary}</p>
                 </div>
               )}
-              {!live && !r && NOT_LIVE[a.id] && <p className="mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-muted">Not checked live. {NOT_LIVE[a.id]}</p>}
+              {!live && !r && NOT_LIVE[a.id] && (
+                <p className="mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-muted">
+                  Not checked live. {NOT_LIVE[a.id]}
+                  {proofs.length > 0 ? " It was played for real instead: the transactions are below." : ""}
+                </p>
+              )}
               {proofs.length > 0 && deployment && (
                 <div className="mt-3 rounded-md border border-line bg-bg/40 px-3 py-2.5">
                   <span className="eyebrow block text-[10.5px]">Played for real on {netName}</span>
@@ -228,7 +250,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                               {step.error && <span className="num text-breach"> · {step.error.split("(")[0]}</span>}
                             </span>
                             <span className="num block truncate text-faint">
-                              {story.symbol} · block {nf.format(step.block)} · {shortHash(step.hash)} ↗
+                              {story.symbol} · {step.time ? `${day(step.time)} · ` : ""}block {nf.format(step.block)} · {shortHash(step.hash)} ↗
                             </span>
                           </span>
                         </a>
@@ -265,7 +287,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
             <div className="text-[15px] font-medium text-ink">
               {live
                 ? `All ${ran} attacks were blocked by the deployed contracts.`
-                : `Every attack with a verdict was blocked: ${ran} checked live against the deployed contracts${checkBlock ? ` at block ${checkBlock.toLocaleString("en-US")}` : ""}${ATTACKS.length - ran ? `. The other ${ATTACKS.length - ran} say on their cards why they have none` : ""}.`}
+                : `Every attack with a verdict would be blocked: ${ran} simulated live against the deployed contracts${checkBlock ? ` at block ${checkBlock.toLocaleString("en-US")}` : ""}${ATTACKS.length - ran ? `. The other ${ATTACKS.length - ran} say on their cards why they have none` : ""}.`}
             </div>
             <div className="text-[13.5px] text-muted">
               The successful steps inside a card are what an attacker is allowed to do, such as trading or proposing a curator. The step that would have taken value is the one the contract refused, or the

@@ -425,8 +425,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }),
     [],
   );
-  // Not on the landing (recorded data), nor the guided demo and the attack lab, which keep their own snapshots, nor the
-  // ledger, which is the record rather than a place to act.
+  // Not on the landing (it reads Base Sepolia's vault on its own, whatever network is chosen), nor the guided demo and
+  // the attack lab, which keep their own snapshots, nor the ledger, which is the record rather than a place to act.
   const showDock = path !== "/" && path !== "/demo" && path !== "/attacks" && path !== "/ledger";
   return (
     <MotionConfig reducedMotion="user">
@@ -434,7 +434,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {path !== "/" && <PlaygroundBar />}
       {path === "/" ? <main>{children}</main> : <main className={clsx("mx-auto max-w-[1320px] px-4 md:px-8", showDock ? "pb-28" : "pb-20")}>{children}</main>}
       {showDock && <Dock />}
-      {/* the vault page shows the feed in place; the landing reads recorded data */}
+      {/* the vault page shows the feed in place; the landing has no feed of the chosen network */}
       {path !== "/" && path !== "/vault" && <ActivityDrawer raised={showDock} />}
       <Toast />
     </MotionConfig>

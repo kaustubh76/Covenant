@@ -3,7 +3,8 @@
 // themselves, while stand-ins with no role (an attacker, an outside LP, a keeper) are given ETH by state override and
 // tokens by a transfer from the real issuer, inside the simulation. Blocks can sit hours or days later, so the setup
 // epoch, the curator timelock and a TWAP window pass as they would on chain. Nothing is ever sent: what a card shows is
-// what the deployed contracts would do. The one attack that needs days of pokes stays the suite's recorded run.
+// what the deployed contracts would do. The one attack that needs days of pokes is not simulated (NOT_LIVE): its card
+// shows the transactions that played it on the chain instead.
 
 import { type Abi, type Address, maxUint256, parseEther } from "viem";
 import type { Who } from "../accounts";
@@ -168,8 +169,8 @@ export interface LiveCheck {
   /** Why it cannot be checked on this vault right now, or null. */
   skip?: (v: VaultView) => string | null;
   /**
-   * The attack, simulated. Null when the scene could not be set (say a dump that did not move the price): the card
-   * then keeps its recorded run rather than claim anything about the live vault.
+   * The attack, simulated. Null when the scene could not be set (say a dump that did not move the price): the card then
+   * says so, and claims nothing about the live vault.
    */
   run: (s: Scene) => Promise<AttackRun | null>;
 }
@@ -279,8 +280,11 @@ export const LIVE_CHECKS: LiveCheck[] = [
           ],
         },
       ]);
-      if (!ok(results[0][0]) || !ok(results[1][0])) return null;
-      return run(!ok(results[0][1]) && !ok(results[1][1]), "Timelocked, then bound by exactly the same rules", beats);
+      if (!ok(results[0][0])) return null;
+      // accepted in the block it was proposed in: the timelock did not hold
+      if (ok(results[0][1])) return run(false, "The new curator was accepted in the same block it was proposed in: the timelock did not hold", beats);
+      if (!ok(results[1][0])) return null;
+      return run(!ok(results[1][1]), "Timelocked, then bound by exactly the same rules", beats);
     },
   },
   {
@@ -528,7 +532,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
       const paid = crashed.fees.bountyPool - after.fees.bountyPool;
       const cap = Number(s.v.terms.bounty) / 1e18;
       beats.push({ actor: "keeper", title: `Bounty paid: ${paid.toPrecision(3)} ETH`, ok: true, detail: `Never more than ${cap} ETH, and never more than ${BOUNTY_MAX_BPS / 100}% of the quote moved. Support now ${(after.support.have / 100).toFixed(1)}%` });
-      return run(paid > 0 && paid <= cap + 1e-12, "The bounty is capped, so dust earns dust", beats);
+      return run(paid <= cap + 1e-12, "The bounty is capped, so dust earns dust", beats);
     },
   },
 ];
@@ -544,7 +548,7 @@ const unanswered = (why: string): AttackRun => ({ blocked: false, summary: why, 
  * instead. Every other attack has a check in LIVE_CHECKS.
  */
 export const NOT_LIVE: Record<string, string> = {
-  "pump-patient": "It needs a pump held for days of chain time, poked along the way, which these checks do not simulate. It was played for real instead: the transactions are below.",
+  "pump-patient": "It needs a pump held for days of chain time, poked along the way, which these checks do not simulate.",
 };
 
 /**
@@ -562,6 +566,10 @@ export const EXPECTED: Record<string, readonly string[]> = {
  * the run keeps its steps so the card shows what happened.
  */
 export function judged(c: Pick<LiveCheck, "expect">, r: AttackRun): AttackRun {
+  // a run that already gave no verdict (a script that failed) keeps its own reason
+  if (r.noVerdict) return r;
+  // a breach is a breach, whatever else was refused on the way: a refused exit is what "exits frozen" looks like
+  if (!r.blocked) return r;
   const other = r.beats.find((b) => !b.ok && !c.expect.includes(b.error?.name ?? ""));
   if (!other) return r;
   const name = other.error?.name ?? "an error";

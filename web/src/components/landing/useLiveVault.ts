@@ -22,15 +22,19 @@ export interface LiveVault {
   retry(): void;
 }
 
-const EVERY_MS = 30_000;
+/** How often the vault is read again while the page is in view. */
+export const EVERY_MS = 30_000;
 
 export function useLiveVault(vault: Address | null): LiveVault {
   const [state, setState] = useState<Omit<LiveVault, "retry">>({ ctx: null, view: null, readAt: null, error: null, reading: !!vault });
   const ctx = useRef<ChainCtx | null>(null);
   const seq = useRef(0);
+  // one read at a time: on a slow RPC the next tick waits for this one rather than stack another
+  const inFlight = useRef(false);
 
   const read = useCallback(async () => {
-    if (!vault) return;
+    if (!vault || inFlight.current) return;
+    inFlight.current = true;
     const mine = ++seq.current;
     setState((s) => ({ ...s, reading: true }));
     try {
@@ -38,13 +42,16 @@ export function useLiveVault(vault: Address | null): LiveVault {
         const res = await fetch("/api/chain?net=base-sepolia", { cache: "no-store" }).then(
           (r) => r.json() as Promise<{ state: "ready"; network: Network } | { state: "offline"; reason: string }>,
         );
-        if (res.state !== "ready") throw new Error(res.reason);
+        // the server's reason, first sentence only: what follows is a deploy hint for developers, not for visitors
+        if (res.state !== "ready") throw new Error(res.reason.split(/(?<=\.)\s/)[0]);
         ctx.current = createChainCtx(res.network);
       }
       const view = await readVaultView(ctx.current, vault);
       if (mine === seq.current) setState({ ctx: ctx.current, view, readAt: Date.now(), error: null, reading: false });
     } catch (e) {
       if (mine === seq.current) setState((s) => ({ ...s, ctx: ctx.current, error: e instanceof Error ? e.message.split("\n")[0] : String(e), reading: false }));
+    } finally {
+      inFlight.current = false;
     }
   }, [vault]);
 
@@ -54,7 +61,13 @@ export function useLiveVault(vault: Address | null): LiveVault {
     const t = setInterval(() => {
       if (document.visibilityState === "visible") void read();
     }, EVERY_MS);
-    return () => clearInterval(t);
+    // back to the tab: read at once rather than show a figure from before it was hidden
+    const onShow = () => document.visibilityState === "visible" && void read();
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", onShow);
+    };
   }, [vault, read]);
 
   return { ...state, retry: () => void read() };
