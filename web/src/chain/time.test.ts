@@ -213,6 +213,18 @@ describe("on a chain that says what it holds: every revert checked first", () =>
     expect(chain.list.has(BigInt(t))).toBe(true);
   });
 
+  it("the read after a snapshot answered before it (Anvil runs a batch at once): read again, no second snapshot", async () => {
+    const ctx = onFake();
+    use(chain, (inner) => async (url, calls) => {
+      if (calls[1]?.method !== "evm_snapshot") return inner(url, calls);
+      const [pre, post] = [chain.answer("anvil_metadata", []), chain.answer("anvil_metadata", [])];
+      return [pre, chain.answer("evm_snapshot", []), post]; // "after" ran first
+    });
+    const { record } = await takeSnapshot(ctx);
+    expect(record).not.toBeNull();
+    expect(chain.calls.filter((m) => m === "evm_snapshot")).toHaveLength(1);
+  });
+
   it("a snapshot the reads cannot vouch for is taken again; if it keeps happening, refused before anything runs", async () => {
     const ctx = onFake();
     let moved = 0;

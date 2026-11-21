@@ -4,6 +4,7 @@ import type { Network, NetworkKey } from "@/chain/network";
 import type { Beat } from "@/chain/beat";
 import type { ChainCtx } from "@/chain/client";
 import { FakeAnvil } from "@/chain/fakeanvil.testkit";
+import type { Send } from "@/chain/snapguard";
 import { revertTo, setSnapshotSender, snapshot } from "@/chain/time";
 import { canSendAs, feed, isHostedCopy, offeredDevNetwork, restoreSavePoints, useChain } from "./chain";
 
@@ -184,6 +185,20 @@ describe("save points: kept across a reload, per chain, and never sent when gone
     expect(toast?.error?.reason).toMatch(/1 earlier save point is still there/);
     expect(useChain.getState().savePoints).toHaveLength(1);
     expect(stored()?.points).toHaveLength(1);
+  });
+
+  it("back at the point even when it cannot be taken again at once: said as a success, with what to do", async () => {
+    await useChain.getState().savePoint();
+    chain.mine(3);
+    const busy: Send = async (url, calls) => (calls.some((c) => c.method === "evm_snapshot") ? calls.map((c) => (c.method === "evm_snapshot" ? { error: { code: -32000, message: "busy" } } : chain.answer(c.method, c.params))) : chain.send(url, calls));
+    setSnapshotSender(busy);
+    await useChain.getState().backToSavePoint();
+    expect(chain.state).toBe(0);
+    const toast = useChain.getState().toast;
+    expect(toast?.ok).toBe(true);
+    expect(toast?.title).toBe("Back at the save point");
+    expect(toast?.detail).toMatch(/could not be kept for another return.*Save again/);
+    expect(useChain.getState().savePoints).toEqual([]);
   });
 
   it("Reset clears them, and the local chain's new baseline reaches the app (the guided demo keys on it)", async () => {

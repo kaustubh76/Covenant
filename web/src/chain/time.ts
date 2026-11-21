@@ -165,21 +165,27 @@ export async function takeSnapshot(ctx: ChainCtx): Promise<{ id: Hex; record: Sn
   if (offered.get(url) === undefined) await chainSnapshots(ctx);
   if (offered.get(url) !== true) return { id: await test.snapshot(), record: null };
   for (let attempt = 0; attempt < 2; attempt++) {
-    const [a, s, b] = await withChainLock(url, () => send(url, [META, { method: "evm_snapshot", params: [] }, META]));
-    if (s?.error) throw rpcError(s.error);
-    const id = s?.result;
-    if (typeof id !== "string" || snapshotId(id) === null) throw new Error("The chain took no snapshot (it answered without an id).");
-    const pre = readMeta(url, a);
-    const post = readMeta(url, b);
-    if (!pre || !post) return { id: id as Hex, record: null };
-    const record = acceptRecord(pre, id as Hex, post);
-    if (record) {
+    const took = await withChainLock(url, async () => {
+      const [a, s, b] = await send(url, [META, { method: "evm_snapshot", params: [] }, META]);
+      if (s?.error) throw rpcError(s.error);
+      const id = s?.result;
+      if (typeof id !== "string" || snapshotId(id) === null) throw new Error("The chain took no snapshot (it answered without an id).");
+      const pre = readMeta(url, a);
+      let post = readMeta(url, b);
+      if (!pre || !post) return { id: id as Hex, record: null, plain: true };
+      // Anvil runs a batch's calls at once, and a snapshot waits for the state while a read does not: the read after it
+      // can come back first, without it. Read again, still under the lock, rather than take another.
+      if (!post.listed.has(snapshotId(id)!)) post = readMeta(url, (await send(url, [META]))[0]) ?? post;
+      return { id: id as Hex, record: acceptRecord(pre, id as Hex, post), plain: false };
+    });
+    if (took.plain) return { id: took.id, record: null };
+    if (took.record) {
       if (!records.has(url)) records.set(url, new Map());
-      records.get(url)!.set(snapshotId(id)!, record);
-      return { id: record.id, record };
+      records.get(url)!.set(snapshotId(took.id)!, took.record);
+      return { id: took.id, record: took.record };
     }
   }
-  throw new Error("The chain kept changing while the snapshot was taken (another tab or tool at work on it), so it was not used. Try again.");
+  throw new Error("The chain kept changing while the snapshot was taken (blocks mined, or snapshots taken back, by something else at work on it), so it was not used. Try again.");
 }
 
 const GONE_TEXT = {

@@ -705,11 +705,13 @@ export const useChain = create<ChainState>((set, get) => ({
         rec.record({ actor: "anyone", title: "Back to the save point", ok: false, error: { ...error, args: [], rule: "Other", reason: e.message + more } }, { toast: true });
         return;
       }
-      // Anvil uses a snapshot up when it goes back to it: take it again, so the same point can be returned to.
-      const again = await takeSnapshot(ctx);
-      keepPoint(ctx, { id: again.id, at: top.at, record: again.record });
+      // Anvil uses a snapshot up when it goes back to it: take it again, so the same point can be returned to. The chain
+      // is back either way, and the toast says so; only a point that could not be taken again is said to be gone.
+      const again = await takeSnapshot(ctx).catch(() => null);
+      if (again) keepPoint(ctx, { id: again.id, at: top.at, record: again.record });
       set({ chainEpoch: get().chainEpoch + 1 });
-      rec.record(note("anyone", "Back at the save point", "The chain is as it was when the point was taken"), { toast: true });
+      const kept = again ? "" : " It could not be kept for another return just now: Save again to come back here later.";
+      rec.record(note("anyone", "Back at the save point", `The chain is as it was when the point was taken.${kept}`), { toast: true });
     });
   },
 }));
