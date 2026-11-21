@@ -35,11 +35,12 @@ export function feedAmount(v: number): string {
 const amt = feedAmount;
 const pct = (bps: bigint | number) => `${(Number(bps) / 100).toFixed(1)}%`;
 
-function describe(name: string, args: Record<string, unknown>, v: VaultView): { title: string; detail?: string; actor?: Who } | null {
+function describe(name: string, args: Record<string, unknown>, v: VaultView, dev: boolean): { title: string; detail?: string; actor?: Who } | null {
   const q = (a0: bigint, a1: bigint) => (v.quoteIs0 ? `${amt(n(a0))} ETH and ${amt(n(a1))} ${v.tokenSymbol}` : `${amt(n(a1))} ETH and ${amt(n(a0))} ${v.tokenSymbol}`);
   // decoded event arguments: amounts are bigints, `tokenIds` a list, addresses read through `who`
   const a = args as unknown as Record<string, bigint> & { tokenIds: readonly bigint[] };
-  const who = (k: string) => actorOf(args[k] as Address);
+  // Demo role names belong to the dev chain's dev accounts; on a public chain every address is just an address.
+  const who = (k: string) => (dev ? actorOf(args[k] as Address) : undefined);
   switch (name) {
     case "Adopted":
       return { title: "Launch liquidity adopted", detail: `${a.tokenIds.length} launcher position${a.tokenIds.length === 1 ? "" : "s"} → ${a.rangesAfter} vault range${a.rangesAfter === 1n ? "" : "s"}` };
@@ -58,7 +59,7 @@ function describe(name: string, args: Record<string, unknown>, v: VaultView): { 
     case "CuratorProposalCancelled":
       return { title: "Curator proposal cancelled", actor: "issuer" };
     case "CuratorChanged":
-      return { title: "Curator changed", detail: `${named(args.previous)} → ${named(args.current)}. The new curator is bound by the same rules` };
+      return { title: "Curator changed", detail: `${named(args.previous, dev)} → ${named(args.current, dev)}. The new curator is bound by the same rules` };
     case "IssuerTransferStarted":
       return { title: "Issuer transfer started" };
     case "IssuerTransferred":
@@ -76,9 +77,9 @@ function describe(name: string, args: Record<string, unknown>, v: VaultView): { 
   }
 }
 
-/** An address as the feed names it: the demo role behind it, or its short form. */
-function named(a: unknown): string {
-  const actor = actorOf(a as Address);
+/** An address as the feed names it: on a dev chain the demo role behind it, else (and failing that) its short form. */
+function named(a: unknown, dev: boolean): string {
+  const actor = dev ? actorOf(a as Address) : undefined;
   return actor ? ACTOR_LABEL[actor] : typeof a === "string" ? shortAddress(getAddress(a)) : "?";
 }
 
@@ -171,14 +172,14 @@ export async function readActivity(ctx: ChainCtx, v: VaultView): Promise<Activit
   const out: Beat[] = [];
   for (const log of logs as Log[]) {
     const sender = senders.get(log.transactionHash!);
-    const from = actorOf(sender) ?? "anyone";
+    const from = (ctx.net.caps.devChain ? actorOf(sender) : undefined) ?? "anyone";
     // On a public chain the senders are real accounts, not demo roles: name yours as yours and the rest by address.
     const by = !ctx.net.caps.devChain && from === "anyone" && sender ? (ctx.signer && isAddressEqual(sender, ctx.signer) ? "You" : shortAddress(getAddress(sender))) : undefined;
     const base = { at: blockTimes.get(log.blockHash!) ?? 0, block: Number(log.blockNumber), hash: log.transactionHash!, ok: true, source: "chain" as const, id: `${log.transactionHash}:${log.logIndex}`, ...(by ? { by } : {}) };
     if (log.address.toLowerCase() === v.address.toLowerCase()) {
       try {
         const d = decodeEventLog({ abi: covenantVaultAbi, data: log.data, topics: log.topics });
-        const desc = describe(d.eventName, (d.args ?? {}) as Record<string, unknown>, v);
+        const desc = describe(d.eventName, (d.args ?? {}) as Record<string, unknown>, v, ctx.net.caps.devChain);
         if (desc) out.push({ ...base, actor: desc.actor ?? from, title: desc.title, detail: desc.detail });
       } catch {
         /* an event this app does not show */

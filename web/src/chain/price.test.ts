@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { AUCTION_FLOOR, AUCTION_TICK } from "./launch";
-import { amountsAt, ceilTo, floorTo, holdingsAtPrice, priceAt, q96ToNumber, rangeToPool, rangeToPrice, snapToAuctionTick, ticksToPct, toPool, toPrice } from "./price";
+import { amountsAt, ceilTo, floorTo, holdingsAtPrice, priceAt, q96ToNumber, rangeToPool, rangeToPrice, snapToAuctionTick, ticksBelowPct, ticksToPct, toPool, toPrice } from "./price";
 
 describe("orientation (Orient.sol)", () => {
   it("negates ticks when the quote is currency0 and keeps them otherwise", () => {
@@ -54,5 +54,14 @@ describe("prices", () => {
     expect(snapToAuctionTick(1.3, AUCTION_FLOOR, AUCTION_TICK)).toBe(AUCTION_FLOOR + 19n * AUCTION_TICK);
     expect(snapToAuctionTick(0.5, AUCTION_FLOOR, AUCTION_TICK)).toBe(AUCTION_FLOOR);
     expect(q96ToNumber(AUCTION_FLOOR + 19n * AUCTION_TICK)).toBeCloseTo(1.296875, 6);
+  });
+});
+
+describe("tick distances in percent", () => {
+  it("a rise over 1500 ticks is 16.2%, while a band 1500 ticks below the price reaches down 13.9%", () => {
+    expect(ticksToPct(1500)).toBeCloseTo(16.18, 2);
+    expect(ticksBelowPct(1500)).toBeCloseTo(13.93, 2);
+    // the two agree for small distances and diverge as the distance grows
+    expect(Math.abs(ticksToPct(10) - ticksBelowPct(10))).toBeLessThan(0.001);
   });
 });

@@ -13,7 +13,7 @@ import { type LaunchRecord, type Network, type NetworkKey, firstChoice, isNetwor
 import { openPlayground, resetPlayground } from "@/chain/playground";
 import { sanitizeLaunches } from "@/chain/remembered";
 import { type Party, StepFailed, isAddressParty } from "@/chain/tx";
-import { type VaultView, readVaultView } from "@/chain/view";
+import { UnsupportedQuote, type VaultView, readVaultView } from "@/chain/view";
 import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
 import { type SavePoint, type SnapRecord, type StoredSavePoints, afterRevert, sanitizeStored, snapshotId, stillListed } from "@/chain/snapguard";
 import { type Gone, SnapshotGone, chainSnapshots, onReverted, revertTo, takeSnapshot } from "@/chain/time";
@@ -105,8 +105,19 @@ interface ChainState {
   vault: Address | null;
   view: VaultView | null;
   history: Beat[];
+  /** Whether `history` has been read: "loading" until the first read lands, "failed" when the last one did not. */
+  historyState: "loading" | "read" | "failed";
   /** Who the current vault's logs name (curators, depositors), read with `history`. Checked against `vault` before use. */
   seen: Seen | null;
+  /**
+   * The block of the view on screen while the reads after it keep failing: the numbers shown are from then, and the
+   * page should say so. Null while the view is current.
+   */
+  staleSince: number | null;
+  /** Why the last read failed, while `staleSince` is set. */
+  readError: string | null;
+  /** Where the vault list comes from: the chain's own launch logs, or the launches on record when that scan failed. */
+  launchesFrom: "chain" | "record";
   log: Beat[];
   toast: Beat | null;
   role: Role;
@@ -337,7 +348,11 @@ export const useChain = create<ChainState>((set, get) => ({
   vault: null,
   view: null,
   history: [],
+  historyState: "loading",
   seen: null,
+  staleSince: null,
+  readError: null,
+  launchesFrom: "chain",
   log: [],
   toast: null,
   role: "holder",
@@ -411,11 +426,12 @@ export const useChain = create<ChainState>((set, get) => ({
     if (stale()) return;
     if (found) rememberLaunches(net, found);
     const launches = found ?? knownLaunches(net);
+    const launchesFrom = found ? ("chain" as const) : ("record" as const);
     const saved = load(vaultKey(key));
     const vault = saved && launches.some((l) => l.adopted && l.vault.toLowerCase() === saved.toLowerCase()) ? (saved as Address) : (net.runtime?.defaultVault ?? launches.find((l) => l.adopted)?.vault ?? null);
     const ctx = ctxFor(net, get().wallet, get().wallets);
     // A fresh Playground chain replaced one that had stopped: the save points were snapshots of the old one.
-    set({ net, ctx, launches, vault, status: "ready", reason: null, ...(fresh ? { savePoints: [], chainEpoch: get().chainEpoch + 1 } : {}) });
+    set({ net, ctx, launches, launchesFrom, vault, status: "ready", reason: null, ...(fresh ? { savePoints: [], chainEpoch: get().chainEpoch + 1 } : {}) });
     if (fresh) get().record(note("anyone", "A fresh Playground chain", "Your last one had stopped (it sat idle, or the backend restarted), so this one starts from the seed again."), { toast: true });
     // The save points this browser kept on this chain, the ones it still holds (none on another chain).
     if (net.caps.devChain) void restoreSavePoints(ctx, stale);
@@ -463,7 +479,10 @@ export const useChain = create<ChainState>((set, get) => ({
       launches: [],
       vault: null,
       history: [],
+      historyState: "loading",
       seen: null,
+      staleSince: null,
+      readError: null,
       log: [],
       toast: null,
       savePoints: [],
@@ -555,29 +574,33 @@ export const useChain = create<ChainState>((set, get) => ({
       // error is: it is shown, and the next block tries again.
       const gone = e instanceof BaseError && !!e.walk((x) => x instanceof ContractFunctionRevertedError || x instanceof ContractFunctionZeroDataError);
       const fallback = get().net?.runtime?.defaultVault;
-      if (gone && fallback && vault.toLowerCase() !== fallback.toLowerCase()) {
-        set({ vault: fallback, view: null, history: [], seen: null });
+      if ((gone || e instanceof UnsupportedQuote) && fallback && vault.toLowerCase() !== fallback.toLowerCase()) {
+        // A vault quoted in another token is said as such, rather than shown with its amounts labelled ETH.
+        if (e instanceof UnsupportedQuote) get().record({ actor: "anyone", title: "Vault not shown", ok: false, error: { name: "NotSent", args: [], signature: "Not an ETH vault", rule: "Other", reason: e.message } }, { toast: true });
+        set({ vault: fallback, view: null, history: [], historyState: "loading", seen: null, staleSince: null, readError: null });
         void get().refresh();
         return;
       }
-      set({ reason: message(e) });
+      // The numbers on screen stay, from the block they were read at, and the page says how old they are.
+      const shown = get().view;
+      set({ reason: message(e), readError: message(e), staleSince: get().staleSince ?? (shown ? Number(shown.block) : null) });
       return;
     }
     if (mine !== refreshSeq) return;
-    set({ view, reason: null });
+    set({ view, reason: null, readError: null, staleSince: null });
     if (restorePending && ctx.net.caps.devChain) {
       restorePending = false;
       void restoreSavePoints(ctx, () => get().ctx !== ctx);
     }
-    try {
-      const [activity, launches] = await Promise.all([readActivity(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
-      if (mine === refreshSeq) {
-        set({ history: activity.beats, seen: activity.seen, launches });
-        rememberLaunches(ctx.net, launches);
-      }
-    } catch (e) {
-      if (mine === refreshSeq) set({ reason: message(e) });
-    }
+    const [activity, launches] = await Promise.allSettled([readActivity(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
+    if (mine !== refreshSeq) return;
+    if (activity.status === "fulfilled") set({ history: activity.value.beats, seen: activity.value.seen, historyState: "read" });
+    // A feed that could not be read says so; one read before keeps its entries until the next read lands.
+    else set({ reason: message(activity.reason), historyState: get().historyState === "read" ? "read" : "failed" });
+    if (launches.status === "fulfilled") {
+      set({ launches: launches.value, launchesFrom: "chain" });
+      rememberLaunches(ctx.net, launches.value);
+    } else set({ reason: message(launches.reason) });
   },
 
   setRole: (role) => {
@@ -588,7 +611,7 @@ export const useChain = create<ChainState>((set, get) => ({
   async selectVault(vault) {
     const key = get().netKey;
     if (key) save(vaultKey(key), vault);
-    set({ vault, view: null, history: [], seen: null });
+    set({ vault, view: null, history: [], historyState: "loading", seen: null, staleSince: null, readError: null });
     await get().refresh();
   },
 
@@ -674,7 +697,7 @@ export const useChain = create<ChainState>((set, get) => ({
       // Every save point went with the reset (it reverted to the baseline, taken before them all).
       if (net) save(savePointsKey(net.key), null);
       pointsOn = null;
-      set({ log: [], history: [], seen: null, toast: null, savePoints: [], chainEpoch: get().chainEpoch + 1 });
+      set({ log: [], history: [], historyState: "loading", seen: null, staleSince: null, readError: null, toast: null, savePoints: [], chainEpoch: get().chainEpoch + 1 });
       if (net?.runtime) await get().selectVault(net.runtime.defaultVault);
     }
     return !!done;

@@ -1,10 +1,10 @@
 // The app's scripted scenarios, run against the real contracts: the outcomes must match the Solidity suite's
 // (test/integration/LaunchToRelease.t.sol, test/attacks/AttackCatalogue.t.sol, test/attacks/PumpRatchet.t.sol).
 
-import { type Address, formatEther, isAddressEqual } from "viem";
+import { type Address, encodePacked, formatEther, isAddressEqual, keccak256, pad, zeroAddress } from "viem";
 import { describe, expect, inject, it } from "vitest";
 import { readNetwork } from "../scripts/lib/localchain";
-import { covenantVaultAbi, testTokenAbi } from "../src/chain/abi.generated";
+import { covenantHookAbi, covenantVaultAbi, poolManagerAbi, testTokenAbi } from "../src/chain/abi.generated";
 import { actorOf, addressOf } from "../src/chain/accounts";
 import type { BeatInput } from "../src/chain/beat";
 import { createChainCtx } from "../src/chain/client";
@@ -209,5 +209,87 @@ describe("save points, on real Anvil (src/chain/snapguard.ts)", () => {
     const back = await latest();
     expect(back.hash).toBe(at.hash);
     expect(back.timestamp).toBe(at.timestamp);
+  });
+});
+
+describe("the vault view the pages show is the contracts' own state", () => {
+  it("equals a direct read of every figure, at the block the view was read at", async () => {
+    const vault = ctx.net.runtime!.defaultVault;
+    const v = await readVaultView(ctx, vault);
+    const at = { blockNumber: v.block };
+    const r = <T>(functionName: string, args: readonly unknown[] = []) =>
+      ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName, args, ...at } as never) as Promise<T>;
+    const f = (x: bigint) => Number(formatEther(x));
+
+    const [support, terms, anchor, pace, withdrawable, withdrawn, totalValue, totalShares, principalShares, bountyPool] = await Promise.all([
+      r<readonly [bigint, bigint]>("support"),
+      r<Record<string, number | bigint>>("terms"),
+      r<number>("anchor"),
+      r<bigint>("paceAvailable"),
+      r<bigint>("principalWithdrawable"),
+      r<bigint>("principalWithdrawn"),
+      r<bigint>("totalValue"),
+      r<bigint>("totalShares"),
+      r<bigint>("principalShares"),
+      r<bigint>("bountyPool"),
+    ]);
+    const [feePot0, feePot1, idle0, idle1, curator, issuer, pendingCurator, curatorReadyAt, treasury, q0, poolId, ranges] = await Promise.all([
+      r<bigint>("feePot0"),
+      r<bigint>("feePot1"),
+      r<bigint>("idle0"),
+      r<bigint>("idle1"),
+      r<Address>("curator"),
+      r<Address>("issuer"),
+      r<Address>("pendingCurator"),
+      r<bigint>("curatorReadyAt"),
+      r<Address>("treasury"),
+      r<boolean>("quoteIsCurrency0"),
+      r<`0x${string}`>("poolId"),
+      r<readonly { tickLower: number; tickUpper: number; liquidity: bigint }[]>("ranges"),
+    ]);
+    const split = (a0: bigint, a1: bigint) => (q0 ? { quote: f(a0), token: f(a1) } : { quote: f(a1), token: f(a0) });
+
+    // support, terms and the rule state
+    expect(v.support.have).toBe(Number(support[0]));
+    expect(v.support.need).toBe(Number(support[1]));
+    for (const [k, x] of Object.entries(terms)) expect((v.terms as unknown as Record<string, unknown>)[k], `terms.${k}`).toEqual(x);
+    expect(v.anchor).toBe(anchor);
+    expect(v.pace.available).toBe(pace >= 2n ** 255n ? 1 : Number(pace) / 1e9);
+    expect(v.raw.principalWithdrawable).toBe(withdrawable);
+    expect(v.lock.vested).toBeCloseTo(Number(withdrawable + withdrawn) / 1e18, 12);
+
+    // the guard, measured as the contract measures it: the pool's tick against the hook's TWAP tick
+    const slot = keccak256(encodePacked(["bytes32", "bytes32"], [poolId, pad("0x06", { size: 32 })]));
+    const word = BigInt(await ctx.pub.readContract({ address: ctx.net.manifest.poolManager, abi: poolManagerAbi, functionName: "extsload", args: [slot], ...at }));
+    const raw24 = Number((word >> 160n) & 0xffffffn);
+    const spotTick = raw24 >= 0x800000 ? raw24 - 0x1000000 : raw24;
+    const twapTick = await ctx.pub.readContract({ address: ctx.net.manifest.hook, abi: covenantHookAbi, functionName: "consult", args: [poolId, Number(terms.twapWindow)], ...at });
+    expect(v.guard.diff).toBe(Math.abs(spotTick - twapTick));
+    expect(v.guard.ok).toBe(Math.abs(spotTick - twapTick) <= Number(terms.guardTicks));
+
+    // holdings, shares and fees
+    expect(v.value).toBe(f(totalValue));
+    expect(v.raw.totalShares).toBe(totalShares);
+    expect(v.raw.principalShares).toBe(principalShares);
+    expect(v.fees.bountyPool).toBe(f(bountyPool));
+    expect(v.fees.pot).toEqual(split(feePot0, feePot1));
+    expect(v.idle).toEqual(split(idle0, idle1));
+    for (const actor of ["lp", "holder", "keeper", "curator", "issuer", "attacker", "market"] as const) {
+      expect(v.raw.sharesOf[actor], `sharesOf(${actor})`).toBe(await r<bigint>("sharesOf", [addressOf(actor)]));
+    }
+
+    // the people and the clock
+    expect(v.people.curator).toBe(curator);
+    expect(v.people.issuer).toBe(issuer);
+    expect(v.people.pendingCurator).toBe(pendingCurator === zeroAddress ? null : pendingCurator);
+    expect(v.people.curatorReadyAt).toBe(Number(curatorReadyAt));
+    expect(v.people.treasury).toBe(treasury);
+    expect(v.time).toBe(Number((await ctx.pub.getBlock({ blockNumber: v.block })).timestamp));
+
+    // the ranges, one for one
+    expect(v.ranges.map((x) => [x.tickLower, x.tickUpper, x.liquidity])).toEqual(ranges.map((x) => [x.tickLower, x.tickUpper, x.liquidity]));
+    // the token's name, as its contract gives it
+    expect(v.symbolRead).toBe(true);
+    expect(v.tokenSymbol).toBe(await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "symbol" }));
   });
 });

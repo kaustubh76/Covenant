@@ -1,10 +1,11 @@
 // The vault, as the app shows it: one plain object built from CovenantLens.snapshot plus a few direct reads. Rule state
 // (support, guard, pace, lock) comes from the contract; the floats here are for display and charts only.
 
-import { type Address, type ContractFunctionReturnType, type Hex, encodePacked, formatEther, keccak256, pad, zeroAddress } from "viem";
+import { type Address, BaseError, type ContractFunctionReturnType, type Hex, encodePacked, formatEther, keccak256, pad, zeroAddress } from "viem";
 import { covenantLensAbi, covenantVaultAbi, poolManagerAbi, testTokenAbi } from "./abi.generated";
-import { type Actor, actorOf } from "./accounts";
+import { type Actor, actorOf, shortAddress } from "./accounts";
 import type { ChainCtx } from "./client";
+import { PRINCIPAL_SHARES } from "./constants";
 import { type PoolKey, poolIdOf } from "./launch";
 import { holdingsAtPrice, rangeToPool, sqrtX96ToFloat, tickAtSqrt, toPrice } from "./price";
 import type { Terms } from "./terms";
@@ -43,13 +44,15 @@ export interface VaultView {
   quoteIs0: boolean;
   quoteSymbol: string;
   token: Address;
+  /** The token's symbol, or its short address when the symbol could not be read (symbolRead says which). */
   tokenSymbol: string;
+  symbolRead: boolean;
   tickSpacing: number;
   feePips: number;
   terms: Terms;
   adopted: boolean;
   // ---- prices, in price ticks
-  /** Exact (fractional) spot from the pool's sqrt price. */
+  /** Exact (fractional) spot from the pool's sqrt price: for charts. The guard is measured on spotTick, as the contract does. */
   spot: number;
   /** Spot as the contract sees it: the pool's integer tick, as a price tick. */
   spotTick: number;
@@ -87,7 +90,8 @@ interface Extras {
   block: bigint;
   time: number;
   sqrtP: bigint;
-  symbol: string;
+  /** The token's symbol; null when it could not be read. */
+  symbol: string | null;
   curatorFees: readonly [bigint, bigint];
   principalOwed: readonly [bigint, bigint];
   holders: { actor: Actor; shares: bigint; owed: readonly [bigint, bigint] }[];
@@ -113,9 +117,9 @@ function kindOf(r: { priceLower: number; priceUpper: number; quote: number; toke
 }
 
 /** Exact sqrt price of a pool, read from PoolManager storage (StateLibrary.getSlot0). */
-export async function readSqrtPrice(ctx: ChainCtx, poolId: Hex): Promise<bigint> {
+export async function readSqrtPrice(ctx: ChainCtx, poolId: Hex, blockNumber?: bigint): Promise<bigint> {
   const slot = keccak256(encodePacked(["bytes32", "bytes32"], [poolId, POOLS_SLOT]));
-  const word = await ctx.pub.readContract({ address: ctx.net.manifest.poolManager, abi: poolManagerAbi, functionName: "extsload", args: [slot] });
+  const word = await ctx.pub.readContract({ address: ctx.net.manifest.poolManager, abi: poolManagerAbi, functionName: "extsload", args: [slot], ...(blockNumber === undefined ? {} : { blockNumber }) });
   return BigInt(word) & ((1n << 160n) - 1n);
 }
 
@@ -132,17 +136,36 @@ export async function positionLiquidity(ctx: ChainCtx, poolId: Hex, owner: Addre
   return BigInt(word) & ((1n << 128n) - 1n);
 }
 
-/** Token symbols, by network and address. Not kept for the dev chain, where a reset hands the same address to a new token. */
+/**
+ * Token symbols, by network and address. Not kept for the dev chain, where a reset hands the same address to a new token.
+ * Only a symbol actually read is kept: a failed read is null (shown as the token's address), and is tried again next time.
+ */
 const symbols = new Map<string, string>();
-async function symbolOf(ctx: ChainCtx, token: Address): Promise<string> {
+export async function symbolOf(ctx: ChainCtx, token: Address): Promise<string | null> {
   const id = `${ctx.net.key}:${token.toLowerCase()}`;
-  let s = ctx.net.caps.devChain ? undefined : symbols.get(id);
-  if (!s) {
-    s = await ctx.pub.readContract({ address: token, abi: testTokenAbi, functionName: "symbol" }).catch(() => "TOKEN");
-    if (!ctx.net.caps.devChain) symbols.set(id, s);
-  }
-  return s;
+  const known = ctx.net.caps.devChain ? undefined : symbols.get(id);
+  if (known) return known;
+  const s = await ctx.pub.readContract({ address: token, abi: testTokenAbi, functionName: "symbol" }).catch(() => null);
+  if (s && !ctx.net.caps.devChain) symbols.set(id, s);
+  return s || null;
 }
+
+/** A vault whose quote currency is not the chain's native ETH: this app reads and labels ETH-quoted vaults only. */
+export class UnsupportedQuote extends Error {
+  override name = "UnsupportedQuote";
+  constructor(
+    readonly vault: Address,
+    readonly quote: Address,
+  ) {
+    super(`This vault's quote currency is the token ${shortAddress(quote)}, not ETH. The app shows ETH-quoted vaults only, so it does not show this one rather than label its amounts wrongly.`);
+  }
+}
+
+/** A read sent to a node that does not have the block yet (a load-balanced public RPC): worth one more try. */
+const missingBlock = (e: unknown) =>
+  /header not found|unknown block|block not found|block number .* not found|missing trie node/i.test(
+    e instanceof BaseError ? `${e.message} ${e.details ?? ""}` : e instanceof Error ? e.message : String(e),
+  );
 
 /** Accounts whose shares and fees the app shows. */
 const HOLDERS: Actor[] = ["lp", "holder", "keeper", "curator", "issuer", "attacker", "market"];
@@ -156,19 +179,36 @@ function holderAccounts(ctx: ChainCtx): Address[] {
   return ctx.signer ? [ctx.signer] : [];
 }
 
+/**
+ * The vault as of one block: every read below is made at the same block number, so the block and time the page shows
+ * are the ones its numbers come from (two reads at "latest" can land on different blocks on a load-balanced RPC).
+ */
 export async function readVaultView(ctx: ChainCtx, vault: Address): Promise<VaultView> {
-  const { lens } = ctx.net.manifest;
-  const read = <T>(functionName: string, args: readonly unknown[] = []) =>
-    ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName, args } as never) as Promise<T>;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await readVaultViewAt(ctx, vault);
+    } catch (e) {
+      // The block was read from one node and the calls went to another that has not seen it yet: try again shortly.
+      if (attempt >= 2 || !missingBlock(e)) throw e;
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+}
 
-  const [s, block] = await Promise.all([
-    ctx.pub.readContract({ address: lens, abi: covenantLensAbi, functionName: "snapshot", args: [vault] }),
-    ctx.pub.getBlock({ blockTag: "latest" }),
-  ]);
+async function readVaultViewAt(ctx: ChainCtx, vault: Address): Promise<VaultView> {
+  const { lens } = ctx.net.manifest;
+  const block = await ctx.pub.getBlock({ blockTag: "latest" });
+  const at = { blockNumber: block.number };
+  const read = <T>(functionName: string, args: readonly unknown[] = []) =>
+    ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName, args, ...at } as never) as Promise<T>;
+
+  const s = await ctx.pub.readContract({ address: lens, abi: covenantLensAbi, functionName: "snapshot", args: [vault], ...at });
   const key = keyOf(s);
+  const quote = s.quoteIsCurrency0 ? key.currency0 : key.currency1;
+  if (quote !== zeroAddress) throw new UnsupportedQuote(vault, quote);
   const token = s.quoteIsCurrency0 ? key.currency1 : key.currency0;
   const [sqrtP, symbol, c0, c1, principalOwed, treasury, pendingIssuer, ...perHolder] = await Promise.all([
-    readSqrtPrice(ctx, poolIdOf(key)),
+    readSqrtPrice(ctx, poolIdOf(key), block.number),
     symbolOf(ctx, token),
     read<bigint>("curatorFees0", [s.curator]),
     read<bigint>("curatorFees1", [s.curator]),
@@ -189,7 +229,7 @@ export async function readVaultView(ctx: ChainCtx, vault: Address): Promise<Vaul
     block: block.number,
     time: Number(block.timestamp),
     sqrtP: sqrtP as bigint,
-    symbol: symbol as string,
+    symbol: symbol as string | null,
     curatorFees: [c0 as bigint, c1 as bigint],
     principalOwed: principalOwed as readonly [bigint, bigint],
     holders,
@@ -261,7 +301,7 @@ function buildView(s: LensState, x: Extras): VaultView {
   const setupEndsAt = Number(s.setupEndsAt);
   const unlockStartsAt = Number(s.unlockStartsAt);
   const fullyVestedAt = Number(s.fullyVestedAt);
-  const vested = !adopted || time < unlockStartsAt ? 0 : fullyVestedAt <= unlockStartsAt ? 1 : Math.min(1, (time - unlockStartsAt) / (fullyVestedAt - unlockStartsAt));
+  const vested = vestedFraction(adopted, time, unlockStartsAt, fullyVestedAt);
   const MAX = 2n ** 255n;
 
   return {
@@ -274,7 +314,8 @@ function buildView(s: LensState, x: Extras): VaultView {
     quoteIs0: q0,
     quoteSymbol: "ETH",
     token,
-    tokenSymbol: x.symbol,
+    tokenSymbol: x.symbol ?? shortAddress(token),
+    symbolRead: x.symbol !== null,
     tickSpacing: key.tickSpacing,
     feePips: key.fee,
     terms,
@@ -285,7 +326,8 @@ function buildView(s: LensState, x: Extras): VaultView {
     anchor,
     ceiling: anchor + terms.guardTicks,
     band,
-    guard: { ok: s.guardPasses, diff: Math.abs(spot - twap), limit: terms.guardTicks },
+    // The gap the contract measures (CovenantLens._prices): the pool's integer tick against the TWAP tick.
+    guard: { ok: s.guardPasses, diff: Math.abs(s.spotPrice - s.twapPrice), limit: terms.guardTicks },
     support: { have: Number(s.supportBps), need: terms.supportBps, inBand, total },
     pace: { setup: adopted && time < setupEndsAt, setupEndsAt, available: s.paceAvailable >= MAX ? 1 : Number(s.paceAvailable) / 1e9, cap: terms.paceBps / 1e4 },
     lock: { adoptedAt: Number(s.adoptedAt), unlockStartsAt, fullyVestedAt, vested, withdrawable: Number(s.principalWithdrawable) / WAD },
@@ -324,8 +366,19 @@ function buildView(s: LensState, x: Extras): VaultView {
   };
 }
 
-/** Who an address is in the demo, for display. */
-export const whoIs = (a: Address | null | undefined) => actorOf(a ?? undefined);
+/**
+ * The share of the principal vested at `time`, as CovenantVault.principalWithdrawable counts it: in whole principal
+ * shares (1e18), rounded down, so the page never shows more vested than the contract would release.
+ */
+export function vestedFraction(adopted: boolean, time: number, unlockStartsAt: number, fullyVestedAt: number): number {
+  if (!adopted || time < unlockStartsAt) return 0;
+  const vestFor = fullyVestedAt - unlockStartsAt;
+  if (time - unlockStartsAt >= vestFor) return 1;
+  return Number((PRINCIPAL_SHARES * BigInt(time - unlockStartsAt)) / BigInt(vestFor)) / Number(PRINCIPAL_SHARES);
+}
+
+/** Who an address is in the demo, for display: the dev accounts' role names, on a dev chain only. */
+export const whoIs = (a: Address | null | undefined, devChain = true) => (devChain ? actorOf(a ?? undefined) : undefined);
 
 /** A pool-tick range for a price-tick range (Orient.rangeToPool), for building legs. */
 export const poolRange = (v: Pick<VaultView, "quoteIs0">, priceLower: number, priceUpper: number) => rangeToPool(v.quoteIs0, priceLower, priceUpper);

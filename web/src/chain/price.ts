@@ -37,6 +37,12 @@ export const priceAt = (priceTick: number, decimalsShift = 0) => Math.exp(priceT
 export const priceTickOf = (price: number, decimalsShift = 0) => Math.log(price / 10 ** decimalsShift) / LN_BASE;
 /** A tick distance as a percentage move, e.g. 1500 ticks → 16.2%. */
 export const ticksToPct = (ticks: number) => (Math.exp(ticks * LN_BASE) - 1) * 100;
+/**
+ * How far below a price `ticks` reaches, in percent: 1 − 1.0001^−ticks. For a band or a distance under the price (the
+ * support band sits below the TWAP), where ticksToPct, the rise over `ticks`, would overstate it: 1500 ticks are 13.9%
+ * below, not 16.2%.
+ */
+export const ticksBelowPct = (ticks: number) => (1 - Math.exp(-ticks * LN_BASE)) * 100;
 
 // ---------------------------------------------------------------------------------------------------- amounts
 

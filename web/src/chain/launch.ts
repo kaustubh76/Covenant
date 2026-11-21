@@ -389,11 +389,25 @@ export function bid(ctx: ChainCtx, launch: Launch, bidder: Actor, maxPrice: bigi
 
 /** `owner`'s bids in the auction, as it holds them: each one's grid price and the ETH it committed. */
 export async function ownBids(ctx: ChainCtx, launch: Pick<Launch, "auction">, owner: Address): Promise<PlacedBid[]> {
+  return (await allBids(ctx, launch)).filter((b) => b.owner.toLowerCase() === owner.toLowerCase()).map(({ maxPrice, amount }) => ({ maxPrice, amount }));
+}
+
+/** A bid as the auction holds it: who placed it, its price limit (Q96) and the currency it put in (wei). */
+export interface AuctionBid extends PlacedBid {
+  id: number;
+  owner: Address;
+}
+
+/**
+ * Every bid in the auction, read from the auction itself (`nextBidId`, then `bids(i)`): everyone's, not only this
+ * browser's. What a chart of the auction's demand is drawn from once the auction exists.
+ */
+export async function allBids(ctx: ChainCtx, launch: Pick<Launch, "auction">): Promise<AuctionBid[]> {
   const next = await ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "nextBidId" });
   const all = await Promise.all(
     Array.from({ length: Number(next) }, (_, i) => ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "bids", args: [BigInt(i)] })),
   );
-  return all.filter((b) => b.owner.toLowerCase() === owner.toLowerCase()).map((b) => ({ maxPrice: b.maxPrice, amount: b.amountQ96 >> 96n }));
+  return all.map((b, id) => ({ id, owner: b.owner, maxPrice: b.maxPrice, amount: b.amountQ96 >> 96n }));
 }
 
 /** Called while a public chain is waited on: the latest block, and the one the next step needs. */

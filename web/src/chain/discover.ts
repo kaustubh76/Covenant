@@ -1,5 +1,6 @@
 import type { Address } from "viem";
 import { covenantFactoryAbi, covenantVaultAbi, lbpStrategyAbi, testTokenAbi } from "./abi.generated";
+import { shortAddress } from "./accounts";
 import type { ChainCtx } from "./client";
 import { scanLogs } from "./logs";
 import type { LaunchRecord } from "./network";
@@ -67,15 +68,18 @@ export async function discoverLaunches(ctx: ChainCtx, known: readonly LaunchReco
       if (!ctx.net.caps.devChain) notVaults.add(id);
       continue;
     }
+    // Only a symbol actually read is kept. One that could not be read is shown as the token's address, never a made-up
+    // name, and the launch is not cached, so the next scan reads it again.
     const tokenId = `${ctx.net.key}:${f.token.toLowerCase()}`;
     let symbol = ctx.net.caps.devChain ? undefined : symbols.get(tokenId);
     if (!symbol) {
-      symbol = await ctx.pub.readContract({ address: f.token, abi: testTokenAbi, functionName: "symbol" }).catch(() => "TOKEN");
-      if (!ctx.net.caps.devChain) symbols.set(tokenId, symbol);
+      const read = await ctx.pub.readContract({ address: f.token, abi: testTokenAbi, functionName: "symbol" }).catch(() => null);
+      if (read && !ctx.net.caps.devChain) symbols.set(tokenId, read);
+      symbol = read || undefined;
     }
     const adoptedAt = await ctx.pub.readContract({ address: f.vault, abi: covenantVaultAbi, functionName: "adoptedAt" });
-    const record: LaunchRecord = { ...f, symbol, adopted: adoptedAt > 0n };
-    if (record.adopted && !ctx.net.caps.devChain) adopted.set(id, record);
+    const record: LaunchRecord = { ...f, symbol: symbol ?? shortAddress(f.token), adopted: adoptedAt > 0n };
+    if (record.adopted && symbol && !ctx.net.caps.devChain) adopted.set(id, record);
     out.push(record);
     listed.set(id, record);
   }
