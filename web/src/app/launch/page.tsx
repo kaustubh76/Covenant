@@ -203,7 +203,8 @@ export default function LaunchPage() {
     };
   }, [ctx, launch, plan, view?.block]);
   const auctionLive = !!launch && (phase === "bidding" || phase === "bid" || phase === "closed");
-  const bidsTick = Math.floor(Number(view?.block ?? 0n) / 10);
+  // Read again as blocks come: every block on a dev chain (they only come with transactions), every tenth on a public one.
+  const bidsTick = isPublic ? Math.floor(Number(view?.block ?? 0n) / 10) : Number(view?.block ?? 0n);
   useEffect(() => {
     if (!ctx || !launch || (!auctionLive && chainBids)) return;
     let live = true;
