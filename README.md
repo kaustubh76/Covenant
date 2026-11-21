@@ -235,7 +235,7 @@ CI (`.github/workflows/ci.yml`) runs the formatting check, the size gate and `fo
 make demo        # Anvil, Uniswap's launch stack and Covenant, a seeded launch, and the app on http://localhost:3000/?net=local
 ```
 
-It needs Foundry (`forge`, `anvil`) and Node 22.14 or newer (24 recommended, as in `.nvmrc`). The bring-up takes a few seconds:
+It needs Foundry (`forge`, `anvil`) and Node 22.14 or newer (24 recommended, as in `.nvmrc`). The first run also compiles the contracts (251 files) and installs the app's packages, which takes some minutes; the app then builds each page on its first visit. After that, the bring-up takes a few seconds:
 1. Start Anvil with a fixed clock: one second per block, no fees.
 2. Deploy Uniswap v4, the Liquidity Launcher's `LBPStrategy`, the CCA factory and Covenant from the pinned sources (`script/LocalStack.s.sol`).
 3. Run a real launch end to end: vault, auction, bids, migration, adoption and the demand-shaped seed.
