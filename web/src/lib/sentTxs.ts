@@ -19,6 +19,14 @@ export interface SentTx {
 const KEY = (chainId: number) => `covenant.sent.${chainId}`;
 const LIMIT = 50;
 
+/**
+ * Whether a network's sends are kept: only where a public explorer can show them later. The rehearsal fork shares Base
+ * Sepolia's chain id but mines only on this machine, so its sends would be listed as Base Sepolia's, linked to nothing.
+ */
+export function keepsSent(caps: { explorer?: string }): boolean {
+  return !!caps.explorer;
+}
+
 export function readSent(chainId: number): SentTx[] {
   try {
     const raw = localStorage.getItem(KEY(chainId));

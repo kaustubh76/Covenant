@@ -15,7 +15,7 @@ import { ROLES, type Role, useChain } from "@/store/chain";
 import { Dock } from "@/components/dock/Dock";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
-import { rememberSent } from "@/lib/sentTxs";
+import { keepsSent, rememberSent } from "@/lib/sentTxs";
 import { useRelay } from "@/lib/useRelay";
 
 const NAV = [
@@ -393,11 +393,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const { netKey, setNetwork } = useChain.getState();
     if (netKey && isNetworkKey(wanted) && wanted !== netKey) void setNetwork(wanted);
   }, [path]);
-  // What this browser sends on a public chain is kept, with its hash, beyond this visit (the ledger's "Yours").
+  // What this browser sends on a public chain is kept, with its hash, beyond this visit (the ledger's "Yours"). Not the
+  // rehearsal fork's: it has no explorer to link to, and its chain id is Base Sepolia's.
   useEffect(
     () =>
       useChain.subscribe((s, prev) => {
-        if (s.log === prev.log || !s.net || s.net.caps.devChain) return;
+        if (s.log === prev.log || !s.net || !keepsSent(s.net.caps)) return;
         const before = new Set(prev.log.map((b) => b.id));
         rememberSent(s.net.chainId, s.log.filter((b) => !before.has(b.id)));
       }),
