@@ -15,9 +15,17 @@ import { sanitizeLaunches } from "@/chain/remembered";
 import { type Party, StepFailed, isAddressParty } from "@/chain/tx";
 import { type VaultView, readVaultView } from "@/chain/view";
 import { type DiscoveredWallet, discoverWallets, requestAccount, switchWalletTo, walletChainId, walletMessage, watchWallet } from "@/chain/wallet";
-import { SnapshotGone, revertTo, snapshot } from "@/chain/time";
+import { type SavePoint, type SnapRecord, type StoredSavePoints, afterRevert, sanitizeStored, snapshotId, stillListed } from "@/chain/snapguard";
+import { type Gone, SnapshotGone, chainSnapshots, onReverted, revertTo, takeSnapshot } from "@/chain/time";
 
 export type Role = "holder" | "issuer" | "curator" | "keeper" | "lp";
+
+/** A save point as the store holds it: its snapshot, the chain's clock then, and the record a revert is checked by. */
+export interface StorePoint {
+  id: Hex;
+  at: number;
+  record: SnapRecord | null;
+}
 
 export const ROLES: { key: Role; name: string; does: string }[] = [
   { key: "holder", name: "Holder", does: "Watches the vault" },
@@ -124,8 +132,12 @@ interface ChainState {
   record(beats: BeatInput | BeatInput[], opts?: { toast?: boolean }): void;
   dismissToast(): void;
   reset(): Promise<boolean>;
-  /** Save points on a dev chain, newest last: snapshots to come back to, clock and all. Session only. */
-  savePoints: { id: Hex; at: number }[];
+  /**
+   * Save points on a dev chain, newest last: snapshots to come back to, clock and all. Kept in this browser per network
+   * and per chain (`record` says which), so a reload, another tab or a trip to another network keeps them; `record` is
+   * null only on a chain that does not say what snapshots it holds, where they last as long as the page.
+   */
+  savePoints: StorePoint[];
   /**
    * Bumped whenever the chain behind the app is not the one it was: another network, a reset, a fresh Playground chain
    * after the last one stopped, a return to a save point. A page that keeps chain state of its own (the launch desk)
@@ -143,6 +155,8 @@ const WALLET_KEY = "covenant.wallet";
 const vaultKey = (net: NetworkKey) => (net === "local" ? "covenant.vault" : `covenant.vault.${net}`);
 /** Public chains: the launches this browser has seen, so one older than the recent log window is still listed. */
 const launchesKey = (net: NetworkKey) => `covenant.launches.${net}`;
+/** Dev chains: the save points this browser keeps, all on one chain (Anvil's instance id says which). */
+const savePointsKey = (net: NetworkKey) => `covenant.savepoints.v1.${net}`;
 const LOG_LIMIT = 200;
 
 let seq = 0;
@@ -159,6 +173,11 @@ let networksRetry: ReturnType<typeof setTimeout> | null = null;
 let unwallets: (() => void) | null = null;
 let unwallet: (() => void) | null = null;
 let restoring = false;
+/** The chain the save points on screen belong to: the stored ones for `net` are read and written under `instance`. */
+let pointsOn: { net: NetworkKey; url: string; instance: Hex } | null = null;
+/** The save points could not be read back at connect (no answer): try again on the next block. */
+let restorePending = false;
+let mirroring = false;
 
 const message = (e: unknown) => (e instanceof Error ? e.message.split("\n")[0] : String(e));
 function load(key: string): string | null {
@@ -201,6 +220,73 @@ function save(key: string, value: string | null) {
     /* private mode */
   }
 }
+
+/** The save points stored for `net`, on chain `instance`; none when the record is another chain's, or unreadable. */
+function storedPoints(net: NetworkKey, instance: Hex): StorePoint[] {
+  const kept = readStored(net);
+  if (!kept || kept.instance !== instance.toLowerCase()) return [];
+  return kept.points.map(({ at, ...record }) => ({ id: record.id, at, record }));
+}
+
+/** The save point record stored for `net`, as far as it still reads as one. */
+function readStored(net: NetworkKey): StoredSavePoints | null {
+  try {
+    return sanitizeStored(JSON.parse(load(savePointsKey(net)) ?? "null"));
+  } catch {
+    return null;
+  }
+}
+
+/** Store `points` as `net`'s save points on chain `instance` (only those taken there), or clear the record. */
+function storePoints(net: NetworkKey, instance: Hex, points: StorePoint[]) {
+  const mine: SavePoint[] = points.flatMap((p) => (p.record && p.record.instance === instance.toLowerCase() ? [{ ...p.record, at: p.at }] : []));
+  save(savePointsKey(net), mine.length ? JSON.stringify({ instance: instance.toLowerCase(), points: mine }) : null);
+}
+
+/**
+ * Read the save points back for the chain the app is on: the ones stored for it that the chain still holds (snapguard.ts
+ * says how that is told). A record of another chain (the local chain restarted, a fresh Playground chain) is dropped.
+ */
+export async function restoreSavePoints(ctx: ChainCtx, stale: () => boolean = () => false): Promise<void> {
+  const now = await chainSnapshots(ctx).catch(() => undefined);
+  if (stale()) return;
+  restorePending = now === undefined;
+  if (!now) return; // no answer (tried again on the next block), or a chain that does not say: memory only, as before
+  const net = ctx.net.key;
+  pointsOn = { net, url: ctx.net.rpcUrl, instance: now.instance };
+  const stored = readStored(net);
+  const points = storedPoints(net, now.instance).filter((p) => p.record && stillListed(p.record, now).ok);
+  if (stored && (stored.instance !== now.instance || stored.points.length !== points.length)) storePoints(net, now.instance, points);
+  useChain.setState({ savePoints: points });
+  if (!mirroring && typeof window !== "undefined") {
+    mirroring = true;
+    // Another tab took, used or dropped a save point on the same chain: show the same list.
+    window.addEventListener("storage", (e) => {
+      const on = pointsOn;
+      if (on && e.key === savePointsKey(on.net) && useChain.getState().netKey === on.net) useChain.setState({ savePoints: storedPoints(on.net, on.instance) });
+    });
+  }
+}
+
+/**
+ * After a revert sent from this page (a save point, the guided demo, the attack lab, a sandbox): drop the save points it
+ * took with it. Anvil drops every snapshot from the reverted id on, whatever it answers.
+ */
+function dropReverted(url: string, id: Hex, gone: Gone) {
+  const s = useChain.getState();
+  if (!s.net?.caps.devChain || s.net.rpcUrl !== url) return;
+  const r = snapshotId(id);
+  const rule = (list: StorePoint[]) => (gone === "all" ? [] : gone === "one" ? list.filter((p) => snapshotId(p.id) !== r) : afterRevert(list, id));
+  const on = pointsOn;
+  if (on && on.url === url) {
+    const kept = rule(storedPoints(on.net, on.instance));
+    storePoints(on.net, on.instance, kept);
+    useChain.setState({ savePoints: kept });
+  } else {
+    useChain.setState({ savePoints: rule(s.savePoints) });
+  }
+}
+onReverted(dropReverted);
 
 /** The network to open: ?net= first (a shared link), then the one last chosen in this browser. */
 function chosenNetwork(): NetworkKey | null {
@@ -331,6 +417,8 @@ export const useChain = create<ChainState>((set, get) => ({
     // A fresh Playground chain replaced one that had stopped: the save points were snapshots of the old one.
     set({ net, ctx, launches, vault, status: "ready", reason: null, ...(fresh ? { savePoints: [], chainEpoch: get().chainEpoch + 1 } : {}) });
     if (fresh) get().record(note("anyone", "A fresh Playground chain", "Your last one had stopped (it sat idle, or the backend restarted), so this one starts from the seed again."), { toast: true });
+    // The save points this browser kept on this chain, the ones it still holds (none on another chain).
+    if (net.caps.devChain) void restoreSavePoints(ctx, stale);
     await get().refresh();
     if (stale()) return;
     unwatch?.();
@@ -363,6 +451,8 @@ export const useChain = create<ChainState>((set, get) => ({
     // back reads its recent window afresh (a restarted fork shares nothing with the one before).
     refreshSeq++;
     if (left && left !== key) forgetScans(left);
+    pointsOn = null;
+    restorePending = false;
     set({
       netKey: key,
       status: "connecting",
@@ -475,6 +565,10 @@ export const useChain = create<ChainState>((set, get) => ({
     }
     if (mine !== refreshSeq) return;
     set({ view, reason: null });
+    if (restorePending && ctx.net.caps.devChain) {
+      restorePending = false;
+      void restoreSavePoints(ctx, () => get().ctx !== ctx);
+    }
     try {
       const [activity, launches] = await Promise.all([readActivity(ctx, view), discoverLaunches(ctx, rememberedLaunches(ctx.net))]);
       if (mine === refreshSeq) {
@@ -568,12 +662,18 @@ export const useChain = create<ChainState>((set, get) => ({
         if (playground.runtime) set({ net: { ...playground, runtime: { ...playground.runtime, baselineSnapshot } } });
         return true;
       }
-      const r = await fetch("/api/chain/reset", { method: "POST" }).then((x) => x.json() as Promise<{ ok: boolean; reason?: string }>);
+      const r = await fetch("/api/chain/reset", { method: "POST" }).then((x) => x.json() as Promise<{ ok: boolean; reason?: string; baselineSnapshot?: Hex }>);
       if (!r.ok) throw new Error(r.reason ?? "reset failed");
+      // The new baseline, as the Playground's above: the guided demo keys its snapshots on it, so it starts over.
+      const local = get().net;
+      if (local?.runtime && r.baselineSnapshot) set({ net: { ...local, runtime: { ...local.runtime, baselineSnapshot: r.baselineSnapshot } } });
       return true;
     });
     if (done) {
       const net = get().net;
+      // Every save point went with the reset (it reverted to the baseline, taken before them all).
+      if (net) save(savePointsKey(net.key), null);
+      pointsOn = null;
       set({ log: [], history: [], seen: null, toast: null, savePoints: [], chainEpoch: get().chainEpoch + 1 });
       if (net?.runtime) await get().selectVault(net.runtime.defaultVault);
     }
@@ -583,8 +683,8 @@ export const useChain = create<ChainState>((set, get) => ({
   async savePoint() {
     if (!get().net?.caps.devChain) return;
     await get().run("Taking a save point", async (ctx, rec) => {
-      const id = await snapshot(ctx);
-      set({ savePoints: [...get().savePoints, { id, at: get().view?.time ?? 0 }] });
+      const { id, record } = await takeSnapshot(ctx);
+      keepPoint(ctx, { id, at: get().view?.time ?? 0, record });
       rec.record(note("anyone", "Save point taken", "Back to it returns the chain exactly here, clock included"), { toast: true });
     });
   },
@@ -594,22 +694,53 @@ export const useChain = create<ChainState>((set, get) => ({
     if (!top || !get().net?.caps.devChain) return;
     await get().run("Going back to the save point", async (ctx, rec) => {
       try {
-        await revertTo(ctx, top.id);
+        await revertTo(ctx, top.id, top.record);
       } catch (e) {
         if (!(e instanceof SnapshotGone)) throw e;
-        // The chain was reset or replaced since (another tab's reset, a fresh Playground chain): none of the save
-        // points taken on it is there any more, and nothing moved.
-        set({ savePoints: [] });
-        rec.record({ actor: "anyone", title: "Back to the save point", ok: false, error: { name: "NotSent", args: [], signature: "Save point gone", rule: "Other", reason: e.message } }, { toast: true });
+        // Nothing was sent (gone, restarted), or the revert did not finish cleanly (torn). The ones the chain no longer
+        // holds are dropped; the rest stay, newest last.
+        const left = await recheckPoints(ctx);
+        const more = left ? ` ${left} earlier save point${left === 1 ? " is" : "s are"} still there.` : "";
+        const error = e.why === "torn" ? { name: "Error", signature: "Went back partway" } : { name: "NotSent", signature: "Save point gone" };
+        rec.record({ actor: "anyone", title: "Back to the save point", ok: false, error: { ...error, args: [], rule: "Other", reason: e.message + more } }, { toast: true });
         return;
       }
-      // Anvil consumes a snapshot when it reverts to it: take it again, so the same point can be returned to.
-      const id = await snapshot(ctx);
-      set({ savePoints: [...get().savePoints.slice(0, -1), { ...top, id }], chainEpoch: get().chainEpoch + 1 });
+      // Anvil uses a snapshot up when it goes back to it: take it again, so the same point can be returned to.
+      const again = await takeSnapshot(ctx);
+      keepPoint(ctx, { id: again.id, at: top.at, record: again.record });
+      set({ chainEpoch: get().chainEpoch + 1 });
       rec.record(note("anyone", "Back at the save point", "The chain is as it was when the point was taken"), { toast: true });
     });
   },
 }));
+
+/**
+ * Add a save point. On a chain that says what it holds, the stored list is the truth (another tab may have added or
+ * dropped points): it is appended to and shown; elsewhere the point lives in this page only.
+ */
+function keepPoint(ctx: ChainCtx, point: StorePoint) {
+  const { record } = point;
+  if (!record) {
+    useChain.setState({ savePoints: [...useChain.getState().savePoints, point] });
+    return;
+  }
+  pointsOn = { net: ctx.net.key, url: ctx.net.rpcUrl, instance: record.instance };
+  const points = [...storedPoints(ctx.net.key, record.instance).filter((p) => p.id !== point.id), point];
+  storePoints(ctx.net.key, record.instance, points);
+  useChain.setState({ savePoints: points });
+}
+
+/** Keep only the save points the chain still holds; how many are left. */
+async function recheckPoints(ctx: ChainCtx): Promise<number> {
+  const now = await chainSnapshots(ctx).catch(() => null);
+  const on = pointsOn;
+  if (!now || !on || on.url !== ctx.net.rpcUrl) return useChain.getState().savePoints.length;
+  const points = storedPoints(on.net, now.instance).filter((p) => p.record && stillListed(p.record, now).ok);
+  storePoints(on.net, now.instance, points);
+  pointsOn = { ...on, instance: now.instance };
+  useChain.setState({ savePoints: points });
+  return points.length;
+}
 
 /** Set the wallet and rebuild the chain context around it, then read the vault again (balances, shares, roles). */
 function setWallet(wallet: WalletState | null) {

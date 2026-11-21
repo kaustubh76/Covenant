@@ -29,6 +29,7 @@ import { ATTACKS, type AttackRun, runAttacks } from "../src/chain/scenarios/atta
 import { DEMO_STEPS, emptyDemo } from "../src/chain/scenarios/demo";
 import { collectingKit } from "../src/chain/scenarios/kit";
 import { discoverLaunches } from "../src/chain/discover";
+import { advance, revertTo, setSnapshotSender, takeSnapshot } from "../src/chain/time";
 import { readVaultView } from "../src/chain/view";
 
 const ctx = createChainCtx(readNetwork(inject("rpcUrl"), inject("deployments")));
@@ -169,5 +170,44 @@ describe("an undersold launch", () => {
     const v = await readVaultView(ctx, launch.vault);
     expect(v.support.have).toBeGreaterThanOrEqual(v.support.need);
     expect(await settleBids(ctx, launch, "bob", { claim: true })).toEqual({ exited: 2, claimed: 2 });
+  });
+});
+
+describe("save points, on real Anvil (src/chain/snapguard.ts)", () => {
+  const latest = () => ctx.pub.getBlock({ blockTag: "latest" });
+
+  it("refuses one a revert went past, without sending it, and the chain stays whole", async () => {
+    const demo = await takeSnapshot(ctx); // the guided demo, before a step
+    await advance(ctx, 3600);
+    const save = await takeSnapshot(ctx); // the Dock's Save
+    await advance(ctx, 3600);
+    await revertTo(ctx, demo.id); // the demo's Start over
+    const head = await latest();
+    await expect(revertTo(ctx, save.id, save.record)).rejects.toMatchObject({ name: "SnapshotGone", why: "gone" });
+    // Anvil would have pointed the head at a block it no longer has; nothing went, so the head is the real block
+    const after = await latest();
+    expect(after.hash).toBe(head.hash);
+    expect(after.number).toBe(head.number);
+  });
+
+  it("refuses one made stale at its own block, where only the count below it shows", async () => {
+    const s1 = await takeSnapshot(ctx);
+    const s2 = await takeSnapshot(ctx); // the same block
+    await revertTo(ctx, s1.id);
+    await advance(ctx, 60);
+    const before = await latest();
+    await expect(revertTo(ctx, s2.id, s2.record)).rejects.toMatchObject({ why: "gone" });
+    expect((await latest()).hash).toBe(before.hash);
+  });
+
+  it("goes back to one kept across a reload, by the record it carries, clock and all", async () => {
+    const s = await takeSnapshot(ctx);
+    const at = await latest();
+    await advance(ctx, 86_400);
+    setSnapshotSender(null); // a new page: nothing remembered in memory
+    await revertTo(ctx, s.id, s.record);
+    const back = await latest();
+    expect(back.hash).toBe(at.hash);
+    expect(back.timestamp).toBe(at.timestamp);
   });
 });

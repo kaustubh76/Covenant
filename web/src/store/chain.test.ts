@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { addressOf } from "@/chain/accounts";
 import type { Network, NetworkKey } from "@/chain/network";
 import type { Beat } from "@/chain/beat";
-import { canSendAs, feed, isHostedCopy, offeredDevNetwork, useChain } from "./chain";
+import type { ChainCtx } from "@/chain/client";
+import { FakeAnvil } from "@/chain/fakeanvil.testkit";
+import { revertTo, setSnapshotSender, snapshot } from "@/chain/time";
+import { canSendAs, feed, isHostedCopy, offeredDevNetwork, restoreSavePoints, useChain } from "./chain";
 
 const list = (...n: [NetworkKey, "ready" | "offline"][]) => ({ networks: n.map(([key, state]) => ({ key, name: key, state })) });
 
@@ -97,5 +100,102 @@ describe("feed: what the activity panel lists", () => {
     const settled = beat({ id: "settled", at: 5, hash: HASH, detail: "Paid 1 ETH", vault: A });
     const event = beat({ id: "chain-1", at: 5, hash: HASH, source: "chain" });
     expect(feed([settled], [event], 10, A).map((b) => b.id)).toEqual(["settled"]);
+  });
+});
+
+describe("save points: kept across a reload, per chain, and never sent when gone", () => {
+  const KEY = "covenant.savepoints.v1.local";
+  let chain: FakeAnvil;
+  let store: Map<string, string>;
+  const net = { key: "local", name: "Local chain", chainId: 31337, rpcUrl: "http://127.0.0.1:8545", caps: { devChain: true, pollMs: 500, blockTimeMs: 1000 }, runtime: null } as unknown as Network;
+  const ctx = { net, test: {}, pub: {} } as unknown as ChainCtx;
+  const stored = () => JSON.parse(store.get(KEY) ?? "null") as { instance: string; points: { id: string; at: number }[] } | null;
+  const at = (time: number) => useChain.setState({ view: { time } as never });
+
+  beforeEach(() => {
+    chain = new FakeAnvil();
+    setSnapshotSender(chain.send);
+    store = new Map();
+    vi.stubGlobal("localStorage", { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v), removeItem: (k: string) => void store.delete(k) });
+    useChain.setState({ net, ctx, netKey: "local", status: "ready", vault: null, view: null, savePoints: [], log: [], toast: null, busy: null });
+  });
+  afterEach(() => {
+    setSnapshotSender(null);
+    vi.unstubAllGlobals();
+  });
+
+  it("are stored as they are taken, read back after a reload, and the newest is gone back to", async () => {
+    at(100);
+    await useChain.getState().savePoint();
+    chain.mine(4);
+    at(200);
+    await useChain.getState().savePoint();
+    expect(stored()?.instance).toBe(chain.instance);
+    expect(stored()?.points.map((p) => p.at)).toEqual([100, 200]);
+
+    // a reload: the page forgets, the browser and the chain do not
+    useChain.setState({ savePoints: [] });
+    await restoreSavePoints(ctx);
+    expect(useChain.getState().savePoints.map((p) => p.at)).toEqual([100, 200]);
+
+    chain.mine(3);
+    await useChain.getState().backToSavePoint();
+    expect(chain.state).toBe(4);
+    expect(useChain.getState().toast?.title).toBe("Back at the save point");
+    // taken again (Anvil used it up), at the same clock
+    expect(useChain.getState().savePoints.map((p) => p.at)).toEqual([100, 200]);
+    expect(stored()?.points).toHaveLength(2);
+  });
+
+  it("are dropped when the chain is another one (a restarted local chain, a fresh Playground chain)", async () => {
+    await useChain.getState().savePoint();
+    expect(stored()?.points).toHaveLength(1);
+    const fresh = new FakeAnvil(2);
+    fresh.snapshot(); // the same id, on another chain
+    setSnapshotSender(fresh.send);
+    useChain.setState({ savePoints: [] });
+    await restoreSavePoints(ctx);
+    expect(useChain.getState().savePoints).toEqual([]);
+    expect(stored()).toBeNull();
+  });
+
+  it("a revert past one (the guided demo's Start over) drops it at once; Back to save then sends nothing", async () => {
+    const demo = await snapshot(ctx);
+    chain.mine(8);
+    await useChain.getState().savePoint();
+    await revertTo(ctx, demo);
+    expect(useChain.getState().savePoints).toEqual([]);
+    expect(stored()).toBeNull();
+  });
+
+  it("one gone from under the page (another tab, a tool): said, nothing sent, and the earlier ones kept", async () => {
+    await useChain.getState().savePoint();
+    chain.mine(2);
+    const between = chain.snapshot(); // another tab's
+    chain.mine(2);
+    await useChain.getState().savePoint();
+    chain.revert(between); // that tab goes back: the newest save point is gone, the first is not
+    const from = chain.calls.length;
+    await useChain.getState().backToSavePoint();
+    expect(chain.calls.slice(from)).not.toContain("evm_revert");
+    const toast = useChain.getState().toast;
+    expect(toast?.ok).toBe(false);
+    expect(toast?.error?.signature).toBe("Save point gone");
+    expect(toast?.error?.reason).toMatch(/1 earlier save point is still there/);
+    expect(useChain.getState().savePoints).toHaveLength(1);
+    expect(stored()?.points).toHaveLength(1);
+  });
+
+  it("Reset clears them, and the local chain's new baseline reaches the app (the guided demo keys on it)", async () => {
+    useChain.setState({ net: { ...net, runtime: { rpcUrl: net.rpcUrl, defaultVault: "0x00000000000000000000000000000000000000aa", launches: [], seededAt: 0, baselineSnapshot: "0x0" } } as Network });
+    await useChain.getState().savePoint();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ ok: true, baselineSnapshot: "0x9" }))),
+    );
+    expect(await useChain.getState().reset()).toBe(true);
+    expect(stored()).toBeNull();
+    expect(useChain.getState().savePoints).toEqual([]);
+    expect(useChain.getState().net?.runtime?.baselineSnapshot).toBe("0x9");
   });
 });
