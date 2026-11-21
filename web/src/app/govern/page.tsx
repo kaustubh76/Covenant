@@ -8,7 +8,10 @@ import { ACTOR_LABEL, type Who, shortAddress } from "@/chain/accounts";
 import { beatOf } from "@/chain/beat";
 import { vaultEvents } from "@/chain/preflight";
 import { type Party, send } from "@/chain/tx";
+import { BOUNTY_RESERVE } from "@/chain/constants";
+import { POWERS, POWER_COLUMNS, powerRow } from "@/chain/powers";
 import { whoIs } from "@/chain/view";
+import { fact } from "@/lib/fact";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { Button, Meter, PageHeader, Panel, Row, Tag } from "@/components/ui";
 import { amt, duration } from "@/lib/format";
@@ -18,19 +21,7 @@ import { RelayButton } from "@/components/controls/RelayButton";
 import { AddressInput, parseAddress } from "@/components/controls/AddressInput";
 import { OnRecord } from "@/components/covenant/OnRecord";
 
-const POWERS: [string, boolean[]][] = [
-  ["Move liquidity along the price axis, within the rules", [false, true, false, false]],
-  ["Withdraw launch liquidity before it vests", [false, false, false, false]],
-  ["Withdraw vested principal, to the treasury only", [true, false, false, false]],
-  ["Propose a new curator (timelocked)", [true, false, false, false]],
-  ["Accept the new curator after the timelock", [true, true, true, true]],
-  ["Collect the principal's fees to the treasury", [true, true, true, true]],
-  ["Claim the curator's fee share", [false, true, false, false]],
-  ["Restore support for a bounty", [true, true, true, true]],
-  ["Deposit and withdraw in kind", [true, true, true, true]],
-  ["Sync the Anchor (poke)", [true, true, true, true]],
-  ["Change the covenant's terms", [false, false, false, false]],
-];
+
 
 const eth = (x: unknown) => Number(formatEther((x as bigint) ?? 0n));
 
@@ -87,14 +78,14 @@ export default function GovernPage() {
   const open: Party = publicChain ? "holder" : party;
   const openLabel: Who = publicChain ? "anyone" : actor;
   const mine = (p: Party) => canSendAs(p, net, wallet);
-  const current = whoIs(v.people.curator);
+  const current = whoIs(v.people.curator, !publicChain);
   const candidate = current === "newCurator" ? "curator" : "newCurator";
   const pending = v.people.pendingCurator;
   const left = v.people.curatorReadyAt - v.time;
   const t = v.terms;
   const who = (a: `0x${string}` | null) => {
     if (!a) return "None";
-    const known = whoIs(a);
+    const known = whoIs(a, !publicChain);
     if (known) return `${ACTOR_LABEL[known]} · ${shortAddress(a)}`;
     return wallet && isAddressEqual(wallet.address, a) ? `Your wallet · ${shortAddress(a)}` : shortAddress(a);
   };
@@ -122,8 +113,8 @@ export default function GovernPage() {
   const issuerParty: Party = publicChain ? v.people.issuer : party;
   const issuerOnly = publicChain && !mine(v.people.issuer) ? `Only ${shortAddress(v.people.issuer)} can` : null;
   // The curator's claim pays its sender: it goes as the address it names, or as the dev account that is that address.
-  const curatorParty: Party = publicChain ? v.people.curator : (whoIs(v.people.curator) ?? v.people.curator);
-  const pendingIssuerParty: Party = publicChain ? (v.people.pendingIssuer ?? v.people.issuer) : (whoIs(v.people.pendingIssuer) ?? "holder");
+  const curatorParty: Party = publicChain ? v.people.curator : (whoIs(v.people.curator, true) ?? v.people.curator);
+  const pendingIssuerParty: Party = publicChain ? (v.people.pendingIssuer ?? v.people.issuer) : (whoIs(v.people.pendingIssuer, true) ?? "holder");
 
   const paid = (r: readonly [bigint, bigint]) => {
     const [q, t] = v.quoteIs0 ? r : [r[1], r[0]];
@@ -133,7 +124,7 @@ export default function GovernPage() {
     run(title, async (c, rec) => {
       const o = await send(c, as, { address: v.address, abi: covenantVaultAbi, functionName: "claimCuratorFees", args: [] }, { force: true, describe });
       const r = o.value as readonly [bigint, bigint] | undefined;
-      rec.record(beatOf(o, whoIs(address) ?? "anyone", title, () => (r ? `${paid(r)} to ${who(address)}` : undefined)), { toast: true });
+      rec.record(beatOf(o, whoIs(address, !publicChain) ?? "anyone", title, () => (r ? `${paid(r)} to ${who(address)}` : undefined)), { toast: true });
     });
 
   const collect = () =>
@@ -173,9 +164,15 @@ export default function GovernPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel eyebrow="Curator" title={pending ? "A change is pending" : "Named curator"}>
-          <Row label="Current">{who(v.people.curator)}</Row>
-          <Row label="Pending">{who(pending)}</Row>
-          <Row label="Timelock">{duration(t.curatorTimelock)}</Row>
+          <Row label="Current">
+            <span {...fact("vault.curator", v.people.curator, v.block)}>{who(v.people.curator)}</span>
+          </Row>
+          <Row label="Pending">
+            <span {...fact("vault.pendingCurator", pending ?? "", v.block)}>{who(pending)}</span>
+          </Row>
+          <Row label="Timelock">
+            <span {...fact("vault.terms.curatorTimelock", t.curatorTimelock, v.block)}>{duration(t.curatorTimelock)}</span>
+          </Row>
           {pending && (
             <div className="mt-4">
               <div className="mb-2 flex items-baseline justify-between text-[13px]">
@@ -245,16 +242,22 @@ export default function GovernPage() {
 
         <Panel eyebrow="Income" title="Fees are income, never principal">
           <Row label={`Fee pot`}>
-            {amt(v.fees.pot.quote)} ETH · {amt(v.fees.pot.token)} {sym}
+            <span {...fact("vault.feePot.quote", v.fees.pot.quote, v.block)}>{amt(v.fees.pot.quote)}</span> ETH ·{" "}
+            <span {...fact("vault.feePot.token", v.fees.pot.token, v.block)}>{amt(v.fees.pot.token)}</span> {sym}
           </Row>
           <Row label="Owed to the issuer's principal">
-            {amt(v.fees.principalOwed.quote)} ETH · {amt(v.fees.principalOwed.token)} {sym}
+            <span {...fact("vault.principalOwed.quote", v.fees.principalOwed.quote, v.block)}>{amt(v.fees.principalOwed.quote)}</span> ETH ·{" "}
+            <span {...fact("vault.principalOwed.token", v.fees.principalOwed.token, v.block)}>{amt(v.fees.principalOwed.token)}</span> {sym}
           </Row>
           <Row label="Curator's share, accrued">
-            {amt(v.fees.curator.quote)} ETH · {amt(v.fees.curator.token)} {sym}
+            <span {...fact("vault.curatorFees.quote", v.fees.curator.quote, v.block)}>{amt(v.fees.curator.quote)}</span> ETH ·{" "}
+            <span {...fact("vault.curatorFees.token", v.fees.curator.token, v.block)}>{amt(v.fees.curator.token)}</span> {sym}
           </Row>
-          <Row label="Restore bounty pool">{amt(v.fees.bountyPool)} ETH</Row>
-          <Row label="Pool topped up to">{amt(Number(formatEther(t.bounty)) * 3)} ETH before the treasury is paid</Row>
+          <Row label="Restore bounty pool">
+            <span {...fact("vault.bountyPool", v.fees.bountyPool, v.block)}>{amt(v.fees.bountyPool)}</span> ETH
+          </Row>
+          {/* BOUNTY_RESERVE has no getter: it is pinned to CovenantVault.sol by chain/constants.test.ts */}
+          <Row label="Pool topped up to">{amt(Number(formatEther(t.bounty)) * BOUNTY_RESERVE)} ETH before the treasury is paid</Row>
           <Row label="Fund the pool with">
             <span className="inline-flex items-center gap-1.5">
               <input
@@ -312,8 +315,12 @@ export default function GovernPage() {
       </div>
 
       <Panel className="mt-6" eyebrow="Issuer" title="The issuer role moves in two steps">
-        <Row label="Issuer">{who(v.people.issuer)}</Row>
-        <Row label="Pending">{who(v.people.pendingIssuer)}</Row>
+        <Row label="Issuer">
+          <span {...fact("vault.issuer", v.people.issuer, v.block)}>{who(v.people.issuer)}</span>
+        </Row>
+        <Row label="Pending">
+          <span {...fact("vault.pendingIssuer", v.people.pendingIssuer ?? "", v.block)}>{who(v.people.pendingIssuer)}</span>
+        </Row>
         <div className="mt-4 flex flex-wrap gap-3">
           {!publicChain && (
             <Button disabled={!!busy} onClick={() => call("Start an issuer transfer", "transferIssuer", [useChain.getState().ctx!.address("holder")], () => "The holder account can now accept the issuer role")}>
@@ -342,7 +349,7 @@ export default function GovernPage() {
             <thead>
               <tr className="eyebrow border-b border-line text-left">
                 <th className="py-2.5 font-normal">Action</th>
-                {["Issuer", "Curator", "Keeper", "Anyone"].map((h) => (
+                {POWER_COLUMNS.map((h) => (
                   <th key={h} className="w-24 py-2.5 text-center font-normal">
                     {h}
                   </th>
@@ -350,7 +357,7 @@ export default function GovernPage() {
               </tr>
             </thead>
             <tbody>
-              {POWERS.map(([name, row]) => (
+              {POWERS.map((p) => [p.what, powerRow(p)] as const).map(([name, row]) => (
                 <tr key={name} className="border-b border-line last:border-b-0">
                   <td className={`py-2.5 ${row.some(Boolean) ? "text-ink" : "text-muted"}`}>{name}</td>
                   {row.map((can, i) => (

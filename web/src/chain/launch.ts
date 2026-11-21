@@ -9,6 +9,7 @@ import {
   type Address,
   type Hex,
   type TransactionReceipt,
+  decodeAbiParameters,
   encodeAbiParameters,
   encodePacked,
   keccak256,
@@ -408,6 +409,48 @@ export async function allBids(ctx: ChainCtx, launch: Pick<Launch, "auction">): P
     Array.from({ length: Number(next) }, (_, i) => ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "bids", args: [BigInt(i)] })),
   );
   return all.map((b, id) => ({ id, owner: b.owner, maxPrice: b.maxPrice, amount: b.amountQ96 >> 96n }));
+}
+
+/** A launch as its contracts hold it: what the auction sells and at what grid, and what the migration puts in the pool. */
+export interface LaunchPlan {
+  /** Tokens the auction sells (wei). */
+  totalSupply: bigint;
+  /** The auction's floor and its price grid step, both Q96. */
+  floorPrice: bigint;
+  priceStep: bigint;
+  /** Tokens set aside for the pool at migration (wei): the most the migration can put in. */
+  reservedForLp: bigint;
+  /** The share of the raise the migration sends to the pool, from the launch's own allocation schedule (0-1). */
+  lpShare: number;
+  /** The first block the migration may run at. */
+  migrationBlock: bigint;
+}
+
+/** Rates in an LBP allocation schedule are in millionths of a tenth of a percent: 1e7 is the whole raise. */
+const MPS = 1e7;
+
+/**
+ * What a launch's contracts say it is: the auction's own supply, floor and grid, and the migration parameters the
+ * strategy registered for it (`initializers(auction)`), so a page never restates them from the app's defaults.
+ */
+export async function readLaunchPlan(ctx: ChainCtx, launch: Pick<Launch, "auction">): Promise<LaunchPlan> {
+  const [totalSupply, floorPrice, priceStep, mp] = await Promise.all([
+    ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "totalSupply" }),
+    ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "floorPrice" }),
+    ctx.pub.readContract({ address: launch.auction, abi: ccaAbi, functionName: "tickSpacing" }),
+    ctx.pub.readContract({ address: ctx.net.manifest.lbpStrategy, abi: lbpStrategyAbi, functionName: "initializers", args: [launch.auction] }),
+  ]);
+  const [schedule] = decodeAbiParameters(ALLOCATION_SCHEDULE, mp.lpAllocationSchedule);
+  // The schedule's first step applies from the first wei raised; Covenant's launches register exactly one.
+  const rate = (schedule as readonly { lowerThreshold: bigint; rate: number }[])[0]?.rate ?? 0;
+  return {
+    totalSupply: BigInt(totalSupply),
+    floorPrice: BigInt(floorPrice),
+    priceStep: BigInt(priceStep),
+    reservedForLp: BigInt(mp.reservedTokenAmountForLP),
+    lpShare: Number(rate) / MPS,
+    migrationBlock: BigInt(mp.migrationBlock),
+  };
 }
 
 /** Called while a public chain is waited on: the latest block, and the one the next step needs. */

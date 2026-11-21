@@ -20,6 +20,7 @@ import { VaultPicker } from "@/components/covenant/VaultPicker";
 import { Button, PageHeader, Panel, Row, Slider, Tag } from "@/components/ui";
 import { amt, duration, pct } from "@/lib/format";
 import { useBalances } from "@/lib/useBalances";
+import { fact } from "@/lib/fact";
 import { ROLES, actorFor, canSendAs, partyFor, useChain } from "@/store/chain";
 import { SendButton } from "@/components/controls/SendButton";
 import { AddressInput, parseAddress } from "@/components/controls/AddressInput";
@@ -67,7 +68,10 @@ export default function ProvidePage() {
   const cap = publicChain && bal ? spendable(bal.quote) : undefined;
 
   const newShares = v ? (v.raw.totalShares * BigInt(addPct)) / 100n : 0n;
-  const mine = v?.raw.sharesOf[actor] ?? 0n;
+  // The acting account's shares, as read: undefined when no account was read (a public chain with no wallet, or one on
+  // another network), which the page says rather than showing an empty position.
+  const mineRead = v?.raw.sharesOf[actor];
+  const mine = mineRead ?? 0n;
 
   // Watching: any address's position, read for itself, with its exit simulated as that address. Deposits stay with the
   // acting role. `?watch=0x…` opens it, and is kept in step so the link can be shared.
@@ -188,7 +192,13 @@ export default function ProvidePage() {
     return wallet && isAddressEqual(wallet.address, a) ? `Your wallet · ${shortAddress(a)}` : shortAddress(a);
   };
   const owedPair = (o: readonly [bigint, bigint]) => (v.quoteIs0 ? { quote: eth(o[0]), token: eth(o[1]) } : { quote: eth(o[1]), token: eth(o[0]) });
-  const owed = readAt ? (readOk ? owedPair(readOk.owed) : { quote: 0, token: 0 }) : (v.fees.owed[actor] ?? { quote: 0, token: 0 });
+  const owed = readAt ? (readOk ? owedPair(readOk.owed) : null) : (v.fees.owed[actor] ?? null);
+  /** An event's two amounts as quote and token: amount0 is the quote only when the quote is currency0. */
+  const inKind = (a0: bigint, a1: bigint) => {
+    const { quote, token } = owedPair([a0, a1]);
+    return `${amt(quote)} ETH and ${amt(token)} ${sym}`;
+  };
+  const notReadWhy = ctx?.walletChainId ? `switch your wallet to ${net?.name}` : `connect a wallet on ${net?.name}`;
   const posWho: Who = watched ? ((devChain ? actorOf(watched) : undefined) ?? "anyone") : actor;
   const mayExit = canSendAs(posParty, net, wallet);
   const share = (x: bigint) => pct((Number(x) / Number(v.raw.totalShares)) * 1e4);
@@ -221,7 +231,7 @@ export default function ProvidePage() {
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Deposited");
       rec.record(
         beatOf(o, actor, `Deposit for ${addPct}% new shares`, () =>
-          ev ? `Paid ${amt(eth(ev.args.amount0 as bigint))} ETH and ${amt(eth(ev.args.amount1 as bigint))} ${sym}, exactly ${addPct}% of each range` : undefined,
+          ev ? `Paid ${inKind(ev.args.amount0 as bigint, ev.args.amount1 as bigint)}, exactly ${addPct}% of each range` : undefined,
         ),
         { toast: true },
       );
@@ -241,7 +251,7 @@ export default function ProvidePage() {
       const [m0, m1] = p.ok ? (p.value as readonly [bigint, bigint]) : [0n, 0n];
       const o = await send(c, posParty, withdrawCall(v, burn, (m0 * 995n) / 1000n, (m1 * 995n) / 1000n), { force: true, describe });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "Withdrawn");
-      rec.record(beatOf(o, posWho, title, () => (ev ? `Received ${amt(eth(ev.args.amount0 as bigint))} ETH and ${amt(eth(ev.args.amount1 as bigint))} ${sym}` : undefined)), {
+      rec.record(beatOf(o, posWho, title, () => (ev ? `Received ${inKind(ev.args.amount0 as bigint, ev.args.amount1 as bigint)}` : undefined)), {
         toast: true,
       });
     });
@@ -250,7 +260,7 @@ export default function ProvidePage() {
     run("Claim fees", async (c, rec) => {
       const o = await send(c, posParty, { address: v.address, abi: covenantVaultAbi, functionName: "claimFees", args: [] }, { describe });
       const r = o.value as readonly [bigint, bigint] | undefined;
-      rec.record(beatOf(o, posWho, "Claim fees", () => (r ? `${amt(eth(r[0]))} ETH and ${amt(eth(r[1]))} ${sym}` : undefined)), { toast: true });
+      rec.record(beatOf(o, posWho, "Claim fees", () => (r ? inKind(r[0], r[1]) : undefined)), { toast: true });
     });
 
   const withdrawPrincipal = () =>
@@ -259,7 +269,7 @@ export default function ProvidePage() {
       const o = await send(c, party, { address: v.address, abi: covenantVaultAbi, functionName: "withdrawPrincipal", args: [shares, 0n, 0n, NEVER] }, { force: true, describe });
       const ev = vaultEvents(o.receipt?.logs as never, v.address).find((e) => e.name === "PrincipalWithdrawn");
       rec.record(
-        beatOf(o, actor, "Withdraw principal to the treasury", () => (ev ? `${amt(eth(ev.args.amount0 as bigint))} ETH and ${amt(eth(ev.args.amount1 as bigint))} ${sym} to the treasury` : undefined)),
+        beatOf(o, actor, "Withdraw principal to the treasury", () => (ev ? `${inKind(ev.args.amount0 as bigint, ev.args.amount1 as bigint)} to the treasury` : undefined)),
         { toast: true },
       );
     });
@@ -406,7 +416,21 @@ export default function ProvidePage() {
 
         <Panel
           eyebrow={watched ? "Watched position" : fixed && !yours ? `The ${name}'s position` : "Your position"}
-          title={readAt ? (readOk ? (posShares > 0n ? `${share(posShares)} of the vault` : "No shares") : readHere?.failed ? "Not read yet" : "Reading…") : mine > 0n ? `${share(mine)} of the vault` : "No position yet"}
+          title={
+            readAt
+              ? readOk
+                ? posShares > 0n
+                  ? `${share(posShares)} of the vault`
+                  : "No shares"
+                : readHere?.failed
+                  ? "Not read yet"
+                  : "Reading…"
+              : mineRead === undefined
+                ? "Not read"
+                : mine > 0n
+                  ? `${share(mine)} of the vault`
+                  : "No position yet"
+          }
         >
           <AddressInput label="Watch an address" value={watchText} onChange={setWatchText} placeholder="Any 0x… address, to see its position" />
           {watchesPrincipal && (
@@ -440,7 +464,7 @@ export default function ProvidePage() {
                 <div className="mt-4">
                   <Row label={watched || (fixed && !yours) ? "Withdrawing returns" : "You receive"}>{back ? `${amt(eth(back[0]))} ETH + ${amt(eth(back[1]))} ${sym}` : out && !out.ok ? "—" : "…"}</Row>
                   <Row label="Fees earned">
-                    {amt(owed.quote)} ETH · {amt(owed.token)} {sym}
+                    {owed ? `${amt(owed.quote)} ETH · ${amt(owed.token)} ${sym}` : "Not read"}
                   </Row>
                 </div>
                 <div className="mt-5 grid grid-cols-2 gap-3">
@@ -474,7 +498,9 @@ export default function ProvidePage() {
                         : readHere?.failed
                           ? "Couldn't read this position just now: trying again."
                           : "Reading…"
-                      : "Deposit to receive shares. They redeem for the same slice of every range, whatever shape the curator has given the vault by then."}
+                      : mineRead === undefined
+                        ? `No account was read: ${notReadWhy} to see your position, or watch an address above.`
+                        : "Deposit to receive shares. They redeem for the same slice of every range, whatever shape the curator has given the vault by then."}
               </p>
             )}
           </div>
@@ -485,10 +511,18 @@ export default function ProvidePage() {
         <Panel className="mt-6" eyebrow="Issuer principal" title="Locked, then vesting in a straight line">
           <div className="grid gap-6 md:grid-cols-2">
             <div>
-              <Row label="Vested">{pct(v.lock.vested * 1e4)}</Row>
-              <Row label="Withdrawable now">{pct(v.lock.withdrawable * 1e4)} of the principal</Row>
-              <Row label="Unlock">{v.time < v.lock.unlockStartsAt ? `in ${duration(v.lock.unlockStartsAt - v.time)}` : "started"}</Row>
-              <Row label="Goes to">the treasury</Row>
+              <Row label="Vested">
+                <span {...fact("vault.vested", v.lock.vested, v.block)}>{pct(v.lock.vested * 1e4)}</span>
+              </Row>
+              <Row label="Withdrawable now">
+                <span {...fact("vault.principalWithdrawable", v.raw.principalWithdrawable, v.block)}>{pct(v.lock.withdrawable * 1e4)}</span> of the principal
+              </Row>
+              <Row label="Unlock">
+                <span {...fact("vault.unlockStartsAt", v.lock.unlockStartsAt, v.block)}>{v.time < v.lock.unlockStartsAt ? `in ${duration(v.lock.unlockStartsAt - v.time)}` : "started"}</span>
+              </Row>
+              <Row label="Goes to">
+                the treasury, <span {...fact("vault.treasury", v.people.treasury, v.block)}>{shortAddress(v.people.treasury)}</span>
+              </Row>
             </div>
             <div>
               <Slider label="Withdraw of what has vested" value={principalPct} min={1} max={100} onChange={setPrincipalPct} display={`${principalPct}%`} />

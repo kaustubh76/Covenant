@@ -378,7 +378,7 @@ export function vestedFraction(adopted: boolean, time: number, unlockStartsAt: n
 }
 
 /** Who an address is in the demo, for display: the dev accounts' role names, on a dev chain only. */
-export const whoIs = (a: Address | null | undefined, devChain = true) => (devChain ? actorOf(a ?? undefined) : undefined);
+export const whoIs = (a: Address | null | undefined, devChain = false) => (devChain ? actorOf(a ?? undefined) : undefined);
 
 /** A pool-tick range for a price-tick range (Orient.rangeToPool), for building legs. */
 export const poolRange = (v: Pick<VaultView, "quoteIs0">, priceLower: number, priceUpper: number) => rangeToPool(v.quoteIs0, priceLower, priceUpper);

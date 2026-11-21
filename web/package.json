@@ -19,7 +19,9 @@
     "launch": "tsx scripts/launch-public.ts",
     "proof": "tsx scripts/proof-public.ts",
     "relayer:fund": "tsx scripts/fund-relayer.ts",
-    "ledger": "tsx scripts/ledger.ts"
+    "ledger": "tsx scripts/ledger.ts",
+    "verify:records": "tsx scripts/verify-records.ts",
+    "audit:ui": "tsx scripts/audit-ui.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",
@@ -43,6 +45,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.29",
+    "playwright-core": "1.56.1",
     "tailwindcss": "^4",
     "tsx": "4.23.15",
     "typescript": "^5",

@@ -9,6 +9,8 @@ export interface CurveBid {
   /** Quote per token. */
   maxPrice: number;
   amount: number;
+  /** A draft not yet in the auction: drawn dashed, never as demand the auction holds. */
+  pending?: boolean;
 }
 
 /** Bids by price. Outbid demand stays recorded in the CCA, and the Seed turns it into buy support. */
@@ -21,7 +23,9 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
   const iw = W - padL - padR;
   const ih = height - padT - padB;
   const levels = [...new Map(bids.filter((b) => b.amount > 0).map((b) => [b.maxPrice, 0])).keys()].sort((a, b) => a - b);
-  const byLevel = levels.map((p) => ({ price: p, amount: bids.filter((b) => b.maxPrice === p).reduce((s, b) => s + b.amount, 0), who: [...new Set(bids.filter((b) => b.maxPrice === p).map((b) => b.bidder))].join(", ") }));
+  const at = (p: number, pending: boolean) => bids.filter((b) => b.maxPrice === p && !!b.pending === pending).reduce((s, b) => s + b.amount, 0);
+  const byLevel = levels.map((p) => ({ price: p, placed: at(p, false), drafted: at(p, true), amount: at(p, false) + at(p, true), who: [...new Set(bids.filter((b) => b.maxPrice === p).map((b) => b.bidder))].join(", ") }));
+  const anyDraft = byLevel.some((l) => l.drafted > 0);
   // The axes fit the bids (and the result, once there is one) at any scale: a testnet launch's prices and amounts are
   // thousands of times smaller than a local one's, and a fixed 1 at either end would squeeze every bar into a corner.
   const lo = Math.min(...levels, result?.floorPrice ?? Infinity);
@@ -40,14 +44,20 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
         <line x1={padL} x2={W - padR} y1={base} y2={base} stroke="var(--line-strong)" />
         {byLevel.map((l) => {
           const h = (l.amount / maxA) * ih;
+          const hp = (l.placed / maxA) * ih;
           const lost = cp !== undefined && l.price < cp;
           const color = cp === undefined ? "var(--muted)" : lost ? "var(--support)" : "var(--ink)";
+          const show = (a: number) => (Number.isInteger(a) ? a : amt(a));
           return (
             <g key={l.price}>
-              <rect x={x(l.price) - bw / 2} y={base - h} width={bw} height={h} fill={color} opacity={lost ? 0.28 : 0.16} />
-              <rect x={x(l.price) - bw / 2} y={base - h} width={bw} height={1.5} fill={color} />
+              {l.placed > 0 && <rect x={x(l.price) - bw / 2} y={base - hp} width={bw} height={hp} fill={color} opacity={lost ? 0.28 : 0.16} />}
+              {l.placed > 0 && <rect x={x(l.price) - bw / 2} y={base - hp} width={bw} height={1.5} fill={color} />}
+              {l.drafted > 0 && (
+                <rect x={x(l.price) - bw / 2 + 0.75} y={base - h + 0.75} width={bw - 1.5} height={Math.max(0, h - hp - 1.5)} fill="none" stroke="var(--muted)" strokeDasharray="3 3" />
+              )}
               <text x={x(l.price)} y={base - h - 7} textAnchor="middle" fontSize={11} fill="var(--ink)" className="num">
-                {Number.isInteger(l.amount) ? l.amount : amt(l.amount)} ETH
+                {l.placed > 0 ? `${show(l.placed)} ETH` : ""}
+                {l.drafted > 0 ? `${l.placed > 0 ? " + " : ""}${show(l.drafted)} draft` : ""}
               </text>
               <text x={x(l.price)} y={base + 17} textAnchor="middle" fontSize={10.5} fill="var(--faint)" className="num">
                 {axisPrice(l.price)}
@@ -65,6 +75,12 @@ export function DemandCurve({ bids, result, height = 240 }: { bids: CurveBid[]; 
         )}
       </svg>
       </div>
+      {anyDraft && (
+        <div className="mt-1 flex items-center gap-1.5 text-xs text-muted">
+          <span className="h-2.5 w-2.5 rounded-[2px] border border-dashed border-muted" />
+          Drafts: not in the auction until placed
+        </div>
+      )}
       {result && (
         <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
           <span className="flex items-center gap-1.5">

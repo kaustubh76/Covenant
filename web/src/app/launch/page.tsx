@@ -5,15 +5,17 @@ import { Check, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { type Address, formatEther, isAddressEqual } from "viem";
-import { ccaAbi, covenantLensAbi, covenantVaultAbi, seedPlannerAbi } from "@/chain/abi.generated";
-import { shortAddress } from "@/chain/accounts";
+import { ccaAbi, covenantHookAbi, covenantLensAbi, covenantVaultAbi, seedPlannerAbi } from "@/chain/abi.generated";
+import { ACTOR_LABEL, actorOf, shortAddress } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
 import { type DraftBid, addBid, bidProblems, bidWei, draftBids, matchPlaced, maxBids, placedPrice, placementOrder, removeBid, switchBidder } from "@/chain/bids";
 import {
   AUCTION_FLOOR,
   AUCTION_TICK,
+  type AuctionBid,
   type AuctionGrid,
   type Launch,
+  type LaunchPlan,
   type OnWait,
   SWEEP_DUST,
   type Sale,
@@ -21,6 +23,7 @@ import {
   WALLET_AUCTION_BLOCKS,
   WALLET_START_DELAY,
   adopt,
+  allBids,
   bid,
   closeAuction,
   createLaunchVault,
@@ -28,6 +31,7 @@ import {
   deployLaunchToken,
   migrate,
   ownBids,
+  readLaunchPlan,
   readSale,
   registerAuction,
   seed,
@@ -36,7 +40,7 @@ import {
   sweepUnsold,
   testnetLaunchSpec,
 } from "@/chain/launch";
-import { priceAt, q96ToNumber, ticksToPct } from "@/chain/price";
+import { priceAt, q96ToNumber, ticksBelowPct, ticksToPct } from "@/chain/price";
 import { PRESETS, PRESET_INFO, type PresetKey, type Terms, termsProblems } from "@/chain/terms";
 import { reach } from "@/chain/time";
 import { NeedsChain } from "@/components/chain/NeedsChain";
@@ -57,7 +61,7 @@ const LOCAL_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR, auctionTick: AUCTIO
 const TESTNET_GRID: AuctionGrid = { floorPrice: AUCTION_FLOOR >> BigInt(TESTNET_PRICE_SHIFT), auctionTick: AUCTION_TICK >> BigInt(TESTNET_PRICE_SHIFT) };
 const tokens = (x: bigint) => Number(formatEther(x));
 
-type Check = { ok: boolean; isCovenantVault: boolean; hookIsCovenant: boolean; poolMatchesVault: boolean; lpGoesToVault: boolean; vaultIsFresh: boolean; tokensReservedForLp: bigint };
+type Check = { ok: boolean; isCovenantVault: boolean; hookIsCovenant: boolean; poolMatchesVault: boolean; lpGoesToVault: boolean; vaultIsFresh: boolean; tokensReservedForLp: bigint; terms?: Terms };
 type Phase = "terms" | "bidding" | "bid" | "closed" | "migrated" | "seeded";
 type Settled = { exited: number; claimed: number };
 
@@ -154,7 +158,9 @@ export default function LaunchPage() {
   const [presetKey, setPresetKey] = useState<PresetKey | "">("standard");
   const [draft, setDraft] = useState<Terms>(PRESETS.standard);
   const [symbol, setSymbol] = useState("TOKEN");
-  const [bids, setBids] = useState<DraftBid[]>(() => draftBids(1, 1));
+  // A public chain's book starts empty: every bid there is the wallet's own. A dev chain's starts with the test suite's
+  // bids from its dev accounts, labelled as such where the book is shown.
+  const [bids, setBids] = useState<DraftBid[]>([]);
   const [phase, setPhase] = useState<Phase>("terms");
   const [launch, setLaunch] = useState<Launch | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
@@ -181,6 +187,45 @@ export default function LaunchPage() {
     };
   }, [ctx, launch, pastClose, sale, view?.block]);
 
+  // What the launch's contracts say it is (supply, floor, grid, the pool's share) and every bid in its auction, read
+  // from the chain once the auction exists, so nothing below restates them from the app's own defaults.
+  const [plan, setPlan] = useState<LaunchPlan | null>(null);
+  const [chainBids, setChainBids] = useState<AuctionBid[] | null>(null);
+  const [maxWindow, setMaxWindow] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (!ctx || !launch || plan) return;
+    let live = true;
+    readLaunchPlan(ctx, launch)
+      .then((p) => live && setPlan(p))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx, launch, plan, view?.block]);
+  const auctionLive = !!launch && (phase === "bidding" || phase === "bid" || phase === "closed");
+  const bidsTick = Math.floor(Number(view?.block ?? 0n) / 10);
+  useEffect(() => {
+    if (!ctx || !launch || (!auctionLive && chainBids)) return;
+    let live = true;
+    allBids(ctx, launch)
+      .then((b) => live && setChainBids(b))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx, launch, auctionLive, chainBids === null, bidsTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!ctx) return;
+    let live = true;
+    ctx.pub
+      .readContract({ address: ctx.net.manifest.hook, abi: covenantHookAbi, functionName: "MAX_WINDOW" })
+      .then((w) => live && setMaxWindow(Number(w)))
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
+  }, [ctx]);
+
   const keep = isPublic && net && wallet ? savedKey(net.key, wallet.address) : null;
   // A launch belongs to the chain it was made on, and on a public chain to the wallet that made it. Another network, a
   // reset, a fresh Playground chain or another wallet starts the desk over, and resumes that wallet's saved launch if it
@@ -195,9 +240,11 @@ export default function LaunchPage() {
     setPresetKey(s ? "" : "standard");
     setDraft(s?.draft ?? PRESETS.standard);
     setSymbol(s?.symbol ?? "TOKEN");
-    setBids(s?.bids ?? draftBids(floorEth, scale));
+    setBids(s?.bids ?? (isPublic ? [] : draftBids(floorEth, scale)));
     setPlaced(s?.placed ?? []);
     setCreating(s?.creating ?? null);
+    setPlan(null);
+    setChainBids(null);
     setLaunch(s?.launch ?? null);
     setCheck(s?.check ?? null);
     setResult(s?.result ?? null);
@@ -217,7 +264,7 @@ export default function LaunchPage() {
 
   if (status !== "ready") return <NeedsChain what="the launch desk" />;
 
-  const problems = termsProblems(draft, 60);
+  const problems = termsProblems(draft, defaultLaunchSpec(draft).tickSpacing, maxWindow);
   const set = (k: keyof Terms, v: number) => {
     setPresetKey("");
     setDraft((d) => ({ ...d, [k]: v }));
@@ -389,7 +436,9 @@ export default function LaunchPage() {
     setConfirmAbandon(false);
     // back to "terms" with the default bids: the next commit deploys a fresh token, so a new vault and pool. On a dev
     // chain the old launch stays where it is.
-    setBids(draftBids(floorEth, scale));
+    setBids(isPublic ? [] : draftBids(floorEth, scale));
+    setPlan(null);
+    setChainBids(null);
     setPhase("terms");
   };
   const raisedNothing = phase === "closed" && result !== null && result.raised === 0;
@@ -398,7 +447,20 @@ export default function LaunchPage() {
   // all, the send button asks for one first.)
   const sweepRefused = isPublic && sale && wallet && !isAddressEqual(wallet.address, sale.recipient) ? `Only ${shortAddress(sale.recipient)} can sweep` : null;
 
-  const curveBids = bids.map((b) => ({ id: b.id, bidder: who(b), maxPrice: snap(b.price), amount: b.amount }));
+  // Once the auction exists, its demand is what the auction holds: every bid read from it, the wallet's own named "You",
+  // plus any draft not placed yet, drawn dashed. Before then there are only drafts.
+  const ownerName = (owner: Address) => {
+    if (wallet && isAddressEqual(owner, wallet.address)) return "You";
+    const dev = isPublic ? undefined : actorOf(owner);
+    return dev ? ACTOR_LABEL[dev] : shortAddress(owner);
+  };
+  const draftCurve = bids.filter((b) => !(launch && chainBids && isPlaced(b))).map((b) => ({ id: b.id, bidder: who(b), maxPrice: snap(b.price), amount: b.amount, pending: true }));
+  const curveBids =
+    launch && chainBids
+      ? [...chainBids.map((b) => ({ id: `bid-${b.id}`, bidder: ownerName(b.owner), maxPrice: q96ToNumber(b.maxPrice), amount: Number(formatEther(b.amount)) })), ...draftCurve]
+      : draftCurve;
+  const gridOf = plan ? Math.round(Number(plan.floorPrice) / Number(plan.priceStep)) : null;
+  const floorShown = plan ? q96ToNumber(plan.floorPrice) : floorEth;
   // The terms and symbol are fixed while a job runs (the create reads them) and once a create is under way: its token,
   // and perhaps its vault, already carry them.
   const termsLocked = opened || !!busy || !!creating;
@@ -438,7 +500,7 @@ export default function LaunchPage() {
             </div>
             <fieldset disabled={termsLocked} className="mt-6 grid gap-x-8 gap-y-5 disabled:opacity-60 sm:grid-cols-2">
               <Slider label="Support: minimum share of the quote in the band" value={draft.supportBps} min={2000} max={7000} step={500} onChange={(v) => set("supportBps", v)} display={pct(draft.supportBps, 0)} />
-              <Slider label="Band: how far below the price counts" value={draft.supportBandTicks} min={600} max={3000} step={60} onChange={(v) => set("supportBandTicks", v)} display={`${ticksToPct(draft.supportBandTicks).toFixed(1)}%`} />
+              <Slider label="Band: how far below the price counts" value={draft.supportBandTicks} min={600} max={3000} step={60} onChange={(v) => set("supportBandTicks", v)} display={`${ticksBelowPct(draft.supportBandTicks).toFixed(1)}%`} />
               <Slider label="Pace: most value moved per epoch" value={draft.paceBps} min={1000} max={10000} step={500} onChange={(v) => set("paceBps", v)} display={pct(draft.paceBps, 0)} />
               <Slider label="Epoch length" value={draft.epochLength / HOUR} min={1} max={72} step={1} onChange={(v) => set("epochLength", v * HOUR)} display={duration(draft.epochLength)} />
               <Slider label="Guard: allowed gap between spot and average" value={draft.guardTicks} min={100} max={800} step={50} onChange={(v) => set("guardTicks", v)} display={`${ticksToPct(draft.guardTicks).toFixed(1)}%`} />
@@ -457,7 +519,8 @@ export default function LaunchPage() {
             )}
           </Panel>
           <div>
-            <TermsCard terms={draft} symbol={symbol} />
+            <TermsCard terms={launch && check?.terms ? check.terms : draft} symbol={symbol} />
+            {launch && check?.terms && <p className="mt-2 text-xs text-faint">The vault&apos;s terms as its contract holds them (CovenantLens.verifyLaunch).</p>}
             {!opened && (
               <>
                 <label className="mt-4 flex items-center gap-3 text-[13px] text-muted">
@@ -485,9 +548,9 @@ export default function LaunchPage() {
                 )}
                 {isPublic && (
                   <p className="mt-2 text-center text-xs text-faint">
-                    On {net?.name}: a fixed-supply token, prices at 1/8192 of the local launch and a {WALLET_AUCTION_BLOCKS.toLocaleString("en-US")}-block auction, about{" "}
-                    {duration((WALLET_AUCTION_BLOCKS * (net?.caps.blockTimeMs ?? 2000)) / 1000)}. Your wallet signs each step, and the desk resumes if you reload. A 1-hour epoch
-                    opens the vault to deposits the same day.
+                    On {net?.name}: a fixed-supply token, prices at 1/{(2 ** TESTNET_PRICE_SHIFT).toLocaleString("en-US")} of the local launch and a{" "}
+                    {WALLET_AUCTION_BLOCKS.toLocaleString("en-US")}-block auction, about {duration((WALLET_AUCTION_BLOCKS * (net?.caps.blockTimeMs ?? 2000)) / 1000)}. Your wallet signs each
+                    step, and the desk resumes if you reload. The vault opens to deposits after its first epoch: {duration(draft.epochLength)} after the migration.
                   </p>
                 )}
                 <p className="mt-2 text-center text-xs text-faint">The factory checks the same bounds on-chain and refuses anything else.</p>
@@ -503,8 +566,16 @@ export default function LaunchPage() {
         {opened && launch && (
           <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
             <div className="space-y-6">
-              <Panel eyebrow={`1,000 tokens · floor ${priceText(floorEth)} ETH · auction ${shortAddress(launch.auction)}`} title="Bids by maximum price">
-                <DemandCurve bids={curveBids} result={result ? { clearingPrice: result.clearing, floorPrice: floorEth } : null} />
+              <Panel
+                eyebrow={`${plan ? `${amt(tokens(plan.totalSupply))} tokens · floor ${priceText(q96ToNumber(plan.floorPrice))} ETH` : "Reading the auction…"} · auction ${shortAddress(launch.auction)}`}
+                title="Bids by maximum price"
+              >
+                <DemandCurve bids={curveBids} result={result ? { clearingPrice: result.clearing, floorPrice: floorShown } : null} />
+                <p className="mt-2 text-xs text-faint">
+                  {chainBids
+                    ? `${chainBids.length} bid${chainBids.length === 1 ? "" : "s"} in the auction, read from it${draftCurve.length ? "; dashed: drafts not placed yet" : ""}.`
+                    : "Reading the auction's bids…"}
+                </p>
               </Panel>
               {check && (
                 <Panel eyebrow="Before bidding" title={check.ok ? "Bidders can verify the covenant on-chain" : "This launch does not verify"}>
@@ -520,6 +591,10 @@ export default function LaunchPage() {
               )}
             </div>
             <Panel eyebrow="Order book" title={bidsIn ? "Bids placed" : isPublic ? "Your bids" : "Bidders"}>
+              {!isPublic && !bidsIn && (
+                <p className="mb-3 text-xs text-faint">The test suite&apos;s bids, from this dev chain&apos;s accounts Bob and Alice. Edit, add or remove them.</p>
+              )}
+              {isPublic && !bids.length && <p className="mb-3 text-xs text-faint">No bids yet. Add yours: each is one wallet prompt.</p>}
               <ul className="space-y-3">
                 {bids.map((b, i) => (
                   <li key={b.id} className="grid grid-cols-[48px_1.2fr_1fr_20px] items-center gap-2 text-sm sm:grid-cols-[52px_1.2fr_1fr_24px] sm:gap-2.5">
@@ -601,8 +676,9 @@ export default function LaunchPage() {
                 </div>
               )}
               <p className="mt-3 text-xs leading-relaxed text-faint">
-                Prices snap to the auction&apos;s grid of 1/64 of the floor and must be above the {priceText(floorEth)} ETH floor. Bids go in lowest price first, so a
-                higher bid can&apos;t price out a lower one. Bid for less than the 1,000 tokens and the treasury sweeps what is left.
+                Prices snap to the auction&apos;s grid{gridOf ? ` of 1/${gridOf} of the floor` : ""} and must be above the {priceText(floorShown)} ETH floor. Bids go in lowest
+                price first, so a higher bid can&apos;t price out a lower one. Bid for less than the {plan ? amt(tokens(plan.totalSupply)) : "auction's"} tokens and the treasury
+                sweeps what is left.
               </p>
               {phase === "bidding" && (draftIssues.blocking || draftIssues.warning) && (
                 <p className={clsx("mt-2 text-xs", draftIssues.blocking ? "text-breach" : "text-warn")}>{draftIssues.blocking ?? draftIssues.warning}</p>
@@ -611,11 +687,15 @@ export default function LaunchPage() {
                 <div className="mt-5">
                   <Row label="Clearing price">{priceText(result.clearing)} ETH</Row>
                   <Row label="Raised">{amt(result.raised)} ETH</Row>
-                  <Row label="To the pool (10% of the raise)">{amt(result.raised * 0.1)} ETH + up to 100 tokens</Row>
+                  <Row label={plan ? `To the pool (${pct(plan.lpShare * 10_000)} of the raise, as registered)` : "To the pool"}>
+                    {plan ? `${amt(result.raised * plan.lpShare)} ETH + up to ${amt(tokens(plan.reservedForLp))} tokens` : "Reading the launch's parameters…"}
+                  </Row>
                   <Row label="Outbid demand left on-chain">{amt(result.outbid)} ETH</Row>
                   {sale && (
                     <>
-                      <Row label="Sold">{amt(tokens(sale.sold))} of 1,000 tokens</Row>
+                      <Row label="Sold">
+                        {amt(tokens(sale.sold))} of {plan ? amt(tokens(plan.totalSupply)) : "…"} tokens
+                      </Row>
                       <Row label="Unsold">
                         {sale.unsold <= SWEEP_DUST ? "none: sold out" : `${amt(tokens(sale.unsold))}${sale.swept ? `, swept to ${sweepTo}` : ""}`}
                       </Row>
@@ -732,7 +812,10 @@ export default function LaunchPage() {
               </div>
             </Panel>
             <RuleRail world={ours} />
-            <p className="text-xs text-faint">Price at launch: {priceText(priceAt(ours.spot))} ETH. The vault is now the app&apos;s current vault: every other page shows it.</p>
+            <p className="text-xs text-faint">
+              Price now: {priceText(priceAt(ours.spot))} ETH, at block {ours.block.toLocaleString("en-US")}. The launch cleared at the price above. The vault is now the app&apos;s
+              current vault: every other page shows it.
+            </p>
           </div>
         )}
       </section>
