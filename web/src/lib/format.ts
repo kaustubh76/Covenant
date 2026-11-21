@@ -23,7 +23,7 @@ export function duration(seconds: number): string {
   const h = Math.floor((s % 86400) / 3600);
   const m = Math.floor((s % 3600) / 60);
   if (d >= 2) return h ? `${d}d ${h}h` : `${d}d`;
-  if (d === 1) return `1d ${h}h`;
+  if (d === 1) return h ? `1d ${h}h` : "1d";
   if (h >= 1) return m ? `${h}h ${m}m` : `${h}h`;
   if (m >= 1) return `${m}m`;
   return `${s}s`;

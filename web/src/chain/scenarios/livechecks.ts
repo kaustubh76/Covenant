@@ -14,12 +14,13 @@ import { CRASH_DEPTHS, type SimCall } from "../crashsim";
 import { type DecodedError, decodeRevert } from "../errors";
 import { NEVER } from "../launch";
 import { swapCall } from "../market";
-import { type Plan, chasePump, cut, moveEverything, softRug } from "../plans";
+import { type Plan, chasePump, cut, moveEverything, softRug, supportIndex } from "../plans";
 import { type ActionCall, preflight } from "../preflight";
 import type { Party } from "../tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "../view";
 import { BOUNTY_MAX_BPS } from "../constants";
 import { duration } from "../../lib/format";
+import { priceAt } from "../price";
 import { MAX_RANGES, curatorWithdrawCall, farmCall, fragmentCall, issuerExitCall, outsiderCall, overTheCap, skimCall, softRugCall, vaultCall } from "./attackcalls";
 import { isFailureKind } from "../failure";
 import type { AttackRun } from "./attacks";
@@ -135,6 +136,23 @@ function deposit(s: Scene, fraction: number, value?: bigint): { shares: bigint; 
 export { overTheCap };
 
 const pctOf = (x: number) => `${(x * 100).toFixed(3)}%`;
+
+/**
+ * The curator's chase, cutting only as much of the support range as Pace lets move now (with a margin), so the rule this
+ * attack tests (no bid above the Anchor plus the guard) is the one that answers, not Pace. On a vault whose support
+ * range is most of its value, cutting all of it is refused by Pace first.
+ */
+function chaseWithinPace(v: VaultView): Plan {
+  const plan = chasePump(v);
+  const i = supportIndex(v);
+  const r = v.ranges[i];
+  if (!r || v.value <= 0 || v.pace.setup) return plan;
+  const share = (r.quote + r.token * priceAt(v.twap)) / v.value;
+  const room = share > 0 ? (v.pace.available * 0.8) / share : 1;
+  if (room >= 1) return plan;
+  const liquidity = (r.liquidity * BigInt(Math.max(1, Math.floor(room * 1e6)))) / 1_000_000n;
+  return { ...plan, cuts: [cut(i, liquidity > 0n ? liquidity : 1n)] };
+}
 
 // ------------------------------------------------------------------------------------------------- the checks
 
@@ -443,7 +461,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
       const pumped = viewAt(s, seen.results[1][0], hold);
       const { results, beats } = await play(s, [
         { after: 1, steps: [pumpUp] },
-        { after: hold, steps: [{ who: "curator", title: "Hold it a TWAP window, then move the bids up under the fake price", call: asSim(s.v.people.curator, reshape(pumped, chasePump(pumped))) }] },
+        { after: hold, steps: [{ who: "curator", title: "Hold it a TWAP window, then move the bids up under the fake price", call: asSim(s.v.people.curator, reshape(pumped, chaseWithinPace(pumped))) }] },
       ]);
       if (!ok(results[0][0])) return null;
       return run(!ok(results[1][0]), `No bid above the Anchor plus the guard, and the Anchor climbs at most a band per ${duration(s.v.terms.epochLength)}`, beats);
