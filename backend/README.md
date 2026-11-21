@@ -11,6 +11,7 @@ It runs on Render from the repository's `Dockerfile` (see `render.yaml`); the we
 
 | | |
 |---|---|
+| `GET /` | What this service is, the app's address, and the paths below that a browser can open |
 | `GET /healthz` | Liveness, and how many chains are running |
 | `GET /v1/info` | Limits, the seeded vault's address, and the caller's address as the rate limits count it |
 | `POST /v1/playground/sessions` | Open a chain, or resume one with `{ "id": "…" }`. Returns the session id, its JSON-RPC path, and the deployment's addresses and seeded launch |
@@ -20,6 +21,7 @@ It runs on Render from the repository's `Dockerfile` (see `render.yaml`); the we
 | `POST /rpc/base-sepolia` | The shared Base Sepolia reader: read-only JSON-RPC, cached and paced (below) |
 | `GET /v1/relay` | Whether the relayer is set up, its address and balance, today's spend and budget, and its actions |
 | `POST /v1/relay/:action` | Send one of the relayer's actions (below) on a recorded vault. Returns the hash and a Basescan link |
+| `GET /v1/ledger` | The newest Base Sepolia transactions to the recorded vaults and from the relayer, read from Blockscout and cached (the live end of the app's `/ledger`) |
 
 ## The Base Sepolia reader
 

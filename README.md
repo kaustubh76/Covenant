@@ -262,7 +262,9 @@ cd web && npm run test:fork   # the public-chain code path, and all three proof 
 ### Backend
 
 The hosted app on Vercel calls a small service on Render, built from the root `Dockerfile` (code in [`backend/`](backend/README.md)).
-It runs at https://covenant-backend-tozj.onrender.com (`/healthz`, `/v1/info`, `/v1/relay`):
+It runs at https://covenant-backend-tozj.onrender.com, which lists what a browser can open there
+([`/healthz`](https://covenant-backend-tozj.onrender.com/healthz), [`/v1/info`](https://covenant-backend-tozj.onrender.com/v1/info),
+[`/v1/relay`](https://covenant-backend-tozj.onrender.com/v1/relay), [`/v1/ledger`](https://covenant-backend-tozj.onrender.com/v1/ledger)), and does three things:
 
 - **Playground chains.** One private Anvil per visitor, loaded from the same seeded launch as `make demo`
   (`npm run playground:seed` in `web/`). JSON-RPC goes through an allowlist; chains stop after 10 idle minutes.

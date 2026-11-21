@@ -62,6 +62,19 @@ export function createBackend(config = loadConfig(), log = (line: string) => con
     const path = new URL(req.url ?? "/", "http://backend").pathname;
     const ip = clientIp(req);
 
+    // The address the README gives: whoever opens it is told what this is and where to look, rather than "Not found".
+    if (req.method === "GET" && path === "/") {
+      return json(res, 200, {
+        service: "covenant-backend",
+        app: config.origins.find((o) => o.startsWith("https://")) ?? null,
+        paths: {
+          "/healthz": "liveness, the Playground chains running and their memory, and the reader's counters",
+          "/v1/info": "the Playground's limits and seeded vault, and the address the rate limits count you as",
+          "/v1/relay": "the relayer: its address and balance, today's spend and budget, and its actions",
+          "/v1/ledger": "the newest Base Sepolia transactions to Covenant's vaults and from its relayer",
+        },
+      });
+    }
     if (req.method === "GET" && path === "/healthz") {
       return json(res, 200, { ok: true, uptimeS: Math.round((Date.now() - started) / 1000), playground: playground.stats(), reader: reader.stats });
     }
