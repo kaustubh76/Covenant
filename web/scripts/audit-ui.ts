@@ -80,6 +80,8 @@ async function expected(vault: Address, key: string, block: bigint): Promise<str
     case "vault.curator":
     case "vault.issuer":
     case "vault.treasury":
+      return (await r<Address>(base.slice("vault.".length))).toLowerCase();
+    // a pending role that is empty is shown as none: the zero address reads as ""
     case "vault.pendingCurator":
     case "vault.pendingIssuer":
       return addr(await r<Address>(base.slice("vault.".length)));
