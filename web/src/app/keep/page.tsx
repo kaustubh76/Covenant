@@ -5,7 +5,7 @@ import { type Abi, formatEther } from "viem";
 import { covenantVaultAbi } from "@/chain/abi.generated";
 import type { Who } from "@/chain/accounts";
 import { beatOf, note } from "@/chain/beat";
-import { type CrashSim, findCrash } from "@/chain/crashsim";
+import { CRASH_HOLD_MARGIN_S, type CrashSim, findCrash } from "@/chain/crashsim";
 import { NEVER } from "@/chain/launch";
 import { deepenReserve } from "@/chain/plans";
 import { type Preflight, vaultEvents, failedPreflight, preflight } from "@/chain/preflight";
@@ -251,7 +251,9 @@ export default function KeepPage() {
                 ? "The guard is tripped: restore will revert until the price settles."
                 : plan?.pre.ok
                   ? "Open to any address. No permission needed."
-                  : (plan?.pre.error?.reason ?? "It will revert and pay nothing. The bounty cannot be farmed.")}
+                  : !plan
+                    ? "Checking restore against the vault as it is now…"
+                    : (plan.pre.error?.reason ?? "The check found nothing to restore.")}
             </p>
             <OnRecord fn="restore" className="mt-3 text-center" />
           </Panel>
@@ -260,7 +262,7 @@ export default function KeepPage() {
             <Panel eyebrow="Simulate" title="What a crash would do">
               <p className="text-[13px] leading-relaxed text-muted">
                 Support lapses only under a sell-off that holds for a full TWAP window. This finds the smallest one that would strand support and runs it on a
-                simulated chain: the sale in the next block, the vault read back {duration(v.terms.twapWindow)} later. Nothing is sent.
+                simulated chain: the sale in the next block, the vault read back {duration(v.terms.twapWindow + CRASH_HOLD_MARGIN_S)} later. Nothing is sent.
               </p>
               <Button className="mt-4 w-full" onClick={simulateCrash} disabled={sim === "running"}>
                 {sim === "running" ? "Simulating…" : "Simulate a crash"}
@@ -270,9 +272,10 @@ export default function KeepPage() {
                   {sim.deepened && (
                     <p className="mb-2 text-xs text-faint">After the curator spreads half the reserve four bands deep, the layout restore exists for:</p>
                   )}
-                  <Row label="The market sells">{`${amt(eth(sim.result.sold))} ${v.tokenSymbol}, ${fallPct(sim.result.depth)} down`}</Row>
-                  <Row label={`Support ${duration(v.terms.twapWindow)} later`}>{`${pct(sim.result.after.support.have)} (needs ${pct(sim.result.after.support.need)})`}</Row>
-                  <Row label="A stranger's restore">{`${pct(sim.result.after.support.have)} → ${pct(sim.result.restore.supportAfter ?? 0)}`}</Row>
+                  {/* the fall the simulated sale reached (it stops at its price limit, or when the seller runs out) */}
+                  <Row label="The market sells">{`${amt(eth(sim.result.sold))} ${v.tokenSymbol}, ${fallPct(v.spotTick - sim.result.after.spotTick)} down`}</Row>
+                  <Row label={`Support ${duration(v.terms.twapWindow + CRASH_HOLD_MARGIN_S)} later`}>{`${pct(sim.result.after.support.have)} (needs ${pct(sim.result.after.support.need)})`}</Row>
+                  <Row label="A restore by anyone">{`${pct(sim.result.after.support.have)} → ${sim.result.restore.supportAfter !== undefined ? pct(sim.result.restore.supportAfter) : "not read"}`}</Row>
                 </div>
               )}
               {sim && sim !== "running" && sim.error && <p className="mt-3 text-xs text-faint">Could not simulate: {sim.error}</p>}

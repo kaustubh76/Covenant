@@ -6,15 +6,18 @@ import type { VaultView } from "@/chain/view";
 import { Dot, Meter, Num } from "@/components/ui";
 import { amt, duration, pct, price } from "@/lib/format";
 
-function Card({ name, ok, warn, value, unit, children, meter }: { name: string; ok: boolean; warn?: boolean; value: React.ReactNode; unit?: string; children: React.ReactNode; meter: React.ReactNode }) {
-  const tone = ok ? (warn ? "warn" : "pass") : "breach";
+type Status = { word: string; tone: "pass" | "warn" | "breach" | "neutral" };
+
+/** One rule's card. `status` is that rule's own state, read from the vault: never a fixed word. */
+function Card({ name, status, value, unit, children, meter }: { name: string; status: Status; value: React.ReactNode; unit?: string; children: React.ReactNode; meter: React.ReactNode }) {
+  const text = { pass: "text-pass", warn: "text-warn", breach: "text-breach", neutral: "text-muted" }[status.tone];
   return (
-    <div className={clsx("flex flex-col gap-3 rounded-lg border bg-surface p-4", ok ? "border-line" : "border-breach/50")}>
+    <div className={clsx("flex flex-col gap-3 rounded-lg border bg-surface p-4", status.tone === "breach" ? "border-breach/50" : "border-line")}>
       <div className="flex items-center justify-between">
         <span className="eyebrow">{name}</span>
-        <span className={clsx("flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em]", ok ? (warn ? "text-warn" : "text-pass") : "text-breach")}>
-          <Dot tone={tone} />
-          {ok ? (warn ? "Idle" : "Holding") : "Breached"}
+        <span className={clsx("flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.08em]", text)}>
+          <Dot tone={status.tone} />
+          {status.word}
         </span>
       </div>
       <div className="num text-[26px] leading-none text-ink">
@@ -34,10 +37,17 @@ export function RuleRail({ world: v }: { world: VaultView }) {
   const fullyVested = v.time >= lock.fullyVestedAt;
   const allowance = p.cap > 0 ? Math.min(1, p.available / p.cap) : 0;
   const trailing = v.twap - v.anchor;
+  const lockStatus: Status = !v.adopted
+    ? { word: "Not adopted", tone: "neutral" }
+    : toUnlock > 0
+      ? { word: "Locked", tone: "pass" }
+      : fullyVested
+        ? { word: "Released", tone: "neutral" }
+        : { word: "Vesting", tone: "pass" };
 
   return (
     <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 220px), 1fr))" }}>
-      <Card name="Support" ok={s.have >= s.need} value={<Num value={s.have} format={(x) => pct(x)} />} unit={`of ${pct(s.need, 0)} required`} meter={<Meter value={s.have / 1e4} mark={s.need / 1e4} tone={s.have >= s.need ? "pass" : "breach"} label="Support share" />}>
+      <Card name="Support" status={s.have >= s.need ? { word: "Holding", tone: "pass" } : { word: "Breached", tone: "breach" }} value={<Num value={s.have} format={(x) => pct(x)} />} unit={`of ${pct(s.need, 0)} required`} meter={<Meter value={s.have / 1e4} mark={s.need / 1e4} tone={s.have >= s.need ? "pass" : "breach"} label="Support share" />}>
         {s.have >= s.need ? (
           <>
             <span className="num text-ink">
@@ -46,11 +56,11 @@ export function RuleRail({ world: v }: { world: VaultView }) {
             is bidding inside the band below the price.
           </>
         ) : (
-          <>The band has moved off the vault&apos;s bids. Anyone can call restore and earn the bounty.</>
+          <>The band has moved off the vault&apos;s bids. Anyone can call restore, for a bounty from the vault&apos;s bounty pool, up to its terms.</>
         )}
       </Card>
 
-      <Card name="Guard" ok={g.ok} value={<Num value={g.diff} format={(x) => String(Math.round(x))} />} unit={`of ${g.limit} ticks`} meter={<Meter value={g.diff / g.limit} mark={1} tone={g.ok ? "pass" : "breach"} label="Spot distance from TWAP" />}>
+      <Card name="Guard" status={g.ok ? { word: "Holding", tone: "pass" } : { word: "Tripped", tone: "breach" }} value={<Num value={g.diff} format={(x) => String(Math.round(x))} />} unit={`of ${g.limit} ticks`} meter={<Meter value={g.diff / g.limit} mark={1} tone={g.ok ? "pass" : "breach"} label="Spot distance from TWAP" />}>
         {g.ok ? (
           <>Spot is close to its {duration(t.twapWindow)} average, so reshapes, restores and deposits are allowed.</>
         ) : (
@@ -60,14 +70,13 @@ export function RuleRail({ world: v }: { world: VaultView }) {
 
       <Card
         name="Pace"
-        ok
-        warn={p.setup}
+        status={p.setup ? { word: "Not yet in force", tone: "warn" } : { word: "In force", tone: "pass" }}
         value={p.setup ? "Setup" : <Num value={allowance * 1e4} format={(x) => pct(x, 0)} />}
         unit={p.setup ? "epoch" : "of allowance left"}
         meter={<Meter value={p.setup ? 0 : allowance} tone="neutral" label="Pace allowance left" />}
       >
         {p.setup ? (
-          <>Not enforced in the first epoch, so the vault can be shaped once. Ends in {duration(p.setupEndsAt - v.time)}.</>
+          <>Not enforced in the first epoch, so the seed can be placed in as many reshapes as it takes. Ends in {duration(p.setupEndsAt - v.time)}.</>
         ) : (
           <>
             Up to <span className="num text-ink">{pct(p.available * 1e4)}</span> of the vault can move now. The allowance refills {pct(t.paceBps, 0)} per {duration(t.epochLength)}.
@@ -77,8 +86,7 @@ export function RuleRail({ world: v }: { world: VaultView }) {
 
       <Card
         name="Anchor"
-        ok
-        warn={trailing > t.guardTicks}
+        status={trailing > t.guardTicks ? { word: "Trailing the price", tone: "warn" } : { word: "In force", tone: "pass" }}
         value={<Num value={priceAt(v.ceiling)} format={(x) => price(x)} />}
         unit="bid ceiling"
         meter={<Meter value={Math.max(0, Math.min(1, trailing / t.supportBandTicks))} tone={trailing > t.guardTicks ? "warn" : "neutral"} label="How far the Anchor trails the TWAP" />}
@@ -92,8 +100,8 @@ export function RuleRail({ world: v }: { world: VaultView }) {
 
       <Card
         name="Lock"
-        ok
-        value={fullyVested ? "Released" : toUnlock > 0 ? duration(toUnlock) : pct(lock.vested * 1e4, 0)}
+        status={lockStatus}
+        value={!v.adopted ? "—" : fullyVested ? "Released" : toUnlock > 0 ? duration(toUnlock) : pct(lock.vested * 1e4, 0)}
         unit={fullyVested ? undefined : toUnlock > 0 ? "until unlock" : "vested"}
         meter={<Meter value={lock.vested} tone="accent" label="Issuer principal vested" />}
       >

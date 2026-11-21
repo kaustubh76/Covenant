@@ -143,10 +143,27 @@ export async function chainStatus(key: NetworkKey): Promise<ChainStatus> {
 export const localChain = () => chainStatus("local");
 
 /** Every network this server offers, with whether each is reachable right now. */
+/** Whether Covenant's backend answers its health check within `ms`: a sleeping one (Render's free plan) takes a minute to wake. */
+async function backendAwake(backend: string, ms = 3000): Promise<boolean> {
+  try {
+    const res = await fetch(`${backend}/healthz`, { cache: "no-store", signal: AbortSignal.timeout(ms) });
+    return res.ok && ((await res.json()) as { ok?: unknown }).ok === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Every served network, with whether it can be used now. A Playground whose backend did not answer its health check is
+ * still offered (opening a chain wakes it), with a reason that says it is waking, rather than shown as live.
+ */
 export async function allStatuses(): Promise<{ key: NetworkKey; name: string; state: ChainStatus["state"]; reason?: string }[]> {
   return Promise.all(
     servedNetworks().map(async (key) => {
       const s = await chainStatus(key);
+      if (s.state === "ready" && key === "playground" && s.network.backend && !(await backendAwake(s.network.backend))) {
+        return { key, name: NETWORKS[key].name, state: s.state, reason: "Covenant's backend did not answer just now: it sleeps when idle, and opening a chain wakes it in about a minute." };
+      }
       return { key, name: NETWORKS[key].name, state: s.state, ...(s.state === "offline" ? { reason: s.reason } : {}) };
     }),
   );

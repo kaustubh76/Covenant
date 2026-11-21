@@ -3,15 +3,16 @@
 import { motion } from "framer-motion";
 import { ArrowDown, ArrowRight, FlaskConical } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
-import { ImpactCompare } from "@/components/covenant/ImpactCompare";
+import type { ReactNode } from "react";
+import { ATTACKS } from "@/chain/scenarios/attacks";
 import { FluidField } from "@/components/landing/FluidField";
 import { HeroStage } from "@/components/landing/HeroStage";
-import { LiveSection } from "@/components/landing/Live";
-import { Lifecycle, ProblemTriptych, RevertTape, RuleExplorer, Seats, StoryScroll } from "@/components/landing/Sections";
-import { Container, CountUp, Reveal, SectionHead } from "@/components/landing/motion";
+import { LiveSection, day } from "@/components/landing/Live";
+import { Lifecycle, ProblemTriptych, RevertTape, RuleExplorer, Seats } from "@/components/landing/Sections";
+import { Container, Reveal, SectionHead } from "@/components/landing/motion";
+import { useLiveVault } from "@/components/landing/useLiveVault";
 import { Button } from "@/components/ui";
-import { recorded } from "@/fixtures";
+import { pct } from "@/lib/format";
 import type { LiveDeployment } from "@/server/live";
 import { useChain } from "@/store/chain";
 
@@ -20,13 +21,58 @@ const LINES: { text: string; accent?: boolean }[][] = [
   [{ text: "Managed", accent: true }, { text: "for" }, { text: "the" }, { text: "market." }],
 ];
 
-/** The landing page. `live` is the real Base Sepolia deployment (server/live.ts), or null when none is on record. */
+/**
+ * The landing page. `live` is the real Base Sepolia deployment (server/live.ts), or null when none is on record. Its
+ * vault is read live from the chain (the hero and the first figure); every other figure is a transaction on record
+ * there, linked to the explorer and dated.
+ */
 export function Landing({ live }: { live: LiveDeployment | null }) {
-  // The figures below were recorded from the contracts on a local chain (scripts/record.ts), where the clock can move;
-  // the addresses and transactions in the live section are Base Sepolia's.
-  const proof = { from: recorded.proof.supportFrom / 100, to: recorded.proof.supportTo / 100, ratio: recorded.proof.ratio, blocked: recorded.proof.blocked, total: recorded.proof.total };
-  const [size, setSize] = useState(5);
-  const impact = recorded.impact.find((r) => r.size === size) ?? recorded.impact[0];
+  const vault = useLiveVault(live?.vault ?? null);
+  const v = vault.view;
+  const sym = v?.tokenSymbol ?? live?.symbol ?? "";
+  const rug = live?.steps.find((s) => s.key === "rug" && s.status === "reverted");
+  const played = live ? ATTACKS.filter((a) => (live.attacks[a.id]?.length ?? 0) > 0).length : 0;
+  const stats: { big: ReactNode; small: ReactNode }[] = live
+    ? [
+        {
+          big: v ? pct(v.support.have) : "—",
+          small: v
+            ? `of ${sym}'s ${v.quoteSymbol} bids in the band under the price right now, read at block ${v.block.toLocaleString("en-US")}; the covenant needs ${pct(v.support.need)}`
+            : vault.error
+              ? `of ${sym}'s liquidity in the band: not read yet (${vault.error})`
+              : `of ${sym}'s liquidity in the band: reading ${live.network}…`,
+        },
+        ...(rug
+          ? [
+              {
+                big: "Refused",
+                small: (
+                  <>
+                    the curator&apos;s soft rug on {live.symbol}, by the pool itself on {live.network}
+                    {rug.time ? `, ${day(rug.time)}` : ""}:{" "}
+                    <a href={`${live.explorer}/tx/${rug.hash}`} target="_blank" rel="noreferrer" className="num text-breach underline-offset-2 hover:underline">
+                      {rug.error} ↗
+                    </a>
+                  </>
+                ),
+              },
+            ]
+          : []),
+        {
+          big: `${played} of ${ATTACKS.length}`,
+          small: (
+            <>
+              attacks from the contracts&apos; test suite played for real on {live.network}.{" "}
+              <Link href="/ledger" className="text-accent underline-offset-2 hover:underline">
+                The ledger
+              </Link>{" "}
+              lists every transaction{live.asOf ? `, read back from the chain on ${day(live.asOf.time)}` : ""}.
+            </>
+          ),
+        },
+        { big: "Fees only", small: "what a curator can take out: its share of the swap fees. No function pays it the liquidity, which the suite pins (test_13_2_01)." },
+      ]
+    : [];
   // A Playground chain, when this copy's backend offers one right now (the top bar loads the list): the page is static,
   // so the offer appears once the list says it is ready, and never links to a chain that is not there.
   const playground = useChain((s) => s.networks.some((n) => n.key === "playground" && n.state === "ready"));
@@ -78,7 +124,8 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
               ))}
             </h1>
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.8, delay: 0.75 }} className="mt-7 max-w-2xl text-[17px] leading-relaxed text-muted md:text-[19px]">
-              Covenant lets a curator keep launch liquidity deep around the price, and makes it impossible for anyone to withdraw it. The lock is a rule the pool itself enforces on every move.
+              Covenant lets a curator keep launch liquidity deep around the price, and never lets it out early: the curator cannot withdraw it at all, and the issuer&apos;s share unlocks only on its schedule. The pool
+              itself enforces the rules on every move.
             </motion.p>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.95 }} className="mt-9 flex flex-wrap justify-center gap-3">
               <Link href="/demo">
@@ -98,33 +145,29 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
           </div>
 
           <motion.div initial={{ opacity: 0, y: 40 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.9, delay: 1.05, ease: [0.2, 0.7, 0.2, 1] }} className="mx-auto max-w-[1120px]">
-            <HeroStage live={!!live} />
+            <HeroStage deployment={live} live={vault} />
           </motion.div>
         </Container>
       </section>
 
       {/* ---------------------------------------------------------------- tape + proof */}
-      <div className="mt-20">
-        <RevertTape />
-      </div>
-      <Container>
-        <section className="grid grid-cols-2 gap-x-8 gap-y-10 py-16 lg:grid-cols-4">
-          {[
-            { big: <><CountUp to={proof.from} suffix="%" /> → <CountUp to={proof.to} from={proof.from} suffix="%" /></>, small: "of the vault's ETH bidding near the price, after one reshape" },
-            { big: <CountUp to={proof.ratio} dp={1} suffix="×" />, small: "less price impact from the same sell order" },
-            {
-              big: <><CountUp to={proof.blocked} /> of {proof.total}</>,
-              small: live ? `attacks from the contracts' test suite, blocked, and every one also played for real on ${live.network}: the attack lab links the transactions` : "attacks from the contracts' test suite, blocked on-chain",
-            },
-            { big: "0", small: "functions that let a curator withdraw" },
-          ].map((s, i) => (
-            <Reveal key={s.small} delay={i * 0.08}>
-              <div className="display text-[46px] leading-none text-ink md:text-[60px]">{s.big}</div>
-              <div className="mt-3 max-w-[230px] text-[14px] leading-snug text-muted">{s.small}</div>
-            </Reveal>
-          ))}
-        </section>
-      </Container>
+      {live && live.refusals.length > 0 && (
+        <div className="mt-20">
+          <RevertTape refusals={live.refusals} explorer={live.explorer} network={live.network} asOf={live.asOf} />
+        </div>
+      )}
+      {stats.length > 0 && (
+        <Container>
+          <section className="grid grid-cols-2 gap-x-8 gap-y-10 py-16 lg:grid-cols-4">
+            {stats.map((s, i) => (
+              <Reveal key={i} delay={i * 0.08}>
+                <div className="display text-[46px] leading-none text-ink md:text-[60px]">{s.big}</div>
+                <div className="mt-3 max-w-[260px] text-[14px] leading-snug text-muted">{s.small}</div>
+              </Reveal>
+            ))}
+          </section>
+        </Container>
+      )}
 
       {/* ---------------------------------------------------------------- live deployment */}
       {live && <LiveSection live={live} />}
@@ -139,38 +182,19 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
         </section>
       </Container>
 
-      {/* ---------------------------------------------------------------- story */}
-      <div className="border-t border-line bg-surface/40">
-        <Container>
-          <section className="py-24">
-            <SectionHead eyebrow="One vault, six moments" title="Scroll through the life of a launch." lead="Every number and every shape below was recorded from the same contracts on a local chain, where the clock can be moved." />
-            <div className="mt-6 lg:mt-0">
-              <StoryScroll />
-            </div>
-          </section>
-        </Container>
-      </div>
-
       {/* ---------------------------------------------------------------- rules */}
       <Container>
         <section className="border-t border-line py-24">
-          <SectionHead eyebrow="The mechanism" title="Five rules, fixed before the auction. Pick one and attack it." />
+          <SectionHead eyebrow="The mechanism" title="Five rules, fixed before the auction. Pick one and see it attacked." />
           <div className="mt-12">
-            <RuleExplorer />
+            <RuleExplorer attacks={live?.attacks ?? null} explorer={live?.explorer ?? ""} network={live?.network ?? ""} />
           </div>
-        </section>
-
-        <section className="border-t border-line py-24">
-          <SectionHead eyebrow="Why manage it at all" title="The same sell order, in two pools holding the same assets." />
-          <Reveal className="mt-12 rounded-2xl border border-line bg-surface p-6 md:p-10">
-            <ImpactCompare fullTicks={impact.full} managedTicks={impact.managed} size={size} slider={{ value: size, min: 1, max: recorded.impact.length, onChange: setSize }} />
-          </Reveal>
         </section>
 
         <section className="border-t border-line py-24">
           <SectionHead eyebrow="The lifecycle" title="Seed, reshape, enforce, release." />
           <div className="mt-14">
-            <Lifecycle />
+            <Lifecycle epoch={v?.terms.epochLength ?? null} symbol={sym} />
           </div>
         </section>
 
@@ -238,13 +262,14 @@ export function Landing({ live }: { live: LiveDeployment | null }) {
         <footer className="border-t border-line py-8 text-[13px] leading-relaxed text-faint">
           {live ? (
             <>
-              Every address above is live on {live.network}, beside Uniswap v4, the Liquidity Launcher and the CCA, and every page past this one reads it with no wallet. The story and the attack figures were recorded from the
-              same contracts on a local chain, where the clock can be moved (<span className="num">make demo</span>). The contracts have not been audited.
+              The vault at the top is read live from {live.network}, beside Uniswap v4, the Liquidity Launcher and the CCA, and every page past this one reads it with no wallet. Every other figure here is a {live.network}{" "}
+              transaction on record, linked to the explorer{live.asOf ? `; the record was read back from the chain on ${day(live.asOf.time)}, at block ${live.asOf.block.toLocaleString("en-US")}` : ""}. The contracts have not been
+              audited.
             </>
           ) : (
             <>
-              Every page past this one runs on the deployed contracts on a local chain, with Uniswap v4, the Liquidity Launcher and the CCA beside them (start it with <span className="num">make demo</span>). The figures on this page
-              were recorded from those contracts. The contracts have not been audited.
+              Every page past this one runs on the deployed contracts on a local chain, with Uniswap v4, the Liquidity Launcher and the CCA beside them (start it with <span className="num">make demo</span>). The contracts have not
+              been audited.
             </>
           )}
         </footer>

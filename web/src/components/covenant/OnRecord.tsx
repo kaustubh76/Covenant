@@ -8,11 +8,14 @@ import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { Address, Hex } from "viem";
+import { day } from "@/components/landing/Live";
 import { useChain } from "@/store/chain";
 
 interface Coverage {
   explorer: string;
   vaults: { vault: Address; symbol: string }[];
+  /** When the record was read back from the chain (ISO): it is a record, not a live read, and says so. */
+  generatedAt?: string;
   coverage: { contract: string; fn: string; settled: { hash: Hex; vault?: Address }[]; refused: { hash: Hex; error: string; vault?: Address }[] }[];
 }
 
@@ -60,7 +63,10 @@ export function OnRecord({ fn, className, refusal = true }: { fn: string | strin
   const many = rows.length > 1;
   return (
     <p className={clsx("text-[11.5px] leading-relaxed text-faint", className)}>
-      <span className="text-muted">{many ? "For real on Base Sepolia:" : `${rows[0].name}() for real on Base Sepolia:`}</span>{" "}
+      <span className="text-muted">
+        {many ? "On record on Base Sepolia" : `${rows[0].name}() on record on Base Sepolia`}
+        {c.generatedAt ? `, as of ${day(c.generatedAt)}` : ""}:
+      </span>{" "}
       {rows.map(({ name, settled, refused }, i) => (
         <span key={name}>
           {i > 0 && " · "}

@@ -31,6 +31,8 @@ const pub = createPublicClient({ chain: baseSepolia, transport: http(RPC, { retr
 
 /** A page to open, as which role (the role decides which panels show), and the fewest marked figures it must show. */
 const PAGES: { path: string; role?: string; min: number }[] = [
+  // the vault page: support, total value, range count and curator (uhi-11-08's tags)
+  { path: "/vault", min: 4 },
   { path: "/govern", min: 10 },
   { path: "/provide", role: "issuer", min: 4 },
 ];

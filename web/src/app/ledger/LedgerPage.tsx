@@ -3,10 +3,13 @@
 import clsx from "clsx";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { Hex } from "viem";
+import { type Hex, TransactionReceiptNotFoundError } from "viem";
+import { createChainCtx } from "@/chain/client";
 import { shortAddress } from "@/chain/accounts";
 import type { CoverageRow, Ledger, LedgerTx } from "@/chain/ledger";
+import type { Network } from "@/chain/network";
 import { PageHeader, Panel, Stat, Tag } from "@/components/ui";
+import { day } from "@/components/landing/Live";
 import { type SentTx, readSent } from "@/lib/sentTxs";
 
 const BASE_SEPOLIA = 84532;
@@ -19,7 +22,8 @@ const ago = (iso: string | number) => {
   return s < 90 ? `${Math.round(s)} s ago` : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129_600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86_400)} d ago`;
 };
 const ROLE: Record<LedgerTx["role"], string> = {
-  deployer: "Issuer and curator",
+  // the project's deploying key: issuer and curator of each launch at first, until CVQ's lifecycle proof handed both on
+  deployer: "Deployer",
   keeper: "Keeper",
   lp: "Outside LP",
   curator2: "New curator",
@@ -56,7 +60,10 @@ function TxLink({ explorer, hash, children, className }: { explorer: string; has
   );
 }
 
-const Mark = ({ ok }: { ok: boolean }) => <span className={clsx("mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full", ok ? "bg-pass" : "bg-breach")} aria-hidden />;
+/** A transaction's outcome: settled (green), refused (red), or not mined yet (hollow), never one shown as another. */
+const Mark = ({ ok, pending }: { ok: boolean; pending?: boolean }) => (
+  <span className={clsx("mt-[6px] h-1.5 w-1.5 shrink-0 rounded-full", pending ? "border border-muted" : ok ? "bg-pass" : "bg-breach")} title={pending ? "Not mined yet" : undefined} aria-hidden />
+);
 
 /** The record: every function and attack with its Base Sepolia transactions, the live feed, and this browser's own sends. */
 export function LedgerPage({ ledger, attacks, backend }: { ledger: Ledger | null; attacks: { id: string; title: string; who: string; rule: string }[]; backend: string | null }) {
@@ -84,8 +91,8 @@ export function LedgerPage({ ledger, attacks, backend }: { ledger: Ledger | null
             <Link href="/attacks" className="text-ink underline-offset-2 hover:underline">
               attack lab
             </Link>
-            , with the {ledger.network} transactions that called it: settled, or refused by the deployed contracts. {nf.format(ledger.txs.length)} transactions from the project&apos;s own keys and the backend&apos;s relayer, read back from the chain on{" "}
-            {ledger.generatedAt.slice(0, 10)}. Nothing here is simulated.
+            , with the {ledger.network} transactions that called it: settled, or refused by the deployed contracts. {nf.format(ledger.txs.length)} transactions from the project&apos;s own keys and the backend&apos;s relayer, on
+            record as of {day(ledger.generatedAt)}, block {nf.format(ledger.generatedAtBlock)}: each read back from the chain then. Nothing here is simulated; the live list below shows what happened since.
           </>
         }
         aside={
@@ -241,7 +248,11 @@ function FunctionTable({ rows, explorer, symbolOf }: { rows: CoverageRow[]; expl
 function LiveFeed({ backend, explorer }: { backend: string | null; explorer: string }) {
   const [feed, setFeed] = useState<{ txs: FeedTx[]; updatedAt: string } | null>(null);
   const [relay, setRelay] = useState<RelayInfo | null>(null);
+  // When the backend last started (from /healthz's uptime): its count of today's spend begins then, not at midnight.
+  const [startedAt, setStartedAt] = useState<number | null>(null);
   const [state, setState] = useState<"loading" | "ok" | "waking" | "off">(backend ? "loading" : "off");
+  // why the last poll failed, when it answered at all: a refusal or an error, rather than sleep
+  const [why, setWhy] = useState<string | null>(null);
   useEffect(() => {
     if (!backend) return;
     let live = true;
@@ -249,16 +260,30 @@ function LiveFeed({ backend, explorer }: { backend: string | null; explorer: str
     const load = async (tries: number) => {
       try {
         const [f, r] = await Promise.all([
-          fetch(`${backend}/v1/ledger`, { signal: AbortSignal.timeout(20_000) }).then((x) => (x.ok ? x.json() : Promise.reject(new Error(String(x.status))))),
+          fetch(`${backend}/v1/ledger`, { signal: AbortSignal.timeout(20_000) }).then(async (x) => {
+            if (x.ok) return x.json();
+            // the backend answered: say what it said (the explorer behind it did not answer, a limit), not that it sleeps
+            const said = ((await x.json().catch(() => null)) as { error?: string } | null)?.error;
+            throw Object.assign(new Error(said ?? `HTTP ${x.status}`), { answered: x.status < 502 || x.status > 504 });
+          }),
           fetch(`${backend}/v1/relay`, { signal: AbortSignal.timeout(20_000) }).then((x) => (x.ok ? x.json() : null)),
-        ]);
+          fetch(`${backend}/healthz`, { signal: AbortSignal.timeout(20_000) })
+            .then((x) => (x.ok ? (x.json() as Promise<{ uptimeS?: number }>) : null))
+            .then((h) => (h && typeof h.uptimeS === "number" ? Date.now() - h.uptimeS * 1000 : null))
+            .catch(() => null),
+        ]).then(([f, r, up]) => {
+          if (live) setStartedAt(up);
+          return [f, r] as const;
+        });
         if (!live) return;
         setFeed(f as { txs: FeedTx[]; updatedAt: string });
         setRelay(r as RelayInfo | null);
+        setWhy(null);
         setState("ok");
         timer = setTimeout(() => void load(0), 30_000);
-      } catch {
+      } catch (e) {
         if (!live) return;
+        setWhy((e as { answered?: boolean }).answered ? (e as Error).message : null);
         // Asleep: a free backend takes about a minute to wake. A list already shown stays shown (one missed poll is not
         // news), and the next poll comes as usual; with nothing shown yet, say it is waking.
         setState((was) => (was === "ok" ? "ok" : tries < 6 ? "waking" : "off"));
@@ -283,6 +308,10 @@ function LiveFeed({ backend, explorer }: { backend: string | null; explorer: str
             {relay.balanceEth != null && ` · ${relay.balanceEth.toFixed(4)} ETH`}
             <br />
             {relay.spentTodayEth?.toFixed(4)} of {relay.dailyBudgetEth} ETH spent today
+            {/* the backend counts in memory: after a restart today, the count starts at the restart */}
+            {startedAt && startedAt > Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate())
+              ? ` (counted since the backend started, ${new Date(startedAt).toISOString().slice(11, 16)} UTC)`
+              : ""}
           </span>
         ) : relay && !relay.enabled ? (
           <Tag tone="warn">Relayer off</Tag>
@@ -301,7 +330,7 @@ function LiveFeed({ backend, explorer }: { backend: string | null; explorer: str
                 <span className="hidden text-faint md:block">{ago(t.time)}</span>
                 <span className="hidden truncate text-muted md:block">{t.relayed ? "Covenant's relayer" : shortAddress(t.from as Hex)}</span>
                 <span className="flex min-w-0 items-start gap-2">
-                  <Mark ok={t.status !== "reverted"} />
+                  <Mark ok={t.status === "success"} pending={t.status === "pending"} />
                   <span className="min-w-0 truncate">
                     <span className="num text-ink">{t.method ?? "transfer"}</span>
                     {t.symbol && <span className="text-faint"> · {t.symbol}</span>}
@@ -317,7 +346,15 @@ function LiveFeed({ backend, explorer }: { backend: string | null; explorer: str
           <p className="px-5 py-4 text-[13px] text-faint">Nothing yet.</p>
         )
       ) : (
-        <p className="px-5 py-4 text-[13px] text-faint">{state === "waking" ? "Covenant's backend is waking up (it sleeps when idle, about a minute)…" : state === "loading" ? "Reading the chain…" : "Covenant's backend did not answer. The record above is complete without it."}</p>
+        <p className="px-5 py-4 text-[13px] text-faint">
+          {why
+            ? `Covenant's backend answered, but could not list the latest transactions: ${why}. It is asked again shortly.`
+            : state === "waking"
+              ? "Covenant's backend is waking up (it sleeps when idle, about a minute)…"
+              : state === "loading"
+                ? "Reading the chain…"
+                : "Covenant's backend did not answer. The record above stands on its own, up to its date; what happened since shows here once the backend answers."}
+        </p>
       )}
     </Panel>
   );
@@ -337,6 +374,29 @@ function Yours({ explorer }: { explorer: string }) {
     };
   }, []);
   const rows = useMemo(() => list.slice(0, 20), [list]);
+  // Each one's outcome, read again from its receipt: what this browser saw when it sent it may have been "not mined yet".
+  const [onChain, setOnChain] = useState<Record<string, "success" | "reverted" | "pending">>({});
+  useEffect(() => {
+    if (!rows.length) return;
+    let live = true;
+    void (async () => {
+      const res = await fetch("/api/chain?net=base-sepolia", { cache: "no-store" }).then((r) => r.json() as Promise<{ state: string; network?: Network }>).catch(() => null);
+      if (!res?.network || res.state !== "ready") return;
+      const ctx = createChainCtx(res.network);
+      const read = await Promise.all(
+        rows.map((t) =>
+          ctx.pub
+            .getTransactionReceipt({ hash: t.hash })
+            .then((r) => [t.hash, r.status === "success" ? "success" : "reverted"] as const)
+            .catch((e: unknown) => [t.hash, e instanceof TransactionReceiptNotFoundError ? "pending" : null] as const),
+        ),
+      );
+      if (live) setOnChain(Object.fromEntries(read.filter((x): x is readonly [Hex, "success" | "reverted" | "pending"] => x[1] !== null)));
+    })();
+    return () => {
+      live = false;
+    };
+  }, [rows]);
   if (!rows.length) return null;
   return (
     <Panel eyebrow="Yours" title="Sent from this browser" flush>
@@ -344,13 +404,15 @@ function Yours({ explorer }: { explorer: string }) {
         {rows.map((t) => (
           <li key={t.hash} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 px-5 py-2 text-[12.5px]">
             <span className="flex min-w-0 items-start gap-2">
-              <Mark ok={t.ok} />
+              {/* the chain's word when its receipt was read; what this browser saw when sending, until then */}
+              <Mark ok={onChain[t.hash] ? onChain[t.hash] === "success" : t.ok} pending={onChain[t.hash] === "pending"} />
               <span className="min-w-0 truncate">
                 <span className="text-ink">{t.title}</span>
                 {t.error && <span className="num text-breach"> · {t.error}</span>}
+                {onChain[t.hash] === "pending" && <span className="text-faint"> · not mined yet</span>}
                 <span className="text-faint">
                   {" "}
-                  · {t.by ?? "You"} · {ago(t.at)}
+                  · {t.by ?? "You"} · sent {ago(t.at)}
                 </span>
               </span>
             </span>

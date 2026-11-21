@@ -4,37 +4,51 @@ import clsx from "clsx";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowRight } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { priceAt } from "@/chain/price";
+import { useEffect, useState } from "react";
 import { ATTACKS } from "@/chain/scenarios/attacks";
-import { ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/ShapeChart";
-import { BeatList, RevertCard } from "@/components/covenant/Verdict";
-import { Button, Tag } from "@/components/ui";
-import { type RecordedError, type RecordedView, recorded } from "@/fixtures";
-import { amt, axisPrice, pct } from "@/lib/format";
+import { Button } from "@/components/ui";
+import { duration } from "@/lib/format";
 import { RULES } from "@/lib/rules";
+import type { LiveAttackTx, LiveRefusal } from "@/server/live";
+import { day } from "./Live";
 import { Reveal } from "./motion";
 
 // ------------------------------------------------------------------ revert tape
-export function RevertTape() {
-  const sigs = recorded.revertTape;
+/** The contracts' real refusals on the live chain, each a transaction on record, linked to the explorer. */
+export function RevertTape({ refusals, explorer, network, asOf }: { refusals: LiveRefusal[]; explorer: string; network: string; asOf: { time: string } | null }) {
   const row = (hidden?: boolean) => (
     <div className="flex shrink-0 items-center" aria-hidden={hidden}>
-      {sigs.map((s) => (
-        <span key={s} className="num flex items-center gap-3 whitespace-nowrap px-6 text-[13px] text-muted">
+      {refusals.map((r) => (
+        <a
+          key={r.hash}
+          href={`${explorer}/tx/${r.hash}`}
+          target="_blank"
+          rel="noreferrer"
+          tabIndex={hidden ? -1 : undefined}
+          title={`${r.symbol ? `${r.symbol} · ` : ""}${day(r.time)} · ${r.hash}`}
+          className="num flex items-center gap-3 whitespace-nowrap px-6 text-[13px] text-muted hover:text-ink"
+        >
           <span className="h-1.5 w-1.5 rounded-full bg-breach" />
-          <span className="text-faint">revert</span>
-          {s}
-        </span>
+          <span className="text-faint">reverted</span>
+          {r.error}
+        </a>
       ))}
     </div>
   );
+  const first = refusals[0]?.time;
+  const lastTime = refusals[refusals.length - 1]?.time;
   return (
-    <div className="tape border-y border-line bg-surface/60 py-3.5" aria-label="Reverts returned by the rules when attacked">
-      <div className="tape-track flex w-max">
-        {row()}
-        {row(true)}
+    <div>
+      <div className="tape border-y border-line bg-surface/60 py-3.5" aria-label={`Transactions the contracts refused on ${network}`}>
+        <div className="tape-track flex w-max">
+          {row()}
+          {row(true)}
+        </div>
       </div>
+      <p className="mx-auto mt-2 max-w-6xl px-5 text-center text-[12px] text-faint">
+        {refusals.length} transactions the contracts refused on {network}
+        {first && lastTime ? `, ${day(first)} to ${day(lastTime)}` : ""}, each on record and linked{asOf ? ` (the record was read back from the chain on ${day(asOf.time)})` : ""}.
+      </p>
     </div>
   );
 }
@@ -109,181 +123,17 @@ export function ProblemTriptych() {
   );
 }
 
-// ------------------------------------------------------------------ scroll story
-interface Chapter {
-  kicker: string;
-  title: string;
-  body: React.ReactNode;
-  world: RecordedView;
-  ghost?: RecordedView;
-  stat: { label: string; value: string; tone: "pass" | "breach" | "neutral" };
-  error?: RecordedError;
-}
-
-const drop = (ticks: number) => `${((1 - Math.exp(-ticks * Math.log(1.0001))) * 100).toFixed(1)}%`;
-
-function useChapters(): { chapters: Chapter[]; domain: [number, number] } {
-  return useMemo(() => {
-    const s = recorded.story;
-    const n = (v: string) => <span className="num text-ink">{v}</span>;
-    const chapters: Chapter[] = [
-      {
-        kicker: "Day 0",
-        title: "The auction ends. The pool is seeded.",
-        body: (
-          <>
-            The launcher drops {amt(s.raw.principal.quote)} ETH and {amt(s.raw.principal.token)} tokens across every price from zero to infinity. Just {n(pct(s.raw.support.have))} of that ETH is within reach of the
-            price.
-          </>
-        ),
-        world: s.raw,
-        stat: { label: "Support", value: pct(s.raw.support.have), tone: "breach" },
-      },
-      {
-        kicker: "Reshape",
-        title: "The curator concentrates it.",
-        body: (
-          <>
-            One transaction lifts the position and sets it back down as deep bids just under the price, a reserve behind them, and asks above. Support goes to {n(pct(s.shaped.support.have))}. Nothing leaves the
-            pool.
-          </>
-        ),
-        world: s.shaped,
-        ghost: s.raw,
-        stat: { label: "Support", value: pct(s.shaped.support.have), tone: "pass" },
-      },
-      {
-        kicker: "Stress",
-        title: `Someone dumps ${s.dumpTokens} tokens.`,
-        body: (
-          <>
-            The bids absorb it. Price slips {n(drop(s.dumpDropTicks))}. The same sell into the untouched full-range position would have cost holders {n(drop(s.fullDumpDropTicks))}. The ETH did not leave: it became
-            tokens, still inside the vault.
-          </>
-        ),
-        world: s.dumped,
-        ghost: s.shaped,
-        stat: { label: "Price after", value: `${axisPrice(priceAt(s.dumped.spot))} ETH`, tone: "neutral" },
-      },
-      {
-        kicker: "Betrayal",
-        title: "The curator tries a soft rug.",
-        body: <>Leave everything in the pool, but slide the bids thousands of ticks below the price where they will never fill. Technically nothing was withdrawn. The pool refuses anyway, and the shape stays exactly as it was.</>,
-        world: s.shaped,
-        stat: { label: "Outcome", value: "Reverted", tone: "breach" },
-        error: s.softRug,
-      },
-      {
-        kicker: "Crash",
-        title: `The token sells off ${drop(s.crashTicks)}, and stays there.`,
-        body: (
-          <>
-            Nobody broke a rule, but the support band follows the time-weighted price down, and the deep reserve now sits beneath it. Support has slipped to {n(pct(s.crashed.support.have))}, under the{" "}
-            {n(pct(s.crashed.support.need, 0))} the covenant promises.
-          </>
-        ),
-        world: s.crashed,
-        ghost: s.shaped,
-        stat: { label: "Support", value: pct(s.crashed.support.have), tone: "breach" },
-      },
-      {
-        kicker: "Restore",
-        title: "A stranger fixes it, and gets paid.",
-        body: (
-          <>
-            Any address may move the stranded quote back into the band. It costs the caller gas and earns a {n(`${s.bounty} ETH`)} bounty. Support returns to {n(pct(s.restored.support.have))} without the curator
-            lifting a finger.
-          </>
-        ),
-        world: s.restored,
-        ghost: s.crashed,
-        stat: { label: "Support", value: pct(s.restored.support.have), tone: "pass" },
-      },
-    ];
-    return { chapters, domain: chartDomain(chapters.map((c) => c.world)) };
-  }, []);
-}
-
-export function StoryScroll() {
-  const { chapters, domain } = useChapters();
-  const [active, setActive] = useState(0);
-  const refs = useRef<(HTMLElement | null)[]>([]);
-  useEffect(() => {
-    const io = new IntersectionObserver(
-      (entries) => {
-        for (const e of entries) if (e.isIntersecting) setActive(Number((e.target as HTMLElement).dataset.i));
-      },
-      { rootMargin: "-48% 0px -48% 0px" },
-    );
-    refs.current.forEach((el) => el && io.observe(el));
-    return () => io.disconnect();
-  }, []);
-  const c = chapters[active];
-
-  return (
-    <div className="grid gap-10 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-16">
-      <div>
-        {chapters.map((ch, i) => (
-          <section
-            key={ch.kicker}
-            ref={(el) => {
-              refs.current[i] = el;
-            }}
-            data-i={i}
-            className={clsx("flex flex-col justify-center py-10 transition-opacity duration-500 lg:min-h-[78vh] lg:py-0", i === active ? "opacity-100" : "lg:opacity-30")}
-          >
-            <div className="flex items-center gap-3">
-              <span className="num text-xs text-accent">0{i + 1}</span>
-              <span className="eyebrow">{ch.kicker}</span>
-            </div>
-            <h3 className="display mt-3 text-[34px] leading-[1.05] text-ink md:text-[42px]">{ch.title}</h3>
-            <p className="mt-4 max-w-md text-[16px] leading-relaxed text-muted">{ch.body}</p>
-            {/* phones get the chart inline with each chapter */}
-            <div className="mt-6 rounded-xl border border-line bg-surface p-3 lg:hidden">
-              <ShapeChart world={ch.world} ghost={ch.ghost} domain={domain} height={230} />
-              {ch.error && <RevertCard error={ch.error} className="mt-3" />}
-            </div>
-          </section>
-        ))}
-      </div>
-
-      <div className="hidden lg:block">
-        <div className="sticky top-[14vh]">
-          <div className={clsx("rounded-2xl border bg-surface transition-colors duration-500", c.error ? "border-breach/50" : "border-line-strong")}>
-            <div className="flex items-center justify-between gap-4 border-b border-line px-6 py-4">
-              <div className="flex items-center gap-2">
-                {chapters.map((_, i) => (
-                  <span key={i} className={clsx("h-1 rounded-full transition-all duration-500", i === active ? "w-8 bg-accent" : i < active ? "w-3 bg-muted" : "w-3 bg-line-strong")} />
-                ))}
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="eyebrow">{c.stat.label}</span>
-                <Tag tone={c.stat.tone}>{c.stat.value}</Tag>
-              </div>
-            </div>
-            <div key={c.error ? `err-${active}` : "chart"} className={clsx("px-4 pt-5", c.error && "refuse")}>
-              <ShapeChart world={c.world} ghost={c.ghost} domain={domain} height={380} />
-            </div>
-            <div className="px-6 pb-5 pt-2">
-              <ShapeLegend ghost={c.ghost ? "Before" : undefined} />
-              <div className={clsx("grid transition-[grid-template-rows,opacity] duration-500", c.error ? "mt-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                <div className="overflow-hidden">{c.error && <RevertCard error={c.error} />}</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ------------------------------------------------------------------ rule explorer
-export function RuleExplorer() {
+/**
+ * The five rules, each with the attack it stops and the transactions that played that attack on the live chain (from the
+ * ledger on record). `attacks` is null in a copy with no live deployment: the attack lab runs them instead.
+ */
+export function RuleExplorer({ attacks, explorer, network }: { attacks: Record<string, LiveAttackTx[]> | null; explorer: string; network: string }) {
   const [key, setKey] = useState<string>(RULES[0].key);
   const [shown, setShown] = useState(false);
   const rule = RULES.find((r) => r.key === key)!;
   const attack = ATTACKS.find((a) => a.id === rule.attack)!;
-  const result = recorded.attacks[rule.attack];
+  const txs = attacks?.[rule.attack] ?? [];
   const pick = (k: string) => {
     setKey(k);
     setShown(false);
@@ -320,17 +170,40 @@ export function RuleExplorer() {
                 <div className="mt-1 text-[16px] font-medium text-ink">{attack.title}</div>
                 <p className="mt-1 text-[14px] leading-relaxed text-muted">{attack.story}</p>
               </div>
-              <Button variant={shown ? "ghost" : "danger"} onClick={() => setShown((x) => !x)}>
-                {shown ? "Hide" : "Try to break it"}
-              </Button>
+              {txs.length > 0 ? (
+                <Button variant={shown ? "ghost" : "danger"} onClick={() => setShown((x) => !x)}>
+                  {shown ? "Hide" : `See it played on ${network}`}
+                </Button>
+              ) : (
+                <Link href="/attacks">
+                  <Button variant="danger">Run it in the attack lab</Button>
+                </Link>
+              )}
             </div>
-            {shown && result && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 border-t border-line">
-                <BeatList beats={result.beats} />
+            {shown && txs.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-4 border-t border-line pt-3">
+                <ul className="grid gap-1.5">
+                  {txs.map((t) => (
+                    <li key={t.hash} className="grid grid-cols-[10px_minmax(0,1fr)_auto] items-baseline gap-x-2.5 text-[13px]">
+                      <span className={clsx("h-1.5 w-1.5 rounded-full", t.status === "reverted" ? "bg-breach" : "bg-pass")} aria-hidden />
+                      <span className="min-w-0 truncate">
+                        <span className={t.status === "reverted" ? "num text-breach" : "text-ink"}>{t.status === "reverted" ? (t.error ?? "Reverted") : "Settled"}</span>
+                        <span className="text-faint">
+                          {" "}
+                          · {t.symbol}
+                          {t.time ? ` · ${day(t.time)}` : ""}
+                        </span>
+                      </span>
+                      <a href={`${explorer}/tx/${t.hash}`} target="_blank" rel="noreferrer" className="num text-[12px] text-faint underline-offset-2 hover:text-ink hover:underline">
+                        {t.hash.slice(0, 10)}… ↗
+                      </a>
+                    </li>
+                  ))}
+                </ul>
                 <div className="mt-3 flex flex-wrap items-baseline justify-between gap-3 text-[13px]">
-                  <span className={result.blocked ? "text-pass" : "text-breach"}>{result.summary}</span>
+                  <span className="text-muted">Transactions on record on {network}: the settled ones set the attack up, the refused ones are the contracts saying no.</span>
                   <Link href="/attacks" className="text-accent underline-offset-4 hover:underline">
-                    See it on chain in the attack lab →
+                    Check it live in the attack lab →
                   </Link>
                 </div>
               </motion.div>
@@ -345,12 +218,14 @@ export function RuleExplorer() {
 // ------------------------------------------------------------------ lifecycle
 const VERBS = [
   { verb: "Seed", when: "At launch", body: "The first reshape reads the auction's outbid demand, which the CCA keeps on-chain, and places support where those buyers said they would buy." },
-  { verb: "Reshape", when: "Every day after", body: "The curator re-centres liquidity as the price moves, inside the pace cap, with every rule checked in the same transaction." },
+  { verb: "Reshape", when: "Each epoch after", body: "The curator re-centres liquidity as the price moves, inside the pace cap, with every rule checked in the same transaction." },
   { verb: "Enforce", when: "Always", body: "If a sell-off strands the support below its band, any address restores it for a bounty. No rule depends on the curator behaving." },
   { verb: "Release", when: "After the lock", body: "The issuer's principal vests in a straight line. Outside LPs were never locked and leave in kind whenever they like." },
 ];
 
-export function Lifecycle() {
+/** The four stages. `epoch` is the live vault's epoch length, in seconds, which sets the reshape's cadence; null until read. */
+export function Lifecycle({ epoch, symbol }: { epoch: number | null; symbol: string }) {
+  const when = (v: (typeof VERBS)[number]) => (v.verb === "Reshape" && epoch ? `Every ${duration(epoch)} after, on ${symbol}` : v.when);
   return (
     <div className="relative">
       <motion.div
@@ -367,7 +242,7 @@ export function Lifecycle() {
               <span className="relative z-10 block h-[19px] w-[19px] rounded-full border border-accent bg-bg">
                 <span className="absolute inset-[5px] rounded-full bg-accent" />
               </span>
-              <div className="eyebrow mt-5">{v.when}</div>
+              <div className="eyebrow mt-5">{when(v)}</div>
               <div className="display mt-1 text-[38px] leading-none text-ink">{v.verb}</div>
               <p className="mt-3 text-[14.5px] leading-relaxed text-muted">{v.body}</p>
             </div>

@@ -7,11 +7,12 @@ import { covenantVaultAbi, liquidityRouterAbi } from "../abi.generated";
 import { NEVER } from "../launch";
 import type { Manifest } from "../network";
 import { type Leg, type Plan, SINK, bidLeg, cut, reserveIndex, skim, softRug } from "../plans";
+import { RESHAPE_MAX_RANGES } from "../constants";
 import type { ActionCall } from "../preflight";
 import type { VaultView } from "../view";
 
-/** The most ranges a reshape may leave (CovenantVault's cap, test_13_2_08). */
-export const MAX_RANGES = 14;
+/** The most ranges a reshape may leave: VaultStorage.RESHAPE_MAX_RANGES, from constants.ts, which a test pins to it. */
+export const MAX_RANGES = RESHAPE_MAX_RANGES;
 /** A hundredth of a share: small enough to be refused for the right reason, never for its size. */
 export const CENT = 10n ** 16n;
 

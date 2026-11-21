@@ -11,9 +11,11 @@ export function VaultPicker() {
   const select = useChain((s) => s.selectVault);
   // Not mid-action: switching vaults under a running send would read the result from the wrong vault.
   const busy = useChain((s) => s.busy);
+  // the chain's own launch logs, or the launches on record when that scan failed (store: launchesFrom)
+  const fromRecord = useChain((s) => s.launchesFrom === "record");
   if (launches.length < 2) return null;
   return (
-    <label className="flex items-center gap-2 text-[13px] text-muted">
+    <label className="flex items-center gap-2 text-[13px] text-muted" title={fromRecord ? "The chain's launch logs could not be read just now, so the launches on record are listed; trying again" : undefined}>
       <span className="text-faint">Launch</span>
       <select
         aria-label="Vault"
@@ -29,6 +31,7 @@ export function VaultPicker() {
           </option>
         ))}
       </select>
+      {fromRecord && <span className="text-[11.5px] text-warn">on record, retrying</span>}
     </label>
   );
 }

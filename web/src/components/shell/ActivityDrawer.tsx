@@ -59,7 +59,7 @@ export function ActivityDrawer({ raised }: { raised: boolean }) {
                 <ActivityFeed limit={40} />
               </div>
               <Link href="/ledger" onClick={() => setOpen(false)} className="mt-4 block border-t border-line pt-4 text-[13px] text-muted underline-offset-2 hover:text-ink hover:underline">
-                Every transaction on Base Sepolia, and what each function and attack did there →
+                The ledger: what each function and attack did on Base Sepolia, on record and live →
               </Link>
             </motion.aside>
           </>

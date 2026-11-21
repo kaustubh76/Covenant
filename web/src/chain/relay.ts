@@ -24,13 +24,17 @@ export type Relayed =
 
 /**
  * The relayer's status, or null when the backend did not answer: a free backend sleeps when idle and takes about a
- * minute to wake, so no answer means "not yet", not "off".
+ * minute to wake (its edge answers 502 to 504 meanwhile), so no answer means "not yet", not "off". A backend that does
+ * answer, but refuses (429) or fails (500), says which, rather than being called asleep.
  */
 export async function relayStatus(backend: string): Promise<RelayStatus | null> {
   try {
     const res = await fetch(`${backend}/v1/relay`, { signal: AbortSignal.timeout(15_000) });
     if (res.ok) return (await res.json()) as RelayStatus;
-    return res.status >= 500 || res.status === 429 ? null : { enabled: false };
+    if (res.status === 429) return { enabled: false, reason: "Covenant's backend is limiting requests from this address just now. It is asked again shortly." };
+    if (res.status >= 502 && res.status <= 504) return null;
+    if (res.status >= 500) return { enabled: false, reason: `Covenant's backend answered with an error (HTTP ${res.status}). It is asked again shortly.` };
+    return { enabled: false };
   } catch {
     return null;
   }

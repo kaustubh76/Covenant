@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 import { RuleRail } from "@/components/covenant/RuleRail";
 import { ShapeChart, ShapeLegend } from "@/components/covenant/ShapeChart";
 import { Backdrop } from "@/components/landing/FluidField";
-import { shortHash, tidy } from "@/components/landing/Live";
+import { day, shortHash, tidy } from "@/components/landing/Live";
 import { Button, Panel, Tag } from "@/components/ui";
 import type { LiveDeployment, LiveStep, LiveStory } from "@/server/live";
 import { useChain } from "@/store/chain";
@@ -106,7 +106,10 @@ export function LiveWalkthrough({ live }: { live: LiveDeployment }) {
     <div className="relative isolate">
       <Backdrop className="h-[440px]" />
       <div className="pb-6 pt-8 md:pt-12">
-        <div className="eyebrow">Guided demo · live on {live.network}</div>
+        <div className="eyebrow">
+          Guided demo · on record on {live.network}
+          {steps[0]?.time ? `, ${day(steps[0].time)}${steps[steps.length - 1]?.time && day(steps[steps.length - 1].time!) !== day(steps[0].time) ? ` to ${day(steps[steps.length - 1].time!)}` : ""}` : ""}
+        </div>
         <h1 className="display mt-3 max-w-3xl text-[38px] leading-[1.04] text-ink md:text-[52px]">The covenant, proven in public.</h1>
         <p className="mt-4 max-w-2xl text-[15.5px] leading-relaxed text-muted">
           The ten-step demo needs a clock that jumps months and can rewind. {live.network} keeps real time, so here is the story as it actually happened on it,
@@ -173,7 +176,7 @@ export function LiveWalkthrough({ live }: { live: LiveDeployment }) {
               rel="noreferrer"
               className="num mt-4 inline-block max-w-full truncate text-[12.5px] text-faint underline-offset-2 hover:text-ink hover:underline"
             >
-              block {nf.format(s.block)} · {shortHash(s.hash)} · view on the explorer ↗
+              {s.time ? `${day(s.time)} · ` : ""}block {nf.format(s.block)} · {shortHash(s.hash)} · view on the explorer ↗
             </a>
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
               <Button variant="ghost" disabled={at === 0} onClick={back}>

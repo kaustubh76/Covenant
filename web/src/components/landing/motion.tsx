@@ -1,7 +1,7 @@
 "use client";
 
-import { animate, motion, useInView, useReducedMotion } from "framer-motion";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { motion } from "framer-motion";
+import type { ReactNode } from "react";
 
 export const Container = ({ children, className }: { children: ReactNode; className?: string }) => (
   <div className={`mx-auto max-w-[1320px] px-4 md:px-8 ${className ?? ""}`}>{children}</div>
@@ -19,31 +19,6 @@ export function Reveal({ children, delay = 0, className }: { children: ReactNode
     >
       {children}
     </motion.div>
-  );
-}
-
-/** Counts from `from` to `to` once visible. */
-export function CountUp({ to, from = 0, dp = 0, prefix = "", suffix = "" }: { to: number; from?: number; dp?: number; prefix?: string; suffix?: string }) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const seen = useInView(ref, { once: true, margin: "-10% 0px" });
-  const reduce = useReducedMotion();
-  // Start from `from` on the server and in the browser alike; the motion setting only decides what happens next.
-  const [v, setV] = useState(from);
-  useEffect(() => {
-    if (!seen) return;
-    if (reduce) {
-      setV(to);
-      return;
-    }
-    const c = animate(from, to, { duration: 1.4, ease: [0.2, 0.7, 0.2, 1], onUpdate: setV });
-    return () => c.stop();
-  }, [seen, reduce, from, to]);
-  return (
-    <span ref={ref}>
-      {prefix}
-      {v.toFixed(dp)}
-      {suffix}
-    </span>
   );
 }
 

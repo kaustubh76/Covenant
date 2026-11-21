@@ -57,6 +57,9 @@ async function twoBlocks(ctx: ChainCtx, base: { number: bigint; timestamp: bigin
   return [a.calls, b.calls];
 }
 
+/** How long past the TWAP window the price is held after the sale, by default: the average has caught up by then. */
+export const CRASH_HOLD_MARGIN_S = 300;
+
 /**
  * `seller` sells the price down `depth` ticks (spending at most its whole token balance) and the price then holds for
  * the TWAP window plus `margin` seconds. If that leaves support lapsed, a restore by `keeper` is tried: every candidate
@@ -73,7 +76,7 @@ export async function simulateCrash(
   seller: Address,
   keeper: Address,
   prelude: SimCall[] = [],
-  margin = 300,
+  margin = CRASH_HOLD_MARGIN_S,
 ): Promise<CrashSim | null> {
   const base = await ctx.pub.getBlock({ blockTag: "latest" });
   const hold = BigInt(v.terms.twapWindow + margin);

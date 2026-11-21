@@ -15,9 +15,21 @@ export function ActivityFeed({ limit = 8 }: { limit?: number }) {
   const history = useChain((s) => s.history);
   const launched = useChain((s) => s.view?.lock.adoptedAt ?? 0);
   const net = useChain((s) => s.net);
+  const historyState = useChain((s) => s.historyState);
   const items = useMemo(() => feed(log, history, limit), [log, history, limit]);
+  // On a public chain the feed reads the recent blocks (logs.ts PUBLIC_WINDOW) and the launch's own, not all of history.
+  const recent = net && !net.caps.devChain ? " in the recent blocks read" : "";
   if (!items.length) {
-    return <p className="py-6 text-center text-[13px] text-muted">Nothing has happened yet. What you send here, and what the chain records for this vault, appears in this list.</p>;
+    // "Nothing has happened" only once the chain was read and said so: never while it is still being read, or failed.
+    return (
+      <p className="py-6 text-center text-[13px] text-muted">
+        {historyState === "read"
+          ? `Nothing has happened yet${recent}. What you send here, and what the chain records for this vault, appears in this list.`
+          : historyState === "failed"
+            ? "The vault's history could not be read just now; trying again on the next block."
+            : "Reading the vault's history from the chain…"}
+      </p>
+    );
   }
   const when = (at: number) => (launched && at ? `${at >= launched ? "T+" : "T−"}${duration(Math.abs(at - launched))}` : "");
   return (

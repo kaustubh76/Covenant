@@ -1,6 +1,7 @@
 "use client";
 
 import clsx from "clsx";
+import { IDLE_BPS, IDLE_FLOOR_WEI, RESHAPE_MAX_RANGES } from "@/chain/constants";
 import { motion } from "framer-motion";
 import { Check, Minus, X } from "lucide-react";
 import { ACTOR_LABEL } from "@/chain/accounts";
@@ -39,14 +40,16 @@ function Line({ state, name, children }: { state: State; name: string; children:
   );
 }
 
-// The order CovenantVault.reshape checks things in (src/CovenantVault.sol, src/vault/VaultOps.sol).
-type CheckKey = "curator" | "guard" | "pace" | "layout" | "ceiling" | "conservation" | "rangeCap" | "support";
-const ORDER: CheckKey[] = ["curator", "guard", "pace", "layout", "ceiling", "conservation", "rangeCap", "support"];
+// The order CovenantVault.reshape checks things in (src/CovenantVault.sol, src/vault/VaultOps.sol): the curator, the
+// guard, the cuts (CovenantLogic.cutFraction), Pace, the legs (validateLegs), then the layout the reshape leaves.
+type CheckKey = "curator" | "guard" | "cuts" | "pace" | "layout" | "ceiling" | "conservation" | "rangeCap" | "support";
+const ORDER: CheckKey[] = ["curator", "guard", "cuts", "pace", "layout", "ceiling", "conservation", "rangeCap", "support"];
 const CHECK_OF: Record<string, CheckKey> = {
   NotCurator: "curator",
+  NotAdopted: "curator",
   Expired: "curator",
   PriceGuard: "guard",
-  InvalidCut: "layout",
+  InvalidCut: "cuts",
   PaceExceeded: "pace",
   InvalidLeg: "layout",
   SharesExceedWhole: "layout",
@@ -60,7 +63,12 @@ const CHECK_OF: Record<string, CheckKey> = {
 const n = (v: unknown) => (typeof v === "bigint" ? Number(v) : Number(v ?? 0));
 
 /** Every reshape check, in the contract's order, from a pre-flight of the exact transaction. */
-export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultView; pre: Preflight | null; moved: number; loading?: boolean }) {
+/**
+ * `moved` is the share of the vault the reshape moves: the simulated Reshaped event's own figure when `measured`, else
+ * the page's estimate (the reshape reverted, so the contract did not measure it), which the line says.
+ */
+export function ReshapeVerdict({ before, pre, moved, measured = false, loading }: { before: VaultView; pre: Preflight | null; moved: number; measured?: boolean; loading?: boolean }) {
+  const movedText = measured ? <span className="num text-ink">{pct(moved * 1e4)}</span> : <>about <span className="num text-ink">{pct(moved * 1e4)}</span> (an estimate)</>;
   const failed = pre && !pre.ok ? CHECK_OF[pre.error?.name ?? ""] : undefined;
   const failedAt = failed ? ORDER.indexOf(failed) : -1;
   // The network did not answer (or the wallet, or the node refused it): no check was reached, and none failed.
@@ -86,18 +94,21 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
         <Line state={state("guard")} name="Guard">
           Spot is <span className="num text-ink">{Math.round(v.guard.diff)}</span> ticks from the TWAP. Limit <span className="num text-ink">{v.guard.limit}</span>.
         </Line>
+        {failed === "cuts" && e && (
+          <Line state="fail" name="Cuts">
+            {e.reason}
+          </Line>
+        )}
         <Line state={state("pace")} name="Pace">
           {failed === "pace" && e ? (
             <>
               This moves <span className="num text-breach">{pct(n(e.args[0]) / 1e5)}</span> of the vault, but Pace lets only <span className="num text-ink">{pct(n(e.args[1]) / 1e5)}</span> move now.
             </>
           ) : v.pace.setup ? (
-            <>
-              Setup epoch: not enforced. This moves <span className="num text-ink">{pct(moved * 1e4)}</span> of the vault&apos;s value.
-            </>
+            <>Setup epoch: not enforced. This would move {movedText} of the vault&apos;s value.</>
           ) : (
             <>
-              This moves <span className="num text-ink">{pct(moved * 1e4)}</span> of the vault&apos;s value. Up to <span className="num text-ink">{pct(v.pace.available * 1e4)}</span> may move now.
+              This would move {movedText} of the vault&apos;s value. Up to <span className="num text-ink">{pct(v.pace.available * 1e4)}</span> may move now.
             </>
           )}
         </Line>
@@ -114,7 +125,13 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
           )}
         </Line>
         <Line state={state("conservation")} name="Conservation">
-          {failed === "conservation" && e ? e.reason : <>Everything lifted goes back into the pool. Less than 0.1% may sit idle.</>}
+          {failed === "conservation" && e ? (
+            e.reason
+          ) : (
+            <>
+              Everything lifted goes back into the pool: at most {pct(IDLE_BPS, 1)} of what the reshape handles, or {IDLE_FLOOR_WEI.toString()} wei if that is more, may sit idle.
+            </>
+          )}
         </Line>
         {(failed === "rangeCap" || (after && after.ranges.length > 10)) && (
           <Line state={state("rangeCap")} name="Range cap">
@@ -122,7 +139,7 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
               e.reason
             ) : (
               <>
-                <span className="num text-ink">{after?.ranges.length}</span> ranges after this. A reshape may leave 14.
+                <span className="num text-ink">{after?.ranges.length}</span> ranges after this. A reshape may leave {RESHAPE_MAX_RANGES}.
               </>
             )}
           </Line>
@@ -171,11 +188,12 @@ export function ReshapeVerdict({ before, pre, moved, loading }: { before: VaultV
 }
 
 /** What the chain said back. */
-export function RevertCard({ error, className }: { error: Pick<DecodedError, "signature" | "rule" | "reason">; className?: string }) {
+/** A refusal. `label` says whether it happened ("Reverted", the default) or is what a simulation says would happen. */
+export function RevertCard({ error, className, label = "Reverted" }: { error: Pick<DecodedError, "signature" | "rule" | "reason">; className?: string; label?: "Reverted" | "Would revert" }) {
   return (
     <div className={clsx("refuse rounded-md border border-breach/50 bg-breach/5 px-4 py-3", className)}>
       <div className="flex items-center justify-between gap-3">
-        <span className="eyebrow !text-breach">Reverted</span>
+        <span className="eyebrow !text-breach">{label}</span>
         <Tag tone="breach">{error.rule}</Tag>
       </div>
       <div className="num mt-1.5 break-words text-sm text-breach">{error.signature}</div>

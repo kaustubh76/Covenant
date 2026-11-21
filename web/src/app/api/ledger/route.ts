@@ -9,6 +9,9 @@ export async function GET() {
   const l = await liveLedger();
   if (!l) return NextResponse.json({ explorer: "", vaults: [], coverage: [] });
   return NextResponse.json({
+    // when the record was read back from the chain: the lines that show it say so
+    generatedAt: l.generatedAt,
+    generatedAtBlock: l.generatedAtBlock,
     explorer: l.explorer,
     vaults: l.vaults,
     coverage: l.coverage.map((c) => ({ contract: c.contract, fn: c.fn, settled: c.settled.slice(-3), refused: c.refused.slice(-3) })),

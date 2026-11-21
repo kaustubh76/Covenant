@@ -75,8 +75,10 @@ function RoleSwitcher() {
   const busy = useChain((s) => s.busy);
   const mine = (r: Role) => {
     if (!net || net.caps.devChain) return null;
-    const holder = r === "issuer" ? view?.people.issuer : r === "curator" ? view?.people.curator : null;
-    if (!holder) return "open to anyone";
+    if (r !== "issuer" && r !== "curator") return "open to anyone";
+    // who holds the role is read from the vault: until it is, the menu says so rather than guess
+    const holder = r === "issuer" ? view?.people.issuer : view?.people.curator;
+    if (!holder) return "loading…";
     return wallet && holder.toLowerCase() === wallet.address.toLowerCase() ? "your wallet" : `${shortAddress(holder)} only`;
   };
   return (
@@ -107,6 +109,9 @@ function NetworkSwitcher() {
   const busy = useChain((s) => s.busy);
   useEffect(() => {
     void loadNetworks();
+    // kept current while the page is open: a backend that went to sleep, or a chain that stopped, shows as such
+    const t = setInterval(() => document.visibilityState === "visible" && void loadNetworks(), 60_000);
+    return () => clearInterval(t);
   }, [loadNetworks]);
   const current = networks.find((n) => n.key === netKey);
   return (
@@ -126,7 +131,7 @@ function NetworkSwitcher() {
       >
         {networks.map((n) => (
           <option key={n.key} value={n.key}>
-            {n.name} — {n.state === "ready" ? "live" : "offline"}
+            {n.name} — {n.state !== "ready" ? "offline" : n.reason ? "waking up" : "live"}
           </option>
         ))}
       </select>
@@ -227,6 +232,9 @@ function ChainStatus() {
   const status = useChain((s) => s.status);
   const reason = useChain((s) => s.reason);
   const busy = useChain((s) => s.busy);
+  // set while the reads after the view on screen keep failing: the numbers are from that block, and the bar says so
+  const staleSince = useChain((s) => s.staleSince);
+  const readError = useChain((s) => s.readError);
   // Words only from lg to xl, where the nav sits in the tab row and the bar has room. Narrower, the network, the wallet
   // and the role fill the bar; from xl the nav shares it, and a label (up to 220 px while an action runs) would push its
   // last links out. There the badge is its icon, and the words are in its title and for screen readers.
@@ -241,6 +249,16 @@ function ChainStatus() {
       <span className="flex items-center gap-1.5 text-[12px] text-muted" aria-live="polite" title={busy}>
         <Loader2 size={13} className="shrink-0 animate-spin" />
         {words(busy)}
+      </span>
+    );
+  }
+  if (status === "ready" && staleSince !== null) {
+    return (
+      <span className="inline-flex" title={`The latest read failed${readError ? `: ${readError}` : ""}. The figures on this page are from block ${staleSince.toLocaleString("en-US")}; the next block tries again.`}>
+        <Tag tone="warn">
+          <Dot tone="warn" />
+          {words(`As of block ${staleSince.toLocaleString("en-US")}`)}
+        </Tag>
       </span>
     );
   }
@@ -335,7 +353,7 @@ function Toast() {
   // did not answer or a transaction not mined yet each say what they are (chain/failure.ts).
   const kind = toast?.error && isFailureKind(toast.error.name) ? toast.error.name : null;
   const item = toast
-    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash, kind, unknown: toast.error?.name === "Error" }
+    ? { key: toast.id, title: toast.title, ok: toast.ok, detail: toast.detail, signature: toast.error?.signature, reason: toast.error?.reason, hash: toast.hash, kind, unknown: toast.error?.name === "Error", shown: toast.error?.signature !== "Not an ETH vault" }
     : null;
   return (
     <div className="pointer-events-none fixed bottom-16 right-4 z-50 w-[min(380px,calc(100vw-2rem))]" aria-live="polite">
@@ -352,7 +370,10 @@ function Toast() {
             <div className="flex items-center justify-between gap-3">
               <span className="text-sm font-medium text-ink">{item.title}</span>
               <div className="flex shrink-0 items-center gap-1.5">
-                <Tag tone={item.ok ? "pass" : item.kind ? "warn" : "breach"}>{item.ok ? "Settled" : item.kind ? FAILURE_LABEL[item.kind] : item.unknown ? "Failed" : "Reverted"}</Tag>
+                {/* Settled means a transaction settled: a note that sent nothing (a save point, a fresh chain, a finding) says Note */}
+                <Tag tone={item.ok ? (item.hash ? "pass" : "neutral") : item.kind ? "warn" : "breach"}>
+                  {item.ok ? (item.hash ? "Settled" : "Note") : !item.shown ? "Not shown" : item.kind ? FAILURE_LABEL[item.kind] : item.unknown ? "Failed" : "Reverted"}
+                </Tag>
                 <button onClick={dismiss} aria-label="Dismiss" className="-mr-1 rounded p-1 text-faint transition-colors hover:bg-bg hover:text-ink">
                   <X size={14} strokeWidth={1.8} />
                 </button>

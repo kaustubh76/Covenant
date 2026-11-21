@@ -15,11 +15,14 @@ import { VaultPicker } from "@/components/covenant/VaultPicker";
 import { Num, PageHeader, Panel, Row, Stat, Tag } from "@/components/ui";
 import { amt, pct, price } from "@/lib/format";
 import { KIND_SWATCH, describeRange } from "@/lib/ranges";
+import { MAX_RANGES } from "@/chain/constants";
+import { fact } from "@/lib/fact";
 import { useChain } from "@/store/chain";
 
-const person = (a: Address | null) => {
+/** An address as the page names it: a dev account's role on a dev chain, otherwise just the address. */
+const person = (a: Address | null, devChain: boolean) => {
   if (!a) return "None";
-  const w = whoIs(a);
+  const w = whoIs(a, devChain);
   return w ? `${ACTOR_LABEL[w]} · ${shortAddress(a)}` : shortAddress(a);
 };
 
@@ -38,6 +41,7 @@ function AddressLink({ address }: { address: Address }) {
 
 export default function VaultPage() {
   const v = useChain((s) => s.view);
+  const devChain = useChain((s) => s.net?.caps.devChain ?? false);
   if (!v) return <NeedsChain what="the vault" />;
 
   const healthy = v.support.have >= v.support.need && v.guard.ok;
@@ -59,9 +63,15 @@ export default function VaultPage() {
 
       <div className="grid grid-cols-2 gap-x-8 gap-y-6 border-y border-line py-6 md:grid-cols-4">
         <Stat label="Price" value={<Num value={priceAt(v.spot)} format={(x) => price(x)} />} unit={q} />
-        <Stat label="Vault value" value={<Num value={v.value} format={(x) => amt(x)} />} unit={q} sub="Valued at the time-weighted price" />
-        <Stat label="Withdrawable by the curator" value="0" unit={q} sub="No such function exists" tone="pass" />
-        <Stat label="Support in band" value={<Num value={v.support.have} format={(x) => pct(x)} />} sub={`Minimum ${pct(v.support.need, 0)}`} tone={v.support.have >= v.support.need ? undefined : "breach"} />
+        <Stat label="Vault value" value={<span {...fact("vault.totalValue", v.value, v.block)}><Num value={v.value} format={(x) => amt(x)} /></span>} unit={q} sub="Valued at the time-weighted price" />
+        {/* A rule of the contract, not a reading: reshape is the only curator-only function, and the curator is paid only its own fee balance (lib/curator.test.ts). */}
+        <Stat label="The curator can take out" value="Fees only" sub="Its share of swap fees: no function pays it the liquidity" tone="pass" />
+        <Stat
+          label="Support in band"
+          value={<span {...fact("vault.supportBps", v.support.have, v.block)}><Num value={v.support.have} format={(x) => pct(x)} /></span>}
+          sub={`Minimum ${pct(v.support.need, 0)}`}
+          tone={v.support.have >= v.support.need ? undefined : "breach"}
+        />
       </div>
 
       <div className="mt-6 space-y-6">
@@ -76,7 +86,7 @@ export default function VaultPage() {
 
         <div className="grid gap-6 lg:grid-cols-[1fr_400px]">
           <div className="space-y-6">
-            <Panel eyebrow="Positions" title={`${v.ranges.length} of 16 ranges`} flush>
+            <Panel eyebrow="Positions" title={<span {...fact("vault.rangeCount", v.ranges.length, v.block)}>{`${v.ranges.length} of ${MAX_RANGES} ranges`}</span>} flush>
               <div className="scroll-x px-5 pb-3 pt-2">
                 <table className="w-full min-w-[520px] text-sm">
                   <thead>
@@ -105,8 +115,9 @@ export default function VaultPage() {
                       );
                     })}
                     <tr>
+                      {/* the lens's principal: the ranges and the idle balance the vault holds beside them */}
                       <td className="eyebrow pt-3" colSpan={2}>
-                        In the pool
+                        In the vault
                       </td>
                       <td className="num pt-3 text-right text-ink">{amt(v.principal.quote)}</td>
                       <td className="num pt-3 text-right text-ink">{amt(v.principal.token)}</td>
@@ -126,7 +137,9 @@ export default function VaultPage() {
               <Row label="Issuer principal">{pct((v.shares.principal / Math.max(v.shares.total, 1e-18)) * 1e4)} of shares</Row>
               <Row label="Outside LPs">{pct((v.shares.outside / Math.max(v.shares.total, 1e-18)) * 1e4)} of shares</Row>
               <Row label="Curator">
-                <span className="text-muted">{person(v.people.curator)}</span>
+                <span className="text-muted" {...fact("vault.curator", v.people.curator, v.block)}>
+                  {person(v.people.curator, devChain)}
+                </span>
               </Row>
               <Row label="Fee pot">
                 {amt(v.fees.pot.quote)} {q} · {amt(v.fees.pot.token)} {sym}
@@ -166,8 +179,8 @@ export default function VaultPage() {
               <Row label="Pool id">
                 <span className="text-muted">{shortAddress(v.poolId)}</span>
               </Row>
-              <Row label="Block">
-                <span className="text-muted">{v.block.toString()}</span>
+              <Row label="Read at block">
+                <span className="text-muted">{v.block.toLocaleString("en-US")}</span>
               </Row>
             </Panel>
           </div>

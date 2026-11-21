@@ -5,14 +5,17 @@ import { motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Check, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, formatEther } from "viem";
+import { ACTOR_LABEL, shortAddress } from "@/chain/accounts";
 import { type BeatInput, note } from "@/chain/beat";
 import { DEMO_BIDS, DEMO_STEPS, DUMP_SIZE, type DemoState, bidPrice, emptyDemo } from "@/chain/scenarios/demo";
-import { PRESETS } from "@/chain/terms";
+import { isFailureKind } from "@/chain/failure";
+import { allBids } from "@/chain/launch";
+import { q96ToNumber } from "@/chain/price";
 import { revertTo, snapshot } from "@/chain/time";
-import { type VaultView, readVaultView } from "@/chain/view";
+import { type VaultView, readVaultView, whoIs } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
-import { DemandCurve } from "@/components/covenant/DemandCurve";
+import { type CurveBid, DemandCurve } from "@/components/covenant/DemandCurve";
 import { ImpactCompare } from "@/components/covenant/ImpactCompare";
 import { RuleRail } from "@/components/covenant/RuleRail";
 import { ShapeChart, ShapeLegend } from "@/components/covenant/ShapeChart";
@@ -31,7 +34,8 @@ interface StepRecord {
   state: DemoState;
 }
 
-const CURVE_BIDS = DEMO_BIDS.map((b) => ({ id: b.id, bidder: b.bidder === "bob" ? "Bob" : "Alice", maxPrice: bidPrice(b), amount: b.amount }));
+/** The bids step 1 is going to place: drawn dashed, as a plan, until the auction exists and its own bids are read. */
+const PLANNED_BIDS: CurveBid[] = DEMO_BIDS.map((b) => ({ id: b.id, bidder: b.bidder === "bob" ? "Bob" : "Alice", maxPrice: bidPrice(b), amount: b.amount, pending: true }));
 
 /** Why a step found its snapshot gone. */
 const GONE = "This chain was reset, or taken back past this step, since the demo ran it: the demo starts again from step 1.";
@@ -59,6 +63,29 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   const selectVault = useChain((s) => s.selectVault);
   const net = useChain((s) => s.net);
   const [records, setRecords] = useState<StepRecord[]>([]);
+  const ctx = useChain((s) => s.ctx);
+  // every bid the demo's auction holds, read from the auction once step 1 has created it
+  const [auctionBids, setAuctionBids] = useState<CurveBid[] | null>(null);
+  const demoLaunch = records[0]?.state.launch ?? null;
+  useEffect(() => {
+    if (!ctx || !demoLaunch) return void setAuctionBids(null);
+    let live = true;
+    allBids(ctx, demoLaunch)
+      .then(
+        (bids) =>
+          live &&
+          setAuctionBids(
+            bids.map((b) => {
+              const who = whoIs(b.owner, true);
+              return { id: String(b.id), bidder: who ? ACTOR_LABEL[who] : shortAddress(b.owner), maxPrice: q96ToNumber(b.maxPrice), amount: Number(formatEther(b.amount)) };
+            }),
+          ),
+      )
+      .catch(() => live && setAuctionBids(null));
+    return () => {
+      live = false;
+    };
+  }, [ctx, demoLaunch, records.length]);
   const [at, setAt] = useState(0);
   // the step whose events should play out one by one: the one just run, until the presenter moves on
   const [freshAt, setFreshAt] = useState(-1);
@@ -188,7 +215,10 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
   }
 
   const finished = records.length === DEMO_STEPS.length && at === DEMO_STEPS.length - 1;
-  const reverts = records.reduce((n, r) => n + r.beats.filter((b) => !b.ok).length, 0);
+  // What the ten steps actually did: transactions that settled, and refusals that came from the contracts (not notes,
+  // and not a network that failed to answer).
+  const settled = records.reduce((n, r) => n + r.beats.filter((b) => b.ok && !!b.hash).length, 0);
+  const reverts = records.reduce((n, r) => n + r.beats.filter((b) => !b.ok && !!b.error && !isFailureKind(b.error.name) && b.error.name !== "NotSent").length, 0);
   const world = rec?.after ?? prev?.after ?? null;
   const clearing = records[1]?.state.clearing;
   const impacts = rec?.state ?? prev?.state;
@@ -274,8 +304,11 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
         <div className="mt-8 grid gap-6 xl:grid-cols-[1fr_380px]">
           <div className="min-w-0 space-y-6">
             {step.view === "auction" && (
-              <Panel eyebrow="Continuous Clearing Auction" title="1,000 tokens, three bids">
-                <DemandCurve bids={CURVE_BIDS} result={clearing ? { clearingPrice: clearing, floorPrice: 1 } : null} height={280} />
+              <Panel
+                eyebrow="Continuous Clearing Auction"
+                title={auctionBids ? `${auctionBids.length} bid${auctionBids.length === 1 ? "" : "s"} in the auction, read from it` : `The ${PLANNED_BIDS.length} bids step 1 will place (dashed, not placed yet)`}
+              >
+                <DemandCurve bids={auctionBids ?? PLANNED_BIDS} result={clearing ? { clearingPrice: clearing, floorPrice: 1 } : null} height={280} />
               </Panel>
             )}
             {step.view === "compare" && (
@@ -315,15 +348,24 @@ export function DemoPage({ live }: { live: LiveDeployment | null }) {
                 </p>
               )}
             </Panel>
-            {step.view === "auction" && <TermsCard terms={PRESETS.standard} compact />}
+            {/* the vault's own terms, read from it once step 1 has created it */}
+            {step.view === "auction" &&
+              (world ? (
+                <TermsCard terms={world.terms} symbol={world.tokenSymbol} quote={world.quoteSymbol} compact />
+              ) : (
+                <Panel>
+                  <p className="py-6 text-center text-[13px] text-muted">Step 1 creates the vault with the Standard terms. They are read back from it and shown here once it exists.</p>
+                </Panel>
+              ))}
           </div>
         </div>
 
         {finished && (
           <div className="mt-8 rounded-lg border border-line-strong bg-raised p-6">
-            <div className="display text-[32px] leading-tight text-ink">The liquidity was reshaped, attacked, restored and released. None of it left the pool early.</div>
+            <div className="display text-[32px] leading-tight text-ink">All {DEMO_STEPS.length} steps ran, as real transactions on this chain.</div>
             <p className="mt-2 text-[15px] text-muted">
-              Across ten steps the contracts refused <span className="num text-ink">{reverts}</span> actions. Every refusal came from a rule fixed before the auction opened.
+              <span className="num text-ink">{settled}</span> transactions settled, and the contracts refused <span className="num text-ink">{reverts}</span> actions, each one shown in its step with the error it
+              returned.
             </p>
           </div>
         )}

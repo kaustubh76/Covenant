@@ -4,19 +4,15 @@ import clsx from "clsx";
 import { ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ATTACKS, type AttackRun, runAttacks } from "@/chain/scenarios/attacks";
-import { runLiveChecks } from "@/chain/scenarios/livechecks";
+import { EXPECTED, NOT_LIVE, judged, runLiveChecks } from "@/chain/scenarios/livechecks";
 import { ATTACK_TXS } from "@/chain/scenarios/onchain";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { BeatList } from "@/components/covenant/Verdict";
 import { note } from "@/chain/beat";
 import { shortHash } from "@/components/landing/Live";
 import { Button, Num, PageHeader, Tag } from "@/components/ui";
-import { recorded } from "@/fixtures";
 import type { LiveDeployment, LiveStep, LiveStory } from "@/server/live";
 import { offeredDevNetwork, useChain } from "@/store/chain";
-
-/** The suite's attacks as `npm run record` captured them from the contracts on the local chain. */
-const RECORDED = recorded.attacks as unknown as Record<string, AttackRun>;
 
 const nf = new Intl.NumberFormat("en-US");
 
@@ -25,8 +21,8 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const status = useChain((s) => s.status);
   const run = useChain((s) => s.run);
   const busy = useChain((s) => s.busy);
-  // Attacks run in snapshots and move the clock, which only the local chain allows. A public chain shows the runs
-  // recorded from the same contracts instead.
+  // Attacks run in snapshots and move the clock, which only a dev chain allows. On a public chain each one is checked
+  // against the live vault instead, in simulated blocks: nothing recorded elsewhere is shown as its result.
   const live = useChain((s) => s.net?.caps.devChain ?? true);
   const netName = useChain((s) => s.net?.name);
   const setNetwork = useChain((s) => s.setNetwork);
@@ -35,10 +31,11 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const ctx = useChain((s) => s.ctx);
   const view = useChain((s) => s.view);
   const [ownResults, setResults] = useState<Record<string, AttackRun>>({});
-  // On a public chain: the single-call attacks, checked against the live vault (nothing sent); the rest as recorded.
+  // On a public chain: each attack checked against the live vault (nothing sent). A check with no verdict (skipped, not
+  // answered, refused by another rule) arrives with `noVerdict`, and its card says why.
   const [checked, setChecked] = useState<Record<string, AttackRun>>({});
-  // Checks the network did not answer: their cards keep the recorded run and say why.
-  const [notChecked, setNotChecked] = useState<Record<string, string>>({});
+  // The block the checks were simulated on top of.
+  const [checkBlock, setCheckBlock] = useState<bigint | null>(null);
   // The checks as a whole could not start (the network did not answer the first reads).
   const [checkError, setCheckError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
@@ -47,7 +44,8 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
   const [running, setRunning] = useState(false);
   const [stopping, setStopping] = useState(false);
   const stopRun = useRef(false);
-  const results = live ? ownResults : { ...RECORDED, ...checked };
+  // A run counts as blocked only when the contracts refused it with what that attack tests (livechecks.ts `judged`).
+  const results = live ? Object.fromEntries(Object.entries(ownResults).map(([id, r]) => [id, judged({ expect: EXPECTED[id] ?? [] }, r)])) : checked;
   // the proofs are Base Sepolia's own transactions: shown there only, not on a fork or the local chain
   const onBaseSepolia = useChain((s) => s.net?.key === "base-sepolia");
   // Every attack has also been played for real on Base Sepolia, by the recorded proofs (scenarios/onchain.ts): the card
@@ -61,21 +59,26 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
         })
       : [];
   const linked = ATTACKS.filter((a) => onChain(a.id).length).length;
-  const liveIds = Object.keys(checked);
   const vaultAddress = view?.address;
   useEffect(() => {
     if (live || !ctx || !view) return;
     let on = true;
     setChecked({});
-    setNotChecked({});
+    setCheckBlock(null);
     setCheckError(null);
     setChecking(true);
-    runLiveChecks(ctx, view, (id, r) => {
-      if (!on) return;
-      if (r.noVerdict) setNotChecked((prev) => ({ ...prev, [id]: r.noVerdict! }));
-      else setChecked((prev) => ({ ...prev, [id]: r }));
-      setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
-    })
+    runLiveChecks(
+      ctx,
+      view,
+      (id, r) => {
+        if (!on) return;
+        setChecked((prev) => ({ ...prev, [id]: r }));
+        setArrivals((n) => ({ ...n, [id]: (n[id] ?? 0) + 1 }));
+      },
+      undefined,
+      undefined,
+      (block) => on && setCheckBlock(block),
+    )
       .catch((e: unknown) => on && setCheckError(e instanceof Error ? e.message.split("\n")[0] : String(e)))
       .finally(() => on && setChecking(false));
     return () => {
@@ -129,7 +132,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
         lead={
           live
             ? `Each card replays an attack from the contracts' adversarial test suite as real transactions, against a fresh vault on ${netName ?? "this chain"}, inside a snapshot that is rolled back afterwards. Nothing on this page is pre-written: every outcome is what the contracts returned.`
-            : `Cards marked Checked live were just run against the ${view?.tokenSymbol ?? ""} vault on ${netName ?? "this chain"} as it is now, in simulated blocks on top of the chain's head: its real curator and issuer act as themselves, stand-ins with no role are funded inside the simulation, and nothing is sent. Cards marked Recorded need days of chain time or a layout this vault does not have, so they show the suite's run on the local chain.${linked ? ` And ${linked === ATTACKS.length ? "every attack has" : `${linked} of the attacks have`} also been played for real on ${netName ?? "this chain"}: each card links the transactions, refused or settled by the deployed contracts.` : ""}`
+            : `Each card is checked against the ${view?.tokenSymbol ?? ""} vault on ${netName ?? "this chain"} as it is${checkBlock ? ` at block ${checkBlock.toLocaleString("en-US")}` : " now"}, in simulated blocks on top of the chain's head: its real curator and issuer act as themselves, stand-ins with no role are funded inside the simulation, and nothing is sent. A card counts as blocked only when the contracts refuse it with the error that attack tests for; a check that could not run, or was refused by another rule, says so and is not counted.${linked ? ` ${linked === ATTACKS.length ? "Every attack has" : `${linked} of the attacks have`} also been played for real on ${netName ?? "this chain"}: each card links the transactions, refused or settled by the deployed contracts.` : ""}`
         }
         aside={
           <div className="flex items-center gap-4">
@@ -139,7 +142,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <Num value={blocked} format={(x) => String(Math.round(x))} />
                   <span className="text-faint"> / {ran}</span>
                 </div>
-                <div className="eyebrow mt-1">blocked</div>
+                <div className="eyebrow mt-1">{live ? "blocked" : "blocked, checked live"}</div>
               </div>
             )}
             {live ? (
@@ -182,7 +185,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
 
       {checkError && !live && (
         <p className="mb-4 rounded-md border border-line bg-surface px-4 py-3 text-[13px] text-muted">
-          The live checks could not start: {checkError}. The cards show the runs recorded on the local chain; check again in a moment.
+          The live checks could not start: {checkError}. Nothing is shown as checked; try again in a moment.
         </p>
       )}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -199,7 +202,9 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <div className="eyebrow">{a.who}</div>
                   <h2 className="mt-1 text-[17px] font-medium leading-snug text-ink">{a.title}</h2>
                 </div>
-                <Tag tone={r ? (r.noVerdict ? "warn" : r.blocked ? "pass" : "breach") : "neutral"}>{r ? (r.noVerdict ? "Could not run" : r.blocked ? "Blocked" : "Got through") : a.rule}</Tag>
+                <Tag tone={r ? (r.noVerdict ? "warn" : r.blocked ? "pass" : "breach") : "neutral"}>
+                  {r ? (r.noVerdict ? (r.skipped ? "Not checked" : live ? "Could not run" : "No verdict") : r.blocked ? "Blocked" : "Got through") : !live && checking && !NOT_LIVE[a.id] ? "Checking live…" : a.rule}
+                </Tag>
               </div>
               <p className="mt-2 text-[13.5px] leading-relaxed text-muted">{a.story}</p>
               {r && (
@@ -208,6 +213,7 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <p className={clsx("mt-2 text-[13px] font-medium", r.noVerdict ? "text-muted" : r.blocked ? "text-pass" : "text-breach")}>{r.summary}</p>
                 </div>
               )}
+              {!live && !r && NOT_LIVE[a.id] && <p className="mt-3 border-t border-line pt-3 text-[13px] leading-relaxed text-muted">Not checked live. {NOT_LIVE[a.id]}</p>}
               {proofs.length > 0 && deployment && (
                 <div className="mt-3 rounded-md border border-line bg-bg/40 px-3 py-2.5">
                   <span className="eyebrow block text-[10.5px]">Played for real on {netName}</span>
@@ -239,36 +245,32 @@ export function AttacksPage({ deployment }: { deployment: LiveDeployment | null 
                   <Button size="sm" variant={r ? "ghost" : "danger"} disabled={!!busy} onClick={() => attempt([a.id])}>
                     {r ? "Run again" : a.slow ? "Attempt (slow)" : "Attempt"}
                   </Button>
-                ) : liveIds.includes(a.id) ? (
-                  <span title={`Simulated against the live vault just now; nothing was sent`}>
+                ) : r && !r.noVerdict ? (
+                  <span title={`Simulated against the live vault${checkBlock ? ` at block ${checkBlock.toLocaleString("en-US")}` : ""}; nothing was sent`}>
                     <Tag tone="accent">Checked live</Tag>
                   </span>
-                ) : notChecked[a.id] ? (
-                  // said on the card, not only in a tooltip: the live check got no answer, so this is the recorded run
-                  <span className="flex items-center gap-2 text-right text-[11.5px] text-faint">
-                    {notChecked[a.id]}
-                    <Tag>Recorded</Tag>
-                  </span>
-                ) : (
-                  <Tag>Recorded</Tag>
-                )}
+                ) : NOT_LIVE[a.id] && proofs.length ? (
+                  <Tag>On record</Tag>
+                ) : null}
               </div>
             </article>
           );
         })}
       </div>
 
-      {ran === ATTACKS.length && blocked === ran && (
+      {ran > 0 && blocked === ran && (live ? ran === ATTACKS.length : !checking) && (
         <div className="mt-8 flex items-center gap-4 rounded-lg border border-pass/40 bg-pass/5 p-5">
           <ShieldCheck className="shrink-0 text-pass" size={28} strokeWidth={1.5} />
           <div>
             <div className="text-[15px] font-medium text-ink">
-              All {ran} attacks were blocked by the deployed contracts
-              {live ? "" : ` (${liveIds.length} checked live just now on ${netName}, the other ${ran - liveIds.length} recorded on the local chain)`}.
+              {live
+                ? `All ${ran} attacks were blocked by the deployed contracts.`
+                : `Every attack with a verdict was blocked: ${ran} checked live against the deployed contracts${checkBlock ? ` at block ${checkBlock.toLocaleString("en-US")}` : ""}${ATTACKS.length - ran ? `. The other ${ATTACKS.length - ran} say on their cards why they have none` : ""}.`}
             </div>
             <div className="text-[13.5px] text-muted">
               The successful steps inside a card are what an attacker is allowed to do, such as trading or proposing a curator. The step that would have taken value is the one the contract refused, or the
-              one that turned out to take nothing. Every run happened in a snapshot: the chain is exactly as it was.
+              one that turned out to take nothing.{" "}
+              {live ? "Every run happened in a snapshot: the chain is exactly as it was." : "Every check was simulated on top of the chain's head: nothing was sent."}
             </div>
           </div>
         </div>

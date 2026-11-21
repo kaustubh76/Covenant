@@ -12,6 +12,8 @@ import { Container, Reveal, SectionHead } from "./motion";
 
 const nf = new Intl.NumberFormat("en-US");
 export const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
+/** The UTC day of an ISO time, e.g. "17 Nov 2026": when a transaction on record was made. */
+export const day = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 /** A step's detail, without the revert it repeats, with full addresses shortened and wei-precise amounts rounded. */
 export const tidy = (s: LiveStep) =>
   (s.error && s.detail.startsWith(`${s.error}: `) ? s.detail.slice(s.error.length + 2) : s.detail)
@@ -59,7 +61,7 @@ function Proof({ steps, explorer }: { steps: LiveStep[]; explorer: string }) {
               {s.error && <div className="num mt-2 truncate text-[13px] text-breach">{s.error}</div>}
               <p className="mt-1.5 text-[14px] leading-relaxed text-muted [overflow-wrap:anywhere]">{tidy(s)}</p>
               <a href={`${explorer}/tx/${s.hash}`} target="_blank" rel="noreferrer" className="num mt-2 inline-block max-w-full truncate text-[12px] text-faint underline-offset-2 hover:text-ink hover:underline">
-                block {nf.format(s.block)} · {shortHash(s.hash)} ↗
+                {s.time ? `${day(s.time)} · ` : ""}block {nf.format(s.block)} · {shortHash(s.hash)} ↗
               </a>
             </Reveal>
           </li>
@@ -76,9 +78,19 @@ function Contracts({ live }: { live: LiveDeployment }) {
     <div className="rounded-2xl border border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-3.5">
         <span className="eyebrow">Deployed contracts</span>
-        <a href={`https://repo.sourcify.dev/${live.chainId}/${live.hook}`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-[12.5px] text-pass underline-offset-2 hover:underline">
-          <Check size={13} /> Core contracts verified on Sourcify ↗
-        </a>
+        {/* Only what Sourcify said while this page was built: no claim when it did not answer. */}
+        {live.sourcify && live.sourcify.verified.length > 0 && (
+          <a
+            href={`https://repo.sourcify.dev/${live.chainId}/${live.sourcify.verified[0].address}`}
+            target="_blank"
+            rel="noreferrer"
+            title={`Asked Sourcify on ${day(live.sourcify.checkedAt)}: ${live.sourcify.verified.map((c) => c.label).join(", ")}`}
+            className="inline-flex items-center gap-1.5 text-[12.5px] text-pass underline-offset-2 hover:underline"
+          >
+            <Check size={13} /> {live.sourcify.verified.length === live.sourcify.of ? "Core contracts" : `${live.sourcify.verified.length} of ${live.sourcify.of} core contracts`} verified on Sourcify, checked{" "}
+            {day(live.sourcify.checkedAt)} ↗
+          </a>
+        )}
       </div>
       <ul className="divide-y divide-line">
         {live.contracts.map((c) => (
@@ -121,12 +133,12 @@ export function LiveSection({ live }: { live: LiveDeployment }) {
     <Container>
       <section id="live" className="scroll-mt-24 border-t border-line py-24">
         <SectionHead
-          eyebrow={`Live on ${live.network}`}
+          eyebrow={`On ${live.network}, on record`}
           title={proven ? "Deployed, launched and attacked in public." : "Deployed and launched in public."}
           lead={
             proven
-              ? `The same bytecode runs on ${live.network}, launched through Uniswap's Liquidity Launcher and CCA. The curator tried a soft rug there and the pool refused it; a stranger restored support for the bounty${stories.some((s) => s.key === "lp") ? "; an outside LP joined, earned fees and left, in kind" : ""}${stories.some((s) => s.key === "manage") ? "; and after a pump, the curator's chase above the Anchor and its try at moving everything at once were both refused, while an honest re-centre settled" : ""}. Every line links to its transaction.`
-              : `The same bytecode runs on ${live.network}, launched through Uniswap's Liquidity Launcher and CCA, and its core contracts are verified on Sourcify.`
+              ? `These contracts run on ${live.network}, launched through Uniswap's Liquidity Launcher and CCA. Every line below is a transaction there, dated and linked: what each one did, as the run that sent it read it back. The project's own keys played every part, the keeper included.`
+              : `These contracts run on ${live.network}, launched through Uniswap's Liquidity Launcher and CCA.`
           }
         />
         <div className={clsx("mt-12 grid gap-10 lg:gap-14", proven && "lg:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]")}>

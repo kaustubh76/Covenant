@@ -57,8 +57,10 @@ export function NeedsChain({ what = "this page" }: { what?: string }) {
       <div className="mx-auto max-w-2xl py-16">
         <Panel eyebrow="Reconnecting" title={`${what[0].toUpperCase()}${what.slice(1)} reads the live contracts`}>
           <p className="text-[14px] leading-relaxed text-muted">
-            The network&apos;s public RPC did not answer just now. The app retries on its own, so nothing is needed from you; this page fills in as soon as it
-            answers.
+            {reason === "The app server did not answer."
+              ? "This app's own server did not answer just now. "
+              : "The network's public RPC did not answer just now. "}
+            The app retries on its own, so nothing is needed from you; this page fills in as soon as it answers.
           </p>
           {/* the first sentence only: what follows is the server's how-to-deploy hint */}
           {reason && <p className="mt-3 text-xs text-faint">{reason.split(/(?<=\.)\s/)[0]}</p>}

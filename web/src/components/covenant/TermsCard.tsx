@@ -1,45 +1,58 @@
 "use client";
 
 import { formatEther } from "viem";
-import { ticksToPct } from "@/chain/price";
+import { BOUNTY_MAX_BPS, IDLE_BPS } from "@/chain/constants";
+import { ticksBelowPct, ticksToPct } from "@/chain/price";
 import type { Terms } from "@/chain/terms";
 import { Seal } from "@/components/shell/AppShell";
 import { duration, pct } from "@/lib/format";
 
-const tp = (ticks: number) => `${ticksToPct(ticks).toFixed(1)}%`;
+/** How far above a price `ticks` reaches, and how far below: a band under the TWAP is measured downward. */
+const up = (ticks: number) => `${ticksToPct(ticks).toFixed(1)}%`;
+const down = (ticks: number) => `${ticksBelowPct(ticks).toFixed(1)}%`;
 
-/** The covenant as a bidder reads it: the vault's immutable terms, fixed before the auction opens. */
-export function TermsCard({ terms: t, symbol = "TOKEN", quote = "ETH", compact }: { terms: Terms; symbol?: string; quote?: string; compact?: boolean }) {
+/**
+ * The covenant as a bidder reads it: the vault's immutable terms, fixed before the auction opens. `terms` are the
+ * vault's own (`vault.terms()`), or a draft's before it exists; `symbol` is its token's. The quote is ETH unless said
+ * otherwise: the app reads ETH-quoted vaults only (chain/view.ts UnsupportedQuote).
+ */
+export function TermsCard({ terms: t, symbol, quote = "ETH", compact }: { terms: Terms; symbol: string; quote?: string; compact?: boolean }) {
   const rows: [string, React.ReactNode][] = [
-    ["Conservation", <>A reshape puts back everything it lifts. There is no path for liquidity to leave the pool early.</>],
+    [
+      "Conservation",
+      <>
+        A reshape puts back everything it lifts: at most <b>{pct(IDLE_BPS, 1)}</b> of what it handles may sit idle in the vault. There is no path for liquidity to leave the pool early.
+      </>,
+    ],
     [
       "Support",
       <>
-        At least <b>{pct(t.supportBps, 0)}</b> of the vault&apos;s {quote} bids within <b>{tp(t.supportBandTicks)}</b> below the average price.
+        At least <b>{pct(t.supportBps, 0)}</b> of the vault&apos;s {quote} bids within <b>{down(t.supportBandTicks)}</b> below the average price.
       </>,
     ],
     [
       "Pace",
       <>
-        No more than <b>{pct(t.paceBps, 0)}</b> of vault value moves per <b>{duration(t.epochLength)}</b>.
+        At most <b>{pct(t.paceBps, 0)}</b> of vault value moves at once, from an allowance that refills by that much every <b>{duration(t.epochLength)}</b>: no more than twice that within any one{" "}
+        {duration(t.epochLength)}. The first epoch after adoption is free, so the seed can be placed.
       </>,
     ],
     [
       "Guard",
       <>
-        Nothing is reshaped, restored or deposited while spot is more than <b>{tp(t.guardTicks)}</b> from its <b>{duration(t.twapWindow)}</b> average.
+        Nothing is reshaped, restored or deposited while spot is more than <b>{t.guardTicks.toLocaleString("en-US")} ticks</b> (about {up(t.guardTicks)}) from its <b>{duration(t.twapWindow)}</b> average.
       </>,
     ],
     [
       "Anchor",
       <>
-        No bid above the Anchor plus the guard. The Anchor drops with the price at once and climbs at most <b>{tp(t.supportBandTicks)}</b> per epoch.
+        No bid above the Anchor plus the guard. The Anchor drops with the price at once and climbs at most <b>{up(t.supportBandTicks)}</b> per <b>{duration(t.epochLength)}</b>.
       </>,
     ],
     [
       "Lock",
       <>
-        Issuer principal locked <b>{Math.round(t.lockDuration / 86400)} days</b> from launch, then released evenly over <b>{Math.round(t.vestDuration / 86400)} days</b>.
+        Issuer principal locked <b>{duration(t.lockDuration)}</b> from launch, then released evenly over <b>{duration(t.vestDuration)}</b>.
       </>,
     ],
     [
@@ -51,7 +64,7 @@ export function TermsCard({ terms: t, symbol = "TOKEN", quote = "ETH", compact }
     [
       "Restore",
       <>
-        Anyone may put support back when it lapses, for a bounty of up to <b>{Number(formatEther(t.bounty))} {quote}</b>.
+        Anyone may put support back when it lapses, for a bounty of up to <b>{Number(formatEther(t.bounty))} {quote}</b>, and never more than {pct(BOUNTY_MAX_BPS, 0)} of the {quote} the restore moves.
       </>,
     ],
   ];

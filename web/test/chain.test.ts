@@ -26,6 +26,7 @@ import {
 import { PRESETS } from "../src/chain/terms";
 import { must, send } from "../src/chain/tx";
 import { ATTACKS, type AttackRun, runAttacks } from "../src/chain/scenarios/attacks";
+import { EXPECTED, judged } from "../src/chain/scenarios/livechecks";
 import { DEMO_STEPS, emptyDemo } from "../src/chain/scenarios/demo";
 import { collectingKit } from "../src/chain/scenarios/kit";
 import { discoverLaunches } from "../src/chain/discover";
@@ -113,6 +114,9 @@ describe("the attack lab", () => {
       results[id] = r;
     });
     for (const a of ATTACKS) expect(results[a.id]?.blocked, `${a.id}: ${results[a.id]?.summary}`).toBe(true);
+    // and blocked by the rule each attack tests: every refusal is the one the attack lab counts (livechecks EXPECTED),
+    // so the page's own judgement leaves every verdict standing
+    for (const a of ATTACKS) expect(judged({ expect: EXPECTED[a.id] ?? [] }, results[a.id]).noVerdict, a.id).toBeUndefined();
     expect(results["pump-patient"].beats.find((b) => !b.ok)?.error?.name).toBe("RestoreBandEmpty");
     expect(results["colluding-curator"].beats.find((b) => !b.ok)?.error?.name).toBe("BidAboveCeiling");
     expect(results["fragment"].beats[0].error?.signature).toBe("TooManyRanges(15, 14)");

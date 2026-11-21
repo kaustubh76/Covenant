@@ -27,6 +27,13 @@ describe("the relayer client", () => {
     await expect(relayStatus("https://backend.example")).resolves.toBeNull();
     vi.stubGlobal("fetch", answer(200, { enabled: false, reason: "RELAYER_PRIVATE_KEY is not set." }));
     await expect(relayStatus("https://backend.example")).resolves.toEqual({ enabled: false, reason: "RELAYER_PRIVATE_KEY is not set." });
+    // a backend that answers is never called asleep: limited and failing each say which; its waking edge is "not yet"
+    vi.stubGlobal("fetch", answer(429, { error: "Too many requests from this address." }));
+    await expect(relayStatus("https://backend.example")).resolves.toMatchObject({ enabled: false, reason: expect.stringMatching(/limiting requests/) });
+    vi.stubGlobal("fetch", answer(500, { error: "boom" }));
+    await expect(relayStatus("https://backend.example")).resolves.toMatchObject({ enabled: false, reason: expect.stringMatching(/HTTP 500/) });
+    vi.stubGlobal("fetch", answer(503, { error: "waking" }));
+    await expect(relayStatus("https://backend.example")).resolves.toBeNull();
   });
 
   it("keeps every hash of a multi-step action, the approval's too", async () => {

@@ -3,7 +3,9 @@ import { priceAt } from "@/chain/price";
 const nf = (min: number, max: number) => new Intl.NumberFormat("en-US", { minimumFractionDigits: min, maximumFractionDigits: max });
 
 export const num = (v: number, dp = 2) => nf(dp, dp).format(Math.abs(v) < 5 * 10 ** -(dp + 1) ? 0 : v);
-export const amt = (v: number) => (Math.abs(v) >= 1000 ? nf(0, 0).format(v) : Math.abs(v) >= 1 ? nf(2, 2).format(v) : nf(0, 4).format(v));
+/** An amount: whole numbers from 1,000, two decimals from 1, four below. One too small for four decimals says so, never "0". */
+export const amt = (v: number) =>
+  Math.abs(v) >= 1000 ? nf(0, 0).format(v) : Math.abs(v) >= 1 ? nf(2, 2).format(v) : v !== 0 && Math.abs(v) < 0.00005 ? `${v < 0 ? "−" : ""}< 0.0001` : nf(0, 4).format(v);
 export const pct = (bps: number, dp = 1) => `${nf(dp, dp).format(bps / 100)}%`;
 /** Quote per token: four decimals from 1 up, four significant digits below (a testnet launch trades near 0.0002). */
 export const price = (ethPerToken: number) =>

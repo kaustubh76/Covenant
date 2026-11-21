@@ -11,7 +11,9 @@ import { type Launch, NEVER, defaultLaunchSpec, launchAndAdopt } from "../launch
 import { pushTo, sqrtPriceLimitAt, swap } from "../market";
 import { SINK, bidLeg, cut, cutAll, honestLegs } from "../plans";
 import { toPool } from "../price";
+import { BOUNTY_MAX_BPS, RESHAPE_MAX_RANGES } from "../constants";
 import { PRESETS } from "../terms";
+import { duration } from "../../lib/format";
 import { advance, sandbox } from "../time";
 import { devTxFields, must, send } from "../tx";
 import { type VaultView, positionLiquidity, readSqrtPrice, readVaultView } from "../view";
@@ -33,6 +35,8 @@ export interface AttackOutcome {
    * run is neither blocked nor through, and is never counted as either.
    */
   noVerdict?: string;
+  /** A live check that does not apply to this vault right now (its `noVerdict` says why), rather than one that failed. */
+  skipped?: boolean;
 }
 
 export interface Attack {
@@ -211,7 +215,7 @@ export const ATTACKS: Attack[] = [
       await advance(k.ctx, 86_400);
       const v = await view(k, f.vault);
       const o = await attempt(k, "curator", "Move 100% of the vault", f.vault, "reshape", [cutAll(v), honestLegs(v, v.spotTick, 6000), NEVER]);
-      return { blocked: !o.ok, summary: "At most half the vault moves per epoch under Standard terms" };
+      return { blocked: !o.ok, summary: `No more than ${v.terms.paceBps / 100}% of the vault's value moves at once under these terms` };
     },
   },
   {
@@ -247,7 +251,7 @@ export const ATTACKS: Attack[] = [
         top -= 60;
       }
       const o = await attempt(k, "curator", "Fragment the reserve into 12 ranges", f.vault, "reshape", [[cut(indexOfLeg(v, f, 2))], legs, NEVER]);
-      return { blocked: !o.ok, summary: "A reshape may leave 14 ranges at most, so restore always has room" };
+      return { blocked: !o.ok, summary: `A reshape may leave ${RESHAPE_MAX_RANGES} ranges at most, so restore always has room` };
     },
   },
   {
@@ -307,7 +311,7 @@ export const ATTACKS: Attack[] = [
     id: "big-dump",
     title: "Drain the support with a big dump",
     who: "Attacker",
-    story: "Sell 20 tokens into the vault's bids and see where the vault's value goes.",
+    story: "Sell a large block of tokens into the vault's bids and see where the vault's value goes.",
     rule: "Conservation",
     test: "test_13_2_12_dumpIsAbsorbedNotLeaked",
     async run(k, f) {
@@ -364,7 +368,7 @@ export const ATTACKS: Attack[] = [
     id: "pump-quick",
     title: "Pump-ratchet, quick",
     who: "Attacker",
-    story: "The drain that took 82% of the prototype's quote: buy the asks, push the price 30,000 ticks through empty ticks, hold it, call restore to drag the vault's bids up under it, sell back.",
+    story: "The drain that took more than half of the prototype's quote (PumpRatchetPoC): buy the asks, push the price 30,000 ticks through empty ticks, hold it, call restore to drag the vault's bids up under it, sell back.",
     rule: "Anchor",
     test: "test_pumpRatchet_quickPumpFindsNothingToRestore",
     async run(k, f) {
@@ -384,7 +388,7 @@ export const ATTACKS: Attack[] = [
     id: "pump-patient",
     title: "Pump-ratchet, held for four days",
     who: "Attacker",
-    story: "The same pump, held for four days while the Anchor is synced every 30 minutes, until the band floats above the filled asks and support reads as lapsed. Then restore.",
+    story: "The same pump, held for four days while the Anchor is synced every TWAP window, until the band floats above the filled asks and support reads as lapsed. Then restore.",
     rule: "Anchor",
     test: "test_pumpRatchet_patientPumpCannotPullRestoreAboveWhereTheVaultSold",
     slow: true,
@@ -399,7 +403,7 @@ export const ATTACKS: Attack[] = [
         must(await send(k.ctx, "keeper", { address: f.vault, abi: covenantVaultAbi, functionName: "poke", args: [] }), "poke");
       }
       const v = await view(k, f.vault);
-      k.record(note("anyone", "Four days, synced every 30 minutes", `The Anchor climbed ${v.anchor - f.seedPrice} ticks. Support now reads ${(v.support.have / 100).toFixed(1)}%`));
+      k.record(note("anyone", `Four days, synced every ${duration(step)}`, `The Anchor climbed ${v.anchor - f.seedPrice} ticks. Support now reads ${(v.support.have / 100).toFixed(1)}%`));
       const o = await attempt(k, "attacker", "Call restore to drag the bids up", f.vault, "restore", [quoteRangesUnderSpot(v), NEVER]);
       await sellBack(k, f, bought);
       const pnl = eth((await k.ctx.pub.getBalance({ address: k.ctx.address("attacker") })) - ethBefore);
@@ -421,7 +425,7 @@ export const ATTACKS: Attack[] = [
       v = await view(k, f.vault);
       const p = v.spotTick;
       const o = await attempt(k, "curator", "Bid just under the pumped price", f.vault, "reshape", [[cut(indexOfLeg(v, f, 3))], [bidLeg(v, p - 900, p - 120, SINK)], NEVER]);
-      return { blocked: !o.ok, summary: "No bid above the Anchor plus the guard, and the Anchor climbs a band a day at most" };
+      return { blocked: !o.ok, summary: `No bid above the Anchor plus the guard, and the Anchor climbs at most a band per ${duration(v.terms.epochLength)}` };
     },
   },
   {
@@ -461,7 +465,7 @@ export const ATTACKS: Attack[] = [
       const o = await attempt(k, "keeper", `Restore with support at ${(v.support.have / 100).toFixed(1)}%`, f.vault, "restore", [quoteRangesBelowTheBand(v), NEVER]);
       const paid = eth((await k.ctx.pub.getBalance({ address: k.ctx.address("keeper") })) - before);
       const cap = eth(v.terms.bounty);
-      k.record(note("keeper", `Bounty paid: ${paid.toFixed(4)} ETH`, `Never more than ${cap} ETH, and never more than 1% of the quote moved`));
+      k.record(note("keeper", `Bounty paid: ${paid.toFixed(4)} ETH`, `Never more than ${cap} ETH, and never more than ${BOUNTY_MAX_BPS / 100}% of the quote moved`));
       return { blocked: o.ok && paid > 0 && paid <= cap, summary: "The bounty is capped, so dust earns dust" };
     },
   },

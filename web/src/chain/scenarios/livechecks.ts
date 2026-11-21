@@ -18,6 +18,8 @@ import { type Plan, chasePump, cut, moveEverything, softRug } from "../plans";
 import { type ActionCall, preflight } from "../preflight";
 import type { Party } from "../tx";
 import { type LensState, type VaultView, viewFromSnapshot } from "../view";
+import { BOUNTY_MAX_BPS } from "../constants";
+import { duration } from "../../lib/format";
 import { MAX_RANGES, curatorWithdrawCall, farmCall, fragmentCall, issuerExitCall, outsiderCall, overTheCap, skimCall, softRugCall, vaultCall } from "./attackcalls";
 import { isFailureKind } from "../failure";
 import type { AttackRun } from "./attacks";
@@ -139,6 +141,12 @@ const pctOf = (x: number) => `${(x * 100).toFixed(3)}%`;
 export interface LiveCheck {
   /** The attack card (ATTACKS id) this stands for. */
   id: string;
+  /**
+   * The refusals that mean this attack was stopped by the rule it tests, by error name. Any other refusal in the run (the
+   * guard tripped right now, say) is no verdict either way. Empty for the checks that measure an outcome instead, where
+   * no step should be refused at all.
+   */
+  expect: readonly string[];
   /** Why it cannot be checked on this vault right now, or null. */
   skip?: (v: VaultView) => string | null;
   /**
@@ -149,9 +157,16 @@ export interface LiveCheck {
 }
 
 /** A single call, pre-flighted in the next block as `party`. */
-function single(id: string, summary: string, attempt: (s: Scene) => { party: Party; who: Who; title: string; call: ActionCall; setup?: ActionCall[] } | null, skip?: LiveCheck["skip"]): LiveCheck {
+function single(
+  id: string,
+  expect: readonly string[],
+  summary: string,
+  attempt: (s: Scene) => { party: Party; who: Who; title: string; call: ActionCall; setup?: ActionCall[] } | null,
+  skip?: LiveCheck["skip"],
+): LiveCheck {
   return {
     id,
+    expect,
     skip,
     async run(s) {
       const a = attempt(s);
@@ -167,29 +182,29 @@ const run = (blocked: boolean, summary: string, beats: BeatInput[]): AttackRun =
 
 export const LIVE_CHECKS: LiveCheck[] = [
   // ---- one call each
-  single("curator-withdraw", "The curator manages the vault but owns none of it: no shares to withdraw, and the principal only ever leaves to the treasury, once vested", (s) => {
+  single("curator-withdraw", ["InsufficientShares", "NotIssuer"], "The curator manages the vault but owns none of it: no shares to withdraw, and the principal only ever leaves to the treasury, once vested", (s) => {
     const { call, title } = curatorWithdrawCall(s.v);
     return { party: s.v.people.curator, who: "curator", title, call };
   }),
-  single("skim", "What is lifted must all go back in: principal is conserved on every reshape", (s) => ({
+  single("skim", ["IdleTooLarge"], "What is lifted must all go back in: principal is conserved on every reshape", (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Reshape, re-adding 90% of the support",
     call: skimCall(s.v),
   })),
-  single("softrug", "Support is checked on the layout the reshape would leave", (s) => ({
+  single("softrug", ["SupportBroken"], "Support is checked on the layout the reshape would leave", (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Move the support 9,000 ticks below the price",
     call: softRugCall(s.v),
   })),
-  single(`fragment`, `A reshape may leave ${MAX_RANGES} ranges at most, so restore always has room`, (s) => ({
+  single("fragment", ["TooManyRanges"], `A reshape may leave ${MAX_RANGES} ranges at most, so restore always has room`, (s) => ({
     party: s.v.people.curator,
     who: "curator",
     title: "Split the reserve into slivers, over the range cap",
     call: fragmentCall(s.v),
   })),
-  single("issuer-exit", "Nothing leaves before it vests", (s) => ({
+  single("issuer-exit", ["Locked"], "Nothing leaves before it vests", (s) => ({
     party: s.v.people.issuer,
     who: "issuer",
     title: "Withdraw more principal than has vested",
@@ -197,12 +212,15 @@ export const LIVE_CHECKS: LiveCheck[] = [
   })),
   single(
     "farm",
+    ["NothingToRestore"],
     "Healthy support pays nothing",
     (s) => ({ party: KEEPER, who: "keeper", title: "Call restore on a healthy vault", call: farmCall(s.v) }),
     (v) => (v.support.have < v.support.need ? "Support has lapsed right now, so a restore is owed" : null),
   ),
   single(
     "outsider",
+    // the pool refuses to take more liquidity out of the router's own position than it holds
+    ["SafeCastOverflow", "CannotUpdateEmptyPosition"],
     "Positions are keyed to their owner: the vault's are out of anyone else's reach",
     (s) => {
       const call = outsiderCall(s.v, s.ctx.net.manifest);
@@ -214,15 +232,17 @@ export const LIVE_CHECKS: LiveCheck[] = [
   // ---- across blocks and time
   {
     id: "pace",
+    expect: ["PaceExceeded"],
     skip: (v) => (v.terms.paceBps >= 10_000 ? "These terms let the whole vault move in one epoch" : null),
     async run(s) {
       const t = pastSetup(s);
       const { beats } = await play(s, [{ after: t, steps: [{ who: "curator", title: "After the setup epoch, move 100% of the vault at once", call: asSim(s.v.people.curator, reshape(s.v, moveEverything(s.v))) }] }]);
-      return run(!beats[0].ok, `No more than ${(s.v.terms.paceBps / 100).toFixed(0)}% of the vault's value moves per epoch under these terms`, beats);
+      return run(!beats[0].ok, `No more than ${(s.v.terms.paceBps / 100).toFixed(0)}% of the vault's value moves at once under these terms, from an allowance that refills by that much per ${duration(s.v.terms.epochLength)}`, beats);
     },
   },
   {
     id: "instant-curator",
+    expect: ["TimelockActive", "SupportBroken"],
     async run(s) {
       const later = 2 + s.v.terms.curatorTimelock;
       const { results, beats } = await play(s, [
@@ -247,6 +267,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "manipulate",
+    expect: ["PriceGuard"],
     async run(s) {
       const t = pastSetup(s);
       const d = deposit(s, 0.1);
@@ -268,6 +289,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "flash",
+    expect: [],
     async run(s) {
       const sell = swapCall(s.ctx, s.v, false, s.issuerTokens / 2n, s.v.spotTick - 5000);
       const buyBack = swapCall(s.ctx, s.v, true, STAND_IN_ETH / 2n, s.v.spotTick);
@@ -297,6 +319,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "cheap-shares",
+    expect: [],
     async run(s) {
       const t = pastSetup(s);
       const d = deposit(s, 0.1);
@@ -313,6 +336,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "lp-exit",
+    expect: [],
     async run(s) {
       const t = pastSetup(s);
       const d = deposit(s, 0.1);
@@ -339,6 +363,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "big-dump",
+    expect: [],
     async run(s) {
       const amount = wei(s.v.principal.token * 0.2);
       if (amount === 0n || amount > s.issuerTokens) return null;
@@ -367,6 +392,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "freeze-exits",
+    expect: [],
     async run(s) {
       const t = pastSetup(s);
       const d = deposit(s, 0.1);
@@ -393,6 +419,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "vault-pays",
+    expect: ["InsufficientPayment"],
     async run(s) {
       const t = pastSetup(s);
       const d = deposit(s, 0.1, 1n);
@@ -403,6 +430,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "colluding-curator",
+    expect: ["BidAboveCeiling"],
     async run(s) {
       const hold = 1 + s.v.terms.twapWindow + 3600;
       const pumpUp = pump(s, ATTACKER, 15_000, "An accomplice pumps 15,000 ticks through the asks");
@@ -418,11 +446,12 @@ export const LIVE_CHECKS: LiveCheck[] = [
         { after: hold, steps: [{ who: "curator", title: "Hold it a TWAP window, then move the bids up under the fake price", call: asSim(s.v.people.curator, reshape(pumped, chasePump(pumped))) }] },
       ]);
       if (!ok(results[0][0])) return null;
-      return run(!ok(results[1][0]), "No bid above the Anchor plus the guard, and the Anchor climbs a band a day at most", beats);
+      return run(!ok(results[1][0]), `No bid above the Anchor plus the guard, and the Anchor climbs at most a band per ${duration(s.v.terms.epochLength)}`, beats);
     },
   },
   {
     id: "pump-quick",
+    expect: ["NothingToRestore", "RestoreBandEmpty"],
     async run(s) {
       const later = 1 + 2 * 3600;
       const pumpUp = pump(s, ATTACKER, 30_000, "Buy the asks and push the price 30,000 ticks");
@@ -444,6 +473,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
   },
   {
     id: "dust-restore",
+    expect: [],
     async run(s) {
       const hold = 1 + s.v.terms.twapWindow + 3600;
       // the shallowest sell-off that, once it has held, strands quote below the band (as Keep's crash finder does);
@@ -479,7 +509,7 @@ export const LIVE_CHECKS: LiveCheck[] = [
       const after = viewAt(s, results[1][1], hold);
       const paid = crashed.fees.bountyPool - after.fees.bountyPool;
       const cap = Number(s.v.terms.bounty) / 1e18;
-      beats.push({ actor: "keeper", title: `Bounty paid: ${paid.toPrecision(3)} ETH`, ok: true, detail: `Never more than ${cap} ETH, and never more than 1% of the quote moved. Support now ${(after.support.have / 100).toFixed(1)}%` });
+      beats.push({ actor: "keeper", title: `Bounty paid: ${paid.toPrecision(3)} ETH`, ok: true, detail: `Never more than ${cap} ETH, and never more than ${BOUNTY_MAX_BPS / 100}% of the quote moved. Support now ${(after.support.have / 100).toFixed(1)}%` });
       return run(paid > 0 && paid <= cap + 1e-12, "The bounty is capped, so dust earns dust", beats);
     },
   },
@@ -488,8 +518,40 @@ export const LIVE_CHECKS: LiveCheck[] = [
 /** How long one check may take before it is given up as unanswered: a hung call to a public RPC would hold every check after it. */
 export const CHECK_TIMEOUT_MS = 45_000;
 
-/** A check that gave no verdict, with the reason: its card keeps the recorded run and says why it was not checked live. */
+/** A check that gave no verdict, with the reason, which its card says. */
 const unanswered = (why: string): AttackRun => ({ blocked: false, summary: why, beats: [], noVerdict: why });
+
+/**
+ * The attacks with no live check, and why: their cards show the transactions that played them on the live chain
+ * instead. Every other attack has a check in LIVE_CHECKS.
+ */
+export const NOT_LIVE: Record<string, string> = {
+  "pump-patient": "It needs a pump held for days of chain time, poked along the way, which these checks do not simulate. It was played for real instead: the transactions are below.",
+};
+
+/**
+ * What refuses each attack when the rule it tests holds, by attack id: the live checks' own, plus pump-patient, which
+ * only runs on a dev chain. A run of the attack scripts there is judged by the same names (see `judged`).
+ */
+export const EXPECTED: Record<string, readonly string[]> = {
+  ...Object.fromEntries(LIVE_CHECKS.map((c) => [c.id, c.expect])),
+  "pump-patient": ["RestoreBandEmpty"],
+};
+
+/**
+ * A run counts as blocked only when every refusal in it is one this attack expects: the rule it tests said no. A
+ * refusal by anything else (the guard tripped right now, a scene that could not be set) is no verdict either way, and
+ * the run keeps its steps so the card shows what happened.
+ */
+export function judged(c: Pick<LiveCheck, "expect">, r: AttackRun): AttackRun {
+  const other = r.beats.find((b) => !b.ok && !c.expect.includes(b.error?.name ?? ""));
+  if (!other) return r;
+  const name = other.error?.name ?? "an error";
+  const why = c.expect.length
+    ? `Refused here by ${name}, not by what this attack tests (${c.expect.join(" or ")}), so it is not counted either way.`
+    : `A step was refused (${name}), so this check could not measure what it tests; it is not counted either way.`;
+  return { ...r, blocked: false, summary: why, noVerdict: why };
+}
 
 /**
  * Each check that applies to `v`, in turn. Results arrive one by one; checks with nothing to show are left out. A check
@@ -501,12 +563,20 @@ export async function runLiveChecks(
   onResult: (id: string, r: AttackRun) => void,
   checks: LiveCheck[] = LIVE_CHECKS,
   timeoutMs = CHECK_TIMEOUT_MS,
+  /** Told the block the checks are simulated on top of, before the first one runs. */
+  onBase?: (block: bigint) => void,
 ): Promise<void> {
   const head = await ctx.pub.getBlock({ blockTag: "latest" });
   const issuerTokens = (await ctx.pub.readContract({ address: v.token, abi: testTokenAbi, functionName: "balanceOf", args: [v.people.issuer] })) as bigint;
   const scene: Scene = { ctx, v, base: { number: head.number, timestamp: head.timestamp }, issuerTokens };
+  onBase?.(head.number);
   for (const c of checks) {
-    if (c.skip?.(v)) continue;
+    // a check that does not apply to this vault right now says so, rather than vanish
+    const skipped = c.skip?.(v);
+    if (skipped) {
+      onResult(c.id, { ...unanswered(`Not checked on this vault right now: ${skipped}.`), skipped: true });
+      continue;
+    }
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       const late = new Promise<"late">((resolve) => (timer = setTimeout(() => resolve("late"), timeoutMs)));
@@ -514,10 +584,10 @@ export async function runLiveChecks(
       if (r === "late") onResult(c.id, unanswered(`The network did not answer this check within ${Math.round(timeoutMs / 1000)} seconds.`));
       else if (r) {
         const lost = r.beats.find((b) => !b.ok && isFailureKind(b.error?.name));
-        onResult(c.id, lost?.error ? unanswered(lost.error.reason) : r);
-      }
+        onResult(c.id, lost?.error ? unanswered(lost.error.reason) : judged(c, r));
+      } else onResult(c.id, unanswered("The scene for this check could not be set on this vault, so it was not checked."));
     } catch (e) {
-      // one check that cannot run (an RPC without eth_simulateV1, say) keeps its recorded card, and says why
+      // one check that cannot run (an RPC without eth_simulateV1, say) says why
       onResult(c.id, unanswered(`This check could not run: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`));
     } finally {
       clearTimeout(timer);

@@ -9,7 +9,8 @@ import { type Launch, NEVER, adopt, auctionPrice, bid, closeAuction, defaultLaun
 import { pushTo, spotOf, swap } from "../market";
 import { SINK, bidLeg, cut, deepenReserve } from "../plans";
 import { priceAt, q96ToNumber } from "../price";
-import { PRESETS } from "../terms";
+import { PRESETS, termsFromChain } from "../terms";
+import { duration } from "../../lib/format";
 import { advance, mineTo, sandbox } from "../time";
 import { type VaultView } from "../view";
 import { type Kit, attempt, fund, settleTwap, ticksAsDrop, view } from "./kit";
@@ -54,6 +55,8 @@ export interface DemoStep {
 export const DUMP_SIZE = 5;
 
 const pct = (bps: number | bigint) => `${(Number(bps) / 100).toFixed(1)}%`;
+/** Whole percent, for terms (40%, 50%). */
+const pct0 = (bps: number | bigint) => `${(Number(bps) / 100).toFixed(0)}%`;
 const amt = (v: number) => (Math.abs(v) >= 100 ? v.toFixed(0) : Math.abs(v) >= 1 ? v.toFixed(2) : v.toPrecision(3));
 const eth = (x: unknown) => Number(formatEther((x as bigint) ?? 0n));
 
@@ -79,6 +82,14 @@ async function impactOfDump(k: Kit, v: VaultView, tokens: number): Promise<numbe
 const rangeWithMostQuote = (v: VaultView) => [...v.ranges].sort((a, b) => b.quote - a.quote)[0]?.index ?? 0;
 
 
+/** Which of the demo's bids the clearing price left out, by who placed them: their demand stays on-chain for the seed. */
+function outbidBy(clearing: number): string {
+  const out = DEMO_BIDS.filter((b) => bidPrice(b) < clearing);
+  if (!out.length) return "No bid was outbid.";
+  const who = [...new Set(out.map((b) => (b.bidder === "bob" ? "Bob" : "Alice")))];
+  return `${out.length} bid${out.length === 1 ? " was" : "s were"} outbid (${who.join(" and ")}'s); their demand stays on-chain.`;
+}
+
 export const DEMO_STEPS: DemoStep[] = [
   {
     n: 1,
@@ -90,8 +101,10 @@ export const DEMO_STEPS: DemoStep[] = [
       const launch = await registerLaunch(k.ctx, defaultLaunchSpec(PRESETS.standard, { name: "Demo Launch", symbol: "TOKEN" }));
       s.launch = launch;
       s.vault = launch.vault;
+      // the terms as the vault now holds them, read back from it
+      const t = termsFromChain(await k.ctx.pub.readContract({ address: launch.vault, abi: covenantVaultAbi, functionName: "terms" }));
       k.record([
-        note("issuer", "Vault created before the auction", `Standard terms: 40% support, 50% pace, 90-day lock. Vault ${shortAddress(launch.vault)}`),
+        note("issuer", "Vault created before the auction", `Its terms: ${pct0(t.supportBps)} support, ${pct0(t.paceBps)} pace, a ${duration(t.lockDuration)} lock. Vault ${shortAddress(launch.vault)}`),
         note("issuer", "Launch registered with Uniswap's LBPStrategy", "The CCA opens. Every LP position the launcher mints will go to the vault"),
       ]);
       const m = k.ctx.net.manifest;
@@ -126,7 +139,11 @@ export const DEMO_STEPS: DemoStep[] = [
       s.clearing = q96ToNumber(clearing);
       s.raised = eth(raised);
       k.record([
-        note("anyone", `Auction clears at ${s.clearing.toFixed(4)} ETH`, `${amt(s.raised)} ETH raised. Bob's bids were outbid; their demand stays on-chain`),
+        note(
+          "anyone",
+          `Auction clears at ${s.clearing.toFixed(4)} ETH`,
+          `${amt(s.raised)} ETH raised. ${outbidBy(s.clearing)}`,
+        ),
       ]);
       const ids = await migrate(k.ctx, launch);
       k.record(note("anyone", "Pool created at the clearing price, through the Covenant hook", `LP position #${ids[0]} minted to the vault`));
@@ -136,8 +153,12 @@ export const DEMO_STEPS: DemoStep[] = [
       s.supportAtMigration = v.support.have;
       k.record([
         { actor: "anyone", title: "The vault adopts the launch liquidity", ok: o.ok, error: o.error, hash: o.hash, detail: `${amt(v.principal.quote)} ETH and ${amt(v.principal.token)} tokens, full range` },
-        note("issuer", "Issuer receives principal shares", "Locked for 90 days from now, then vesting over 30"),
-        note("anyone", `Support is ${pct(v.support.have)}`, "Full-range liquidity is spread too thin to meet a 40% covenant"),
+        note("issuer", "Issuer receives principal shares", `Locked for ${duration(v.terms.lockDuration)} from now, then vesting over ${duration(v.terms.vestDuration)}`),
+        note(
+          "anyone",
+          `Support is ${pct(v.support.have)}`,
+          v.support.have < v.support.need ? `Full-range liquidity is spread too thin to meet the ${pct0(v.support.need)} covenant` : `That meets the ${pct0(v.support.need)} covenant`,
+        ),
       ]);
     },
   },
@@ -205,8 +226,8 @@ export const DEMO_STEPS: DemoStep[] = [
     async run(k, s) {
       const { vault } = need(s);
       await advance(k.ctx, 86_400);
-      k.record(note("anyone", "A day passes", "The setup epoch is over: Pace applies and deposits are open"));
       let v = await view(k, vault);
+      k.record(note("anyone", `${duration(86_400)} passes`, v.pace.setup ? "The setup epoch has not ended yet: Pace does not apply" : "The setup epoch is over: Pace applies and deposits are open"));
       await fund(k, "lp", v);
       const before = v.spotTick;
       const dump = await pushTo(k.ctx, v, "attacker", v.spotTick - 1000, parseEther("100000"));
@@ -266,11 +287,12 @@ export const DEMO_STEPS: DemoStep[] = [
     async run(k, s) {
       const { vault } = need(s);
       const before = await supportOf(k, vault);
+      const principalBefore = await k.ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName: "principalShares" });
       const dep = await attempt(k, "lp", "Deposit for 10% new shares", vault, "deposit", [10n ** 17n, 2n ** 256n - 1n, 2n ** 256n - 1n, NEVER], {
         value: parseEther("500"),
         detail: (o) => {
           const [a0, a1] = (o.value ?? [0n, 0n]) as readonly [bigint, bigint];
-          return `Pays ${amt(eth(a0))} ETH and ${amt(eth(a1))} tokens: exactly a tenth of every range`;
+          return `Pays ${amt(eth(a0))} ETH and ${amt(eth(a1))} tokens, its slice of every range`;
         },
       });
       await attempt(k, "lp", "Withdraw the same shares", vault, "withdraw", [10n ** 17n, 0n, 0n, NEVER], {
@@ -281,7 +303,14 @@ export const DEMO_STEPS: DemoStep[] = [
       });
       const after = await supportOf(k, vault);
       const principal = await k.ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName: "principalShares" });
-      if (dep.ok) k.record(note("anyone", "The issuer's position is untouched", `Principal shares still ${(eth(principal) * 100).toFixed(0)}% of the original. Support ${pct(before.have)} → ${pct(after.have)}`));
+      if (dep.ok)
+        k.record(
+          note(
+            "anyone",
+            principal === principalBefore ? "The issuer's position is untouched" : "The issuer's principal shares changed",
+            `Principal shares ${(eth(principal) * 100).toFixed(0)}% of the original. Support ${pct(before.have)} → ${pct(after.have)}`,
+          ),
+        );
     },
   },
   {
@@ -292,7 +321,8 @@ export const DEMO_STEPS: DemoStep[] = [
     view: "vault",
     async run(k, s) {
       const { vault } = need(s);
-      await attempt(k, "issuer", "Propose a new curator", vault, "proposeCurator", [k.ctx.address("newCurator")], { detail: () => "The 2-day timelock starts" });
+      const lock = termsFromChain(await k.ctx.pub.readContract({ address: vault, abi: covenantVaultAbi, functionName: "terms" })).curatorTimelock;
+      await attempt(k, "issuer", "Propose a new curator", vault, "proposeCurator", [k.ctx.address("newCurator")], { detail: () => `The ${duration(lock)} timelock starts` });
       await attempt(k, "keeper", "Accept immediately", vault, "acceptCurator", []);
       await advance(k.ctx, 2 * 86_400);
       k.record(note("anyone", "Two days pass", "Holders had the whole timelock to react"));

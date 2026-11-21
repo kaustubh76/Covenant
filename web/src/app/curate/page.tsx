@@ -14,7 +14,7 @@ import { type Preflight, preflight, vaultEvents, failedPreflight } from "@/chain
 import { ceilTo, floorTo, holdingsAtPrice, priceAt } from "@/chain/price";
 import { advance } from "@/chain/time";
 import { isAddressParty, send } from "@/chain/tx";
-import type { VaultView } from "@/chain/view";
+import { type VaultView, readVaultView } from "@/chain/view";
 import { NeedsChain } from "@/components/chain/NeedsChain";
 import { type ShapeSource, ShapeChart, ShapeLegend, chartDomain } from "@/components/covenant/ShapeChart";
 import { OnRecord } from "@/components/covenant/OnRecord";
@@ -86,7 +86,7 @@ const PRESETS: { key: string; name: string; hint: string; hostile?: boolean; whe
   {
     key: "everything",
     name: "Move everything at once",
-    hint: "Faster than Pace allows",
+    hint: "Faster than Pace allows, once Pace is in force",
     hostile: true,
     make: (v) => {
       // The honest layout, but every range lifted whatever the epoch. During setup Pace is off and this settles; after
@@ -198,10 +198,26 @@ export default function CuratePage() {
     run("Market pumps past the Anchor ceiling and holds", async (ctx, rec) => {
       const target = v.ceiling + Math.round(v.terms.supportBandTicks / 2) + 4 * v.tickSpacing;
       const o = await pushTo(ctx, v, "market", target, parseEther("5000"));
-      rec.record(beatOf(o, "market", "Market pumps past the Anchor ceiling", () => `Spot runs to ${priceAt(target).toPrecision(4)} ${v.quoteSymbol}, above the ceiling at ${priceAt(v.ceiling).toPrecision(4)}`), { toast: !o.ok });
+      // what the pump reached, read back from the chain rather than the target it aimed for
+      const pumped = o.ok ? await readVaultView(ctx, v.address) : null;
+      rec.record(
+        beatOf(o, "market", "Market pumps past the Anchor ceiling", () =>
+          pumped ? `Spot runs to ${priceAt(pumped.spot).toPrecision(4)} ${v.quoteSymbol}; the ceiling is ${priceAt(pumped.ceiling).toPrecision(4)}` : undefined,
+        ),
+        { toast: !o.ok },
+      );
       if (!o.ok) return;
       await advance(ctx, v.terms.twapWindow);
-      rec.record(note("anyone", `The pump holds for ${duration(v.terms.twapWindow)}`, "The TWAP has followed it and the guard passes; the Anchor has not. Now try Bid above the Anchor."), { toast: true });
+      const held = await readVaultView(ctx, v.address);
+      const above = held.spot > held.ceiling;
+      rec.record(
+        note(
+          "anyone",
+          `The pump holds for ${duration(v.terms.twapWindow)}`,
+          `${held.guard.ok ? "The TWAP has followed it and the guard passes" : "The guard is still tripped"}; spot is ${above ? "above" : "not above"} the Anchor's ceiling.${above && held.guard.ok ? " Now try Bid above the Anchor." : ""}`,
+        ),
+        { toast: true },
+      );
     });
   const wallet = useChain((s) => s.wallet);
   const [ed, setEd] = useState<Editor | null>(null);
@@ -349,7 +365,7 @@ export default function CuratePage() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="min-w-0 space-y-6">
-          <Panel eyebrow="Proposed shape" title={pre?.ok && !checking ? "Exactly what the contract would place" : "Drag the bars under the chart to move a range"}>
+          <Panel eyebrow="Proposed shape" title={pre?.ok && pre.after && !checking ? "Exactly what the contract would place" : pre?.ok && !checking ? "A sketch: the simulation did not return the layout" : "Drag the bars under the chart to move a range"}>
             <ShapeChart
               world={proposed}
               ghost={v}
@@ -521,7 +537,7 @@ export default function CuratePage() {
 
         <div className="lg:sticky lg:top-20 lg:self-start">
           <Panel eyebrow="Pre-flight" title="What the contract will say">
-            <ReshapeVerdict before={v} pre={pre} moved={movedNow} loading={checking && !pre} />
+            <ReshapeVerdict before={v} pre={pre} moved={movedNow} measured={moved !== undefined} loading={checking && !pre} />
             <SendButton
               verb="submit"
               variant={pre && !pre.ok && !noAnswer ? "danger" : "primary"}

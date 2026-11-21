@@ -8,10 +8,11 @@ const mono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 const display = Instrument_Serif({ variable: "--font-display", subsets: ["latin"], weight: "400", style: ["normal", "italic"] });
 
 const TITLE = "Covenant — Locked for holders. Managed for the market.";
-const DESCRIPTION = "A Uniswap v4 hook that lets launch liquidity be actively managed without ever being withdrawable. Live on Base Sepolia.";
+const DESCRIPTION = "A Uniswap v4 hook that lets a curator actively manage launch liquidity it can never withdraw. Deployed on Base Sepolia.";
 
-// Links to the app unfurl with a card: the live vault on Base Sepolia (public/og.jpg). On Vercel the production domain
-// is known at build time; anywhere else the card's URLs are relative to the local server.
+// Links to the app unfurl with a card: a screenshot of the CVNT vault page on Base Sepolia (public/og.jpg), taken on
+// 2026-11-17 and dated as such. On Vercel the production domain is known at build time; anywhere else the card's URLs
+// are relative to the local server.
 const SITE = process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : "http://localhost:3000";
 
 export const metadata: Metadata = {
@@ -24,7 +25,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     url: "/",
-    images: [{ url: "/og.jpg", width: 1200, height: 630, alt: "The live Covenant vault on Base Sepolia: its price, value and liquidity shape" }],
+    images: [{ url: "/og.jpg", width: 1200, height: 630, alt: "The CVNT vault page on Base Sepolia, as it was on 17 Nov 2026: its price, value and liquidity shape" }],
   },
   twitter: { card: "summary_large_image", title: TITLE, description: DESCRIPTION, images: ["/og.jpg"] },
 };

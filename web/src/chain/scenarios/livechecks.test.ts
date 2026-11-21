@@ -88,12 +88,12 @@ describe("live attack checks", () => {
     expect(got["vault-pays"]).toBe(false);
   });
 
-  it("shows nothing for a check whose scene could not be set, and says why a check could not run", async () => {
+  it("says why for a check whose scene could not be set, and for one that could not run", async () => {
     const { ctx } = fakeCtx();
     const seen: Record<string, string | undefined> = {};
-    await runLiveChecks(ctx, view(4), (id, r) => (seen[id] = r.noVerdict), [{ id: "x", run: async () => null }, { id: "y", run: async () => Promise.reject(new Error("no eth_simulateV1")) }]);
-    // no scene: nothing to show. A check that threw: no verdict, with the reason, so its card keeps the recorded run.
-    expect(seen).toEqual({ y: "This check could not run: no eth_simulateV1" });
+    await runLiveChecks(ctx, view(4), (id, r) => (seen[id] = r.noVerdict), [{ id: "x", expect: [], run: async () => null }, { id: "y", expect: [], run: async () => Promise.reject(new Error("no eth_simulateV1")) }]);
+    // neither is a verdict, and each card says why, rather than show a result recorded elsewhere
+    expect(seen).toEqual({ x: "The scene for this check could not be set on this vault, so it was not checked.", y: "This check could not run: no eth_simulateV1" });
   });
 });
 
