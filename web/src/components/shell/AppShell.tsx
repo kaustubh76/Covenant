@@ -2,10 +2,10 @@
 
 import clsx from "clsx";
 import { AnimatePresence, MotionConfig, motion } from "framer-motion";
-import { ChevronDown, Droplet, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
+import { ChevronDown, Droplet, FlaskConical, Loader2, Moon, Sun, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { parseEther } from "viem";
 import { shortAddress } from "@/chain/accounts";
 import { FAILURE_LABEL, isFailureKind } from "@/chain/failure";
@@ -15,19 +15,126 @@ import { ROLES, type Role, useChain } from "@/store/chain";
 import { Dock } from "@/components/dock/Dock";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { PlaygroundBar } from "./PlaygroundBar";
+import { EXPLORE, PRIMARY } from "./nav";
 import { keepsSent, rememberSent } from "@/lib/sentTxs";
 import { useRelay } from "@/lib/useRelay";
 
-const NAV = [
-  { href: "/vault", label: "Vault" },
-  { href: "/launch", label: "Launch" },
-  { href: "/curate", label: "Curate" },
-  { href: "/keep", label: "Keep" },
-  { href: "/provide", label: "Provide" },
-  { href: "/govern", label: "Govern" },
-  { href: "/attacks", label: "Attack lab" },
-  { href: "/demo", label: "Guided demo" },
-];
+/** A top-bar item: the page you are on, or the open menu, reads as raised; the Playground, when you are on it, as the accent. */
+function navItem(look: "here" | "on" | "idle") {
+  return clsx(
+    "flex items-center gap-1.5 whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
+    look === "here" ? "bg-raised text-ink" : look === "on" ? "text-accent" : "text-muted hover:text-ink",
+  );
+}
+
+/**
+ * The Playground, from the top bar: the landing's own link, offered while the networks list has it ready (a sleeping
+ * backend too, as PlaygroundBar offers it: opening a chain wakes it). On it, the link reads as the accent and goes to
+ * the vault without switching again.
+ */
+function PlaygroundLink() {
+  const here = useChain((s) => s.netKey === "playground");
+  const offered = useChain((s) => s.networks.some((n) => n.key === "playground" && n.state === "ready"));
+  const setNetwork = useChain((s) => s.setNetwork);
+  const busy = useChain((s) => s.busy);
+  if (!offered && !here) return null;
+  return (
+    <Link
+      href="/vault?net=playground"
+      onClick={(e) => {
+        // Not while an action runs, as the network menu waits: its result belongs to the network it was sent on.
+        if (busy) return e.preventDefault();
+        // The store reads ?net= when the app loads; an in-app link does not reload it, so the link switches it too.
+        if (!here) void setNetwork("playground");
+      }}
+      aria-current={here ? "true" : undefined}
+      aria-disabled={busy ? true : undefined}
+      title={busy ? `Wait for "${busy}" to finish` : here ? "You are on your own Playground chain" : "A private chain with the same contracts and a seeded launch: real transactions, no wallet needed"}
+      className={clsx(navItem(here ? "on" : "idle"), busy && "cursor-not-allowed opacity-50")}
+    >
+      {/* the flask from sm up: on the narrowest phones the four items need its room */}
+      <FlaskConical size={13} strokeWidth={1.8} className="hidden shrink-0 text-accent sm:block" />
+      Playground
+    </Link>
+  );
+}
+
+/**
+ * Every page that is not in the bar, one click away: a disclosure button and its list of links. It closes on a choice,
+ * a click outside it, Escape (focus back on the button), focus moving on past it, or any page change.
+ */
+function Explore({ wide }: { wide: boolean }) {
+  const path = usePathname();
+  const id = useId();
+  const box = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  // Open only on the page it was opened on: leaving that page closes it, by a link, Back or Forward.
+  const [openedOn, setOpenedOn] = useState<string | null>(null);
+  if (openedOn !== null && openedOn !== path) setOpenedOn(null);
+  const open = openedOn === path;
+  const here = EXPLORE.some((n) => n.href === path);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      setOpenedOn(null);
+      button.current?.focus();
+    };
+    const onDown = (e: PointerEvent) => !box.current?.contains(e.target as Node) && setOpenedOn(null);
+    window.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
+  return (
+    <div
+      ref={box}
+      // in the bar, the list hangs from the button; in the row below it, from the row, so it stays on a phone's screen
+      className={wide ? "relative" : undefined}
+      onBlur={(e) => {
+        // focus moving on to something else (Tab past the last link); a click elsewhere is the pointer's to close
+        const next = e.relatedTarget as Node | null;
+        if (open && next && !box.current?.contains(next)) setOpenedOn(null);
+      }}
+    >
+      <button ref={button} type="button" aria-expanded={open} aria-controls={id} onClick={() => setOpenedOn(open ? null : path)} className={navItem(here || open ? "here" : "idle")}>
+        Explore
+        <ChevronDown size={13} className={clsx("shrink-0 transition-transform", open && "rotate-180")} />
+      </button>
+      <ul id={id} hidden={!open} className={clsx("absolute top-full z-50 mt-1.5 rounded-lg border border-line-strong bg-raised p-1.5 shadow-lg", wide ? "left-0 w-72" : "left-3 w-[min(20rem,calc(100vw-1.5rem))]")}>
+        {EXPLORE.map((n) => (
+          <li key={n.href}>
+            <Link href={n.href} aria-current={path === n.href ? "page" : undefined} onClick={() => setOpenedOn(null)} className={clsx("block rounded-md px-3 py-2 transition-colors", path === n.href ? "bg-bg" : "hover:bg-bg")}>
+              <span className="block text-[13px] font-medium text-ink">{n.label}</span>
+              <span className="block text-[12px] leading-snug text-muted">{n.about}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The top bar's menu: the guided demo, the vault and the Playground, and every other page under Explore. In the bar
+ * from xl; below it, in a row of its own, which four items fit without scrolling (a scrolling row would clip the list).
+ */
+function MainNav({ wide }: { wide: boolean }) {
+  const path = usePathname();
+  return (
+    <nav aria-label="Main" className={wide ? "hidden min-w-0 flex-1 items-center gap-1 xl:flex" : "relative flex items-center gap-1 border-t border-line px-3 py-1.5 xl:hidden"}>
+      {PRIMARY.map((n) => (
+        <Link key={n.href} href={n.href} aria-current={path === n.href ? "page" : undefined} className={navItem(path === n.href ? "here" : "idle")}>
+          {n.label}
+        </Link>
+      ))}
+      <PlaygroundLink />
+      <Explore wide={wide} />
+    </nav>
+  );
+}
 
 export function Seal({ className }: { className?: string }) {
   return (
@@ -300,18 +407,7 @@ function TopBar() {
           <span className="display text-[22px] leading-none">Covenant</span>
         </Link>
         {/* From xl: below it, with a wallet connected, the network, the wallet and the role leave the nav too little room. */}
-        <nav className="scroll-x hidden min-w-0 flex-1 items-center gap-1 xl:flex" aria-label="Main">
-          {NAV.map((n) => (
-            <Link
-              key={n.href}
-              href={n.href}
-              aria-current={path === n.href ? "page" : undefined}
-              className={clsx("whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px] transition-colors", path === n.href ? "bg-raised text-ink" : "text-muted hover:text-ink")}
-            >
-              {n.label}
-            </Link>
-          ))}
-        </nav>
+        <MainNav wide />
         <div className="ml-auto flex items-center gap-2">
           <ChainStatus />
           <NetworkSwitcher />
@@ -323,18 +419,7 @@ function TopBar() {
           </div>
         </div>
       </div>
-      <nav className="scroll-x flex items-center gap-1 border-t border-line px-3 py-1.5 xl:hidden" aria-label="Main">
-        {NAV.map((n) => (
-          <Link
-            key={n.href}
-            href={n.href}
-            aria-current={path === n.href ? "page" : undefined}
-            className={clsx("whitespace-nowrap rounded-md px-2.5 py-1.5 text-[13px]", path === n.href ? "bg-raised text-ink" : "text-muted")}
-          >
-            {n.label}
-          </Link>
-        ))}
-      </nav>
+      <MainNav wide={false} />
     </header>
   );
 }

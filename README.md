@@ -18,7 +18,7 @@ The full product spec is in [`docs/SPEC.md`](docs/SPEC.md) and the execution flo
 
 **The app, live on Base Sepolia: https://covenant-uhi11.vercel.app.** Nothing to install, and no wallet needed to look around. Every reshape drawn on Curate is simulated against the live vault, so the verdict shown is the contract's own. Keep simulates the smallest sell-off that would strand support. Connect a wallet to act.
 
-**No wallet? Open the Playground** from the bar under the top bar. It is your own private chain on Covenant's backend,
+**No wallet? Open the Playground** from the top bar. It is your own private chain on Covenant's backend,
 loaded with the demo's launch, where every button sends a real transaction: act as any role, trade, move the clock,
 run all 20 attacks, then reset. On Base Sepolia itself, a visitor without a wallet can also have the backend send a few
 fixed actions: a poke, a fee collection, a restore when support has lapsed, a small trade, or test funds for a new wallet
@@ -239,6 +239,8 @@ It needs Foundry (`forge`, `anvil`) and Node 22.14 or newer (24 recommended, as 
 1. Start Anvil with a fixed clock: one second per block, no fees.
 2. Deploy Uniswap v4, the Liquidity Launcher's `LBPStrategy`, the CCA factory and Covenant from the pinned sources (`script/LocalStack.s.sol`).
 3. Run a real launch end to end: vault, auction, bids, migration, adoption and the demand-shaped seed.
+
+The top bar holds the guided demo and the vault, plus the Playground where a backend offers one; every other page is under Explore.
 
 | Page | What it does on-chain |
 |---|---|
