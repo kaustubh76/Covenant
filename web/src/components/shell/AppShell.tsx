@@ -34,9 +34,24 @@ function navItem(look: "here" | "on" | "idle") {
  */
 function PlaygroundLink() {
   const here = useChain((s) => s.netKey === "playground");
-  const offered = useChain((s) => s.networks.some((n) => n.key === "playground" && n.state === "ready"));
+  // null until the networks list arrives, which a cold server checking a sleeping backend can hold for seconds
+  const offered = useChain((s) => (s.networks.length ? s.networks.some((n) => n.key === "playground" && n.state === "ready") : null));
   const setNetwork = useChain((s) => s.setNetwork);
   const busy = useChain((s) => s.busy);
+  const face = (
+    <>
+      {/* the flask from sm up: on the narrowest phones the four items need its room */}
+      <FlaskConical size={13} strokeWidth={1.8} className="hidden shrink-0 text-accent sm:block" />
+      Playground
+    </>
+  );
+  // Until the list says, the item holds its place unseen: appearing later, it would move Explore from under the pointer.
+  if (offered === null && !here)
+    return (
+      <span aria-hidden className={clsx(navItem("idle"), "invisible")}>
+        {face}
+      </span>
+    );
   if (!offered && !here) return null;
   return (
     <Link
@@ -52,9 +67,7 @@ function PlaygroundLink() {
       title={busy ? `Wait for "${busy}" to finish` : here ? "You are on your own Playground chain" : "A private chain with the same contracts and a seeded launch: real transactions, no wallet needed"}
       className={clsx(navItem(here ? "on" : "idle"), busy && "cursor-not-allowed opacity-50")}
     >
-      {/* the flask from sm up: on the narrowest phones the four items need its room */}
-      <FlaskConical size={13} strokeWidth={1.8} className="hidden shrink-0 text-accent sm:block" />
-      Playground
+      {face}
     </Link>
   );
 }
